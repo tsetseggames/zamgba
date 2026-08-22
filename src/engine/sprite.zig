@@ -1,5 +1,9 @@
 const hal = @import("zamgba-hal");
 const Color = @import("color.zig").Color;
+const physics = @import("physics/physics.zig");
+const AABB = physics.AABB;
+const Fixed24_8 = physics.Fixed24_8;
+const PhysicsSprite = physics.PhysicsSprite;
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -75,6 +79,21 @@ pub const Sprite = struct {
     pub fn initChecked(x: i32, y: i32, width: u32, height: u32) SpriteError!Sprite {
         _ = try getShapeAndSize(width, height);
         return init(x, y, width, height);
+    }
+
+    /// Automatically allocates and returns an AABB matching this Sprite's position and size.
+    pub fn toAABB(self: *const Sprite) AABB {
+        return AABB.init(
+            Fixed24_8.fromInt(@intCast(@max(0, self.x))),
+            Fixed24_8.fromInt(@intCast(@max(0, self.y))),
+            @intCast(self.width),
+            @intCast(self.height),
+        );
+    }
+
+    /// Automatically wraps this Sprite into a PhysicsSprite with an allocated AABB.
+    pub fn toPhysicsSprite(self: *const Sprite) PhysicsSprite {
+        return PhysicsSprite.fromSprite(self);
     }
 
     /// Compiles the engine-level sprite into a hardware OAM attribute.
@@ -196,6 +215,20 @@ test "toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x800A), attr.attr1);
     // attr2: tile_index=4, palette_bank=2 -> (2 << 12) | 4 = 0x2004
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
+}
+
+test "Sprite toAABB and toPhysicsSprite helpers" {
+    const std = @import("std");
+
+    const spr = Sprite.init(10, 20, 16, 32);
+    const box = spr.toAABB();
+    try std.testing.expectEqual(@as(u32, 10), box.x.toInt());
+    try std.testing.expectEqual(@as(u32, 20), box.y.toInt());
+    try std.testing.expectEqual(@as(u16, 16), box.width);
+    try std.testing.expectEqual(@as(u16, 32), box.height);
+
+    const phys = spr.toPhysicsSprite();
+    try std.testing.expectEqual(@as(u32, 10), phys.aabb.x.toInt());
 }
 
 test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
