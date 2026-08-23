@@ -137,5 +137,9 @@ Enjoy!
   - [ ] Direct Audio playback API
 * **Version 0.7.0**: Capable of writing a game with 2D physics. Supported features:
   - [x] 2D collision & detection API
+* **Version 0.8.0**: Capable of writing a game with affine sprite transformations. Supported features:
+  - [ ] Fixed-point Sin/Cos lookup table (LUT)
+  - [ ] 32-slot OAM affine matrix allocator
+  - [ ] Sprite rotation and scaling API
 * **Version 1.0.0**: Capable of writing a 2D platformer game.
 * **Version 2.0.0**: Capable of writing a pseudo-3D game.

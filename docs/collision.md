@@ -46,32 +46,52 @@ GBA Text Backgrounds use 8x8 pixel tiles. The framework supports the four standa
 - 512x512 (64x64 tiles)
 
 ### Streaming Map Interface
-Since map data can be large, the framework streams collision data via a callback or interface, converting world coordinates to tile coordinates.
+Since map data can be large, the framework streams collision data via a callback or interface, converting world coordinates to tile coordinates without requiring full grid allocation in RAM.
 
 ```zig
-pub const MapSize = enum {
-    Size256x256,
-    Size512x256,
-    Size256x512,
-    Size512x512,
+pub const MapSize = enum(u2) {
+    size_256x256 = 0,
+    size_512x256 = 1,
+    size_256x512 = 2,
+    size_512x512 = 3,
+};
+
+pub const OutOfBoundsBehavior = enum {
+    solid,
+    empty,
 };
 
 pub const CollisionMap = struct {
     size: MapSize,
-    /// Function pointer to fetch tile attribute at a specific tile coordinate (tx, ty)
-    /// Returns true if the tile is solid, false if walkable.
-    getTileSolidState: *const fn(tx: u16, ty: u16) bool,
+    context: ?*const anyopaque = null,
+    is_tile_solid_fn: ContextTileSolidFn,
+    out_of_bounds: OutOfBoundsBehavior = .solid,
 
-    /// Checks if a given AABB overlaps with any solid tiles
-    pub fn checkAABB(self: CollisionMap, box: AABB) bool { ... }
+    pub fn initWithContext(
+        size: MapSize,
+        context: ?*const anyopaque,
+        is_tile_solid_fn: ContextTileSolidFn,
+        out_of_bounds: OutOfBoundsBehavior,
+    ) CollisionMap { ... }
+
+    pub fn init(
+        size: MapSize,
+        is_tile_solid_fn: NoContextTileSolidFn,
+        out_of_bounds: OutOfBoundsBehavior,
+    ) CollisionMap { ... }
+
+    pub fn isTileSolid(self: CollisionMap, tx: u16, ty: u16) bool { ... }
+    pub fn isColliding(self: CollisionMap, box: AABB) bool { ... }
+    pub fn collidesWith(self: CollisionMap, box: AABB) bool { ... }
+    pub fn getFirstCollidingTile(self: CollisionMap, box: AABB) ?TilePos { ... }
 };
 ```
 
 **Algorithm**:
-1. Convert `box.x` and `box.y` from `Fixed24_8` to integer pixels.
-2. Divide by 8 (shift right by 3) to get the min/max tile coordinates (`tx_min`, `ty_min`, `tx_max`, `ty_max`).
-3. Iterate over the tiles within this grid range.
-4. Call `getTileSolidState` for each. If any return `true`, a collision occurred.
+1. Convert `box.x` and `box.y` from `Fixed24_8` to tile grid bounds via `>> (8 + 3)`.
+2. Determine `[min_tx, max_tx]` and `[min_ty, max_ty]`.
+3. Iterate over the tiles within this bounding grid.
+4. Call `isTileSolid` for each tile. Return `true` immediately upon encountering a solid tile.
 
 ## 3. Sprite and Physics Integration
 
@@ -80,8 +100,8 @@ In Zamgba, visual rendering and physics are unified into a single `Sprite` struc
 ```zig
 pub const Sprite = struct {
     aabb: AABB,
-    velocity_x: Fixed24_8 = Fixed24_8.fromInt(0),
-    velocity_y: Fixed24_8 = Fixed24_8.fromInt(0),
+    velocity_x: i32 = 0, // 24.8 signed fixed-point velocity
+    velocity_y: i32 = 0, // 24.8 signed fixed-point velocity
 
     // 16-bit Collision Layer & Mask (4 bytes total, perfectly aligned)
     layer: CollisionMask = Collision.NONE,
@@ -95,6 +115,21 @@ pub const Sprite = struct {
     pub inline fn canCollideWith(self: *const Sprite, other: *const Sprite) bool { ... }
     pub fn toOamAttr(self: *const Sprite) hal.oam.ObjAttr { ... }
 };
+```
+
+### Sprite-to-Sprite Overlap Queries
+Zamgba provides zero-heap slice query helpers for entity interactions:
+
+```zig
+// One-to-many query (e.g. player hitting any enemy)
+pub fn checkOverlap(target: *const Sprite, others: []Sprite) ?*Sprite { ... }
+
+// Many-to-many pairwise check with compile-time inlined callback
+pub fn checkAllOverlaps(
+    sprites: []Sprite,
+    context: anytype,
+    comptime on_overlap: fn (ctx: @TypeOf(context), a: *Sprite, b: *Sprite) void,
+) void { ... }
 ```
 
 ---
@@ -171,24 +206,22 @@ if (bullet.canCollideWith(&enemy) and bullet.aabb.isColliding(enemy.aabb)) {
 
 ## 5. Development Plan & Progress
 
-### Phase 1: Math and Base Physics (`src/engine/physics/math.zig`, `src/engine/physics/aabb.zig`)
-- Implement `Fixed24_8` data type.
-- Implement addition, subtraction, multiplication, and shifting operations.
-- Implement `AABB` struct and the boolean `isIntersecting` algorithm (simple min/max overlap checks).
-- **Unit Tests**: Test math logic on the host machine.
+- [x] **Phase 1: Math and Base Physics (`src/engine/physics/math.zig`, `src/engine/physics/aabb.zig`)**
+  - Implemented `Fixed24_8` fixed-point math with `fromFloat` (comptime), `fromParts`, `fromFraction`, and arithmetic operations.
+  - Implemented `AABB` struct with `isColliding` and `collidesWith` boundary overlap algorithms.
+  - Unit tests verifying arithmetic, sub-pixel precision, and quick reference tables.
 
-### Phase 2: Map Collision System (`src/engine/physics/map.zig`)
-- Implement the `CollisionMap` structure.
-- Write the algorithm to convert AABB pixel boundaries to an 8x8 tile grid.
-- Implement grid iteration and collision resolution logic.
-- **Unit Tests**: Mock a `getTileSolidState` function and test boundary overlap detection.
+- [x] **Phase 2: Map Collision System (`src/engine/physics/map.zig`)**
+  - Implemented `CollisionMap` supporting 4 standard GBA Text BG sizes.
+  - Implemented streaming callbacks (`initWithContext`, `init`, `noContextAdapter`) and `OutOfBoundsBehavior`.
+  - Implemented tile grid mapping and fast range queries (`isColliding`, `getFirstCollidingTile`).
+  - Unit tests covering tile overlap, sub-pixel crossing, and streaming contexts.
 
-### Phase 3: Sprite Integration (`src/engine/physics/sprite.zig`)
-- Implement `PhysicsSprite` struct.
-- Bind `PhysicsSprite` AABBs to hardware sprite OAM (Object Attribute Memory) updates so visual representation automatically follows the physics box.
+- [x] **Phase 3: Unified Sprite & 16-Bit Layer System (`src/engine/sprite.zig`, `src/engine/physics/layer.zig`, `src/engine/physics/overlap.zig`)**
+  - Unified rendering and physics into a single 28-byte `Sprite` embedding `aabb: AABB` and signed velocities.
+  - Implemented 16-bit `CollisionMask` with 1-cycle bitwise filter (`canCollideWith`).
+  - Implemented entity slice queries (`checkOverlap` and `checkAllOverlaps`).
 
-### Phase 4: Demonstration (`demo/engine/collision.zig`)
-- Create a simple ROM using `zamgba-engine` and `zamgba-hal`.
-- Render a map (e.g., 256x256) with solid walls.
-- Render a controllable sprite.
-- Hook D-Pad input to `PhysicsSprite` velocity and demonstrate sliding/stopping against map walls.
+- [x] **Phase 4: Demonstration ROM (`demo/engine/collision_demo.zig`)**
+  - Fully built and verified GBA ROM (`collision_demo.gba`) using engine-tier APIs.
+  - Interactive D-Pad controlled yellow player, bouncing patrol red enemies, and map border collision handling.

@@ -91,7 +91,7 @@ $$\text{fraction} = \text{round}(0.x \times 256)$$
 
 ---
 
-## 3. Alternative Construction Methods
+## 4. Alternative Construction Methods
 
 For runtime values where fractions or parts are computed from integers:
 
@@ -101,7 +101,7 @@ For runtime values where fractions or parts are computed from integers:
 
 ---
 
-## 4. Assignment, Passing, and Memory Semantics
+## 5. Assignment, Passing, and Memory Semantics
 
 ### Direct Assignment (`=`)
 Because `Fixed24_8` wraps a single 32-bit field (`raw: u32`), instances can and should be copied using standard assignment:

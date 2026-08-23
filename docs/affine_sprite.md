@@ -1,7 +1,7 @@
 # GBA Affine Sprite Transformation Design & Roadmap
 
 > [!NOTE]
-> **Status:** Planned / Not Yet Implemented. Targeted for Milestone **1.0.0** (with background Mode 7 scaling in **2.0.0**).
+> **Status:** Planned / Not Yet Implemented. Targeted for Milestone **0.8.0** (with background Mode 7 scaling in **2.0.0**).
 
 This document outlines the technical requirements, hardware dependencies, and architectural evolution path for supporting Affine Transformation (rotation and scaling) in Zamgba without breaking the existing AABB collision system.
 
@@ -101,5 +101,6 @@ pub const Sprite = struct {
 | Milestone | Target Feature | Affine & Math Prerequisites |
 | :--- | :--- | :--- |
 | **0.7.0 (Current)** | 2D Physics Engine | • `Fixed24_8` fixed-point math, `AABB`, `CollisionMap`, 16-layer `CollisionMask`. |
-| **1.0.0** | 2D Platformer Engine | • **Sprite Affine System**: Fixed-point $\sin/\cos$ LUT, 32-matrix shadow allocator, Sprite rotation/scaling. |
+| **0.8.0** | Affine Sprite System | • Fixed-point $\sin/\cos$ LUT, 32-matrix shadow allocator, Sprite rotation/scaling. |
+| **1.0.0** | 2D Platformer Engine | • Full 2D platformer framework integrating physics, tilemaps, and affine sprites. |
 | **2.0.0** | Pseudo-3D Engine | • **Background Mode 7 Affine System**: Extends the affine matrix math to Background Layers for pseudo-3D perspective tracks (*F-Zero* / *Mario Kart* style). |
