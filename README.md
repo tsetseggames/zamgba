@@ -117,7 +117,7 @@ Enjoy!
 
 ## Milestones
 
-* **Version 0.1.0**: Capable of writing a classic pong game. Supported features:
+* **Version 0.1.0** (2026-08-23): Capable of writing a classic pong game. Supported features:
   - [x] Respond to gamepad input
   - [x] Single color/square sprites
   - [x] Hardcoded collision detection 

@@ -1,10 +1,9 @@
 .{
     .name = .zamgba,
-    .version = "0.1.0-dev",
+    .version = "0.1.0",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x56837b6994edf0db,
-    .dependencies = .{
-    },
+    .dependencies = .{},
 
     .paths = .{
         "",
