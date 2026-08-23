@@ -49,19 +49,14 @@ the first day.
 
 ## How can I (as a reader) use the project
 
-Nothing for now. This is a self-learning session to study the classic
-[tonc](https://www.coranac.com/tonc/text/toc.htm) documentation.
-The content of this repository is indeed a set of example code following
-the tutorial. It is neither a game, nor a new emulator,
-or an existing rom hack. 
+With **v0.1.0**, Zamgba is ready as an early, open-source SDK and lightweight 2D engine for learning and creating Game Boy Advance programs in pure Zig.
 
-If you are interested in how to learn hardware oriented programming, no
-matter with Zig or other programming languages, you may (eventually) find
-something useful here. :)
+You can use this project to:
+1. **Learn GBA Hardware Programming**: Explore how GBA MMIO registers, VRAM, and OAM can be mapped cleanly into type-safe Zig constructs without fragile C pointer arithmetic.
+2. **Build Your Own GBA Demos & Games**: Use the built-in HAL and engine loop to write your own ROMs, test 2D collisions, and run them on real hardware or emulators like mGBA.
+3. **Reference as a Dependency**: Integrate Zamgba into your own external game repository using git submodules (see `consumezamgba` below).
 
-Though it sounds completely useless for now, it may change in the future.
-If I happen to figure out a clear direction, I will update this
-documentation and make it official.
+*Note*: As of v0.1.0, this is an early developer preview. It is great for small retro games (like Pong), tech demos, and learning bare-metal development, but not yet intended for full commercial productions. Feedback, suggestions, and PRs are welcome!
 
 ## ...But I'm a hacker!
 
