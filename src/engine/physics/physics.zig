@@ -13,8 +13,13 @@ pub const NoContextTileSolidFn = map.NoContextTileSolidFn;
 pub const TileSolidFn = map.TileSolidFn;
 pub const SimpleTileSolidFn = map.SimpleTileSolidFn;
 
+pub const layer = @import("layer.zig");
+pub const CollisionMask = layer.CollisionMask;
+pub const Collision = layer.Collision;
+
 test {
     _ = math;
     _ = aabb;
     _ = map;
+    _ = layer;
 }

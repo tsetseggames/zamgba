@@ -5,6 +5,8 @@ const physics = @import("physics/physics.zig");
 const AABB = physics.AABB;
 const Fixed24_8 = physics.Fixed24_8;
 const CollisionMap = physics.CollisionMap;
+const CollisionMask = physics.CollisionMask;
+const Collision = physics.Collision;
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -64,6 +66,12 @@ pub const Sprite = struct {
     velocity_x: Fixed24_8 = Fixed24_8.fromInt(0),
     velocity_y: Fixed24_8 = Fixed24_8.fromInt(0),
 
+    /// 16-bit collision layer (self classification)
+    layer: CollisionMask = Collision.NONE,
+
+    /// 16-bit collision mask (layers this sprite interacts with)
+    mask: CollisionMask = Collision.ALL,
+
     /// Hardware tile index start
     tile_index: u16 = 0,
 
@@ -90,6 +98,11 @@ pub const Sprite = struct {
     pub fn initChecked(x: u32, y: u32, width: u16, height: u16) SpriteError!Sprite {
         _ = try getShapeAndSize(width, height);
         return init(x, y, width, height);
+    }
+
+    /// Check if this sprite can interact with another sprite based on 16-bit layer and mask filtering.
+    pub inline fn canCollideWith(self: *const Sprite, other: *const Sprite) bool {
+        return Collision.canInteract(self.layer, self.mask, other.layer, other.mask);
     }
 
     /// Move the sprite by its current velocity, checking and resolving collisions
@@ -319,4 +332,26 @@ test "Sprite collision via AABB" {
     try std.testing.expect(spr1.aabb.isColliding(spr2.aabb));
     try std.testing.expect(spr1.aabb.collidesWith(spr2.aabb));
     try std.testing.expect(!spr1.aabb.isColliding(spr3.aabb));
+}
+
+test "Sprite layer and mask filtering" {
+    var player = Sprite.init(0, 0, 16, 16);
+    player.layer = Collision.layer(0); // Layer 0: Player
+    player.mask = Collision.layer(1); // Mask: Only Enemy (Layer 1)
+
+    var enemy = Sprite.init(0, 0, 16, 16);
+    enemy.layer = Collision.layer(1); // Layer 1: Enemy
+    enemy.mask = Collision.layer(0); // Mask: Only Player (Layer 0)
+
+    var item = Sprite.init(0, 0, 8, 8);
+    item.layer = Collision.layer(2); // Layer 2: Item
+    item.mask = Collision.layer(3); // Mask: Layer 3
+
+    // Player and Enemy can collide
+    try std.testing.expect(player.canCollideWith(&enemy));
+    try std.testing.expect(enemy.canCollideWith(&player));
+
+    // Player and Item cannot collide (masks do not match)
+    try std.testing.expect(!player.canCollideWith(&item));
+    try std.testing.expect(!item.canCollideWith(&player));
 }
