@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
@@ -8,6 +9,13 @@ pub const Engine = struct {
     sprite_count: usize,
 
     pub fn init() Engine {
+        if (builtin.target.os.tag == .freestanding) {
+            hal.display.setMode0();
+            hal.display.setObject();
+            hal.display.setObject1D();
+            hal.display.writeRegister();
+        }
+
         var eng = Engine{
             .shadow_oam = undefined,
             .sprite_count = 0,

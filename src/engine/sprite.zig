@@ -63,8 +63,8 @@ pub const CollisionResult = struct {
 /// High-level Sprite with unified AABB bounding box and velocity physics.
 pub const Sprite = struct {
     aabb: AABB,
-    velocity_x: Fixed24_8 = Fixed24_8.fromInt(0),
-    velocity_y: Fixed24_8 = Fixed24_8.fromInt(0),
+    velocity_x: i32 = 0, // 24.8 signed fixed-point velocity
+    velocity_y: i32 = 0, // 24.8 signed fixed-point velocity
 
     /// 16-bit collision layer (self classification)
     layer: CollisionMask = Collision.NONE,
@@ -111,26 +111,30 @@ pub const Sprite = struct {
         var result = CollisionResult{};
 
         // 1. Move along X axis
-        if (self.velocity_x.raw != 0) {
-            const next_x = self.aabb.x.add(self.velocity_x);
+        if (self.velocity_x != 0) {
+            const next_raw = @as(i64, self.aabb.x.raw) + self.velocity_x;
+            const clamped_raw: u32 = if (next_raw < 0) 0 else @as(u32, @intCast(next_raw));
+            const next_x = Fixed24_8{ .raw = clamped_raw };
             const test_box_x = AABB.init(next_x, self.aabb.y, self.aabb.width, self.aabb.height);
 
-            if (collision_map.isColliding(test_box_x)) {
+            if (next_raw < 0 or collision_map.isColliding(test_box_x)) {
                 result.collided_x = true;
-                self.velocity_x = Fixed24_8.fromInt(0);
+                self.velocity_x = 0;
             } else {
                 self.aabb.x = next_x;
             }
         }
 
         // 2. Move along Y axis
-        if (self.velocity_y.raw != 0) {
-            const next_y = self.aabb.y.add(self.velocity_y);
+        if (self.velocity_y != 0) {
+            const next_raw = @as(i64, self.aabb.y.raw) + self.velocity_y;
+            const clamped_raw: u32 = if (next_raw < 0) 0 else @as(u32, @intCast(next_raw));
+            const next_y = Fixed24_8{ .raw = clamped_raw };
             const test_box_y = AABB.init(self.aabb.x, next_y, self.aabb.width, self.aabb.height);
 
-            if (collision_map.isColliding(test_box_y)) {
+            if (next_raw < 0 or collision_map.isColliding(test_box_y)) {
                 result.collided_y = true;
-                self.velocity_y = Fixed24_8.fromInt(0);
+                self.velocity_y = 0;
             } else {
                 self.aabb.y = next_y;
             }
@@ -306,7 +310,7 @@ test "Sprite moveAndCollide stops against map obstacles" {
 
     // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
     var spr = Sprite.init(8, 0, 8, 8);
-    spr.velocity_x = Fixed24_8.fromInt(8); // Move right by 8 pixels per step
+    spr.velocity_x = 8 << 8; // Move right by 8 pixels per step
 
     // Step 1: Moves from x=8 to x=16 (tile 2) -> Clear
     var res = spr.moveAndCollide(map);
@@ -321,7 +325,13 @@ test "Sprite moveAndCollide stops against map obstacles" {
     // Position should NOT have advanced into the wall
     try std.testing.expectEqual(@as(u32, 16), spr.aabb.x.toInt());
     // Velocity on X is stopped (zeroed out)
-    try std.testing.expectEqual(@as(u32, 0), spr.velocity_x.raw);
+    try std.testing.expectEqual(@as(i32, 0), spr.velocity_x);
+
+    // Step 3: Test negative velocity (moving left)
+    spr.velocity_x = -(8 << 8);
+    res = spr.moveAndCollide(map);
+    try std.testing.expect(!res.hasCollided());
+    try std.testing.expectEqual(@as(u32, 8), spr.aabb.x.toInt());
 }
 
 test "Sprite collision via AABB" {
