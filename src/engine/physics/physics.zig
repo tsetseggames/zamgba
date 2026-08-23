@@ -17,9 +17,15 @@ pub const layer = @import("layer.zig");
 pub const CollisionMask = layer.CollisionMask;
 pub const Collision = layer.Collision;
 
+pub const overlap = @import("overlap.zig");
+pub const checkOverlap = overlap.checkOverlap;
+pub const checkOverlapConst = overlap.checkOverlapConst;
+pub const checkAllOverlaps = overlap.checkAllOverlaps;
+
 test {
     _ = math;
     _ = aabb;
     _ = map;
     _ = layer;
+    _ = overlap;
 }
