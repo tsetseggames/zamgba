@@ -73,23 +73,103 @@ pub const CollisionMap = struct {
 3. Iterate over the tiles within this grid range.
 4. Call `getTileSolidState` for each. If any return `true`, a collision occurred.
 
-## 3. Sprite Integration
+## 3. Sprite and Physics Integration
 
-Sprites automatically map to AABB boxes. The physics world manages moving sprites and resolving their collisions against the map and other sprites.
+In Zamgba, visual rendering and physics are unified into a single `Sprite` structure to eliminate duplicate state, minimize EWRAM usage, and provide sub-pixel accuracy natively.
 
 ```zig
-pub const PhysicsSprite = struct {
+pub const Sprite = struct {
     aabb: AABB,
-    velocity_x: Fixed24_8,
-    velocity_y: Fixed24_8,
-    id: u16, // Hardware sprite ID index
-    
-    /// Updates position and checks against map bounds
-    pub fn update(self: *PhysicsSprite, map: CollisionMap) void { ... }
+    velocity_x: Fixed24_8 = Fixed24_8.fromInt(0),
+    velocity_y: Fixed24_8 = Fixed24_8.fromInt(0),
+
+    // 16-bit Collision Layer & Mask (4 bytes total, perfectly aligned)
+    layer: CollisionMask = Collision.NONE,
+    mask: CollisionMask = Collision.ALL,
+
+    tile_index: u16 = 0,
+    palette_bank: u8 = 0,
+    visible: bool = true,
+
+    pub fn moveAndCollide(self: *Sprite, map: CollisionMap) CollisionResult { ... }
+    pub inline fn canCollideWith(self: *const Sprite, other: *const Sprite) bool { ... }
+    pub fn toOamAttr(self: *const Sprite) hal.oam.ObjAttr { ... }
 };
 ```
 
-## 4. Development Plan
+---
+
+## 4. 16-Bit Collision Layer and Mask System (`CollisionMask`)
+
+To prevent unnecessary geometric overlap tests (e.g. bullets colliding with other bullets, or enemies triggering enemy patrol logic), Zamgba provides a 16-layer filtering mechanism using bitmasks.
+
+### 4.1 Architecture and Hardware Considerations (GBA ARM7TDMI)
+- **Zero Cycle Overhead**: On the 32-bit ARM7TDMI, bitwise AND/OR operations on `u16` take **1 clock cycle**, identical to `u8`.
+- **Optimal Memory Alignment**: Storing two `u16` fields (`layer` and `mask`) occupies exactly **4 bytes**, perfectly aligning with adjacent 16-bit and 8-bit fields without padding bytes or memory holes.
+- **Capacity**: 16 distinct layers (Indices `0` to `15`) cover the requirements of commercial-grade 2D action games.
+
+```zig
+pub const CollisionMask = u16;
+
+pub const Collision = struct {
+    pub const ALL: CollisionMask = 0xFFFF;
+    pub const NONE: CollisionMask = 0x0000;
+
+    pub inline fn layer(index: u4) CollisionMask {
+        return @as(CollisionMask, 1) << index;
+    }
+
+    pub inline fn canInteract(
+        layer_a: CollisionMask,
+        mask_a: CollisionMask,
+        layer_b: CollisionMask,
+        mask_b: CollisionMask,
+    ) bool {
+        return ((layer_a & mask_b) != 0) or ((layer_b & mask_a) != 0);
+    }
+};
+```
+
+### 4.2 Comparison with Existing Frameworks
+
+| Feature | **Godot** | **Raylib** | **Butano (GBA)** | **Zamgba** |
+| :--- | :--- | :--- | :--- | :--- |
+| **Language / Target** | C++ (PC/Mobile) | C (Cross-platform) | C++20 (GBA) | **Zig (GBA)** |
+| **Layer Filtering** | 32-bit Layer & Mask | None (Manual checks) | None (Manual checks) | **16-bit Layer & Mask (`u16`)** |
+| **Collision Query** | Signals & Dynamic BVH Tree | Pure functions (`CheckCollisionRecs`) | Manual loop (`rect.intersects`) | **Bitmask filter + `AABB.isColliding`** |
+| **Memory Cost** | High (Heap / Node hierarchy) | Zero (Pass by value) | Low (Bare structs) | **Zero Heap (Flat 28-byte `Sprite`)** |
+| **Map Physics** | Kinematic/CharacterBody2D | Custom/External | Custom/External | **Built-in `moveAndCollide(map)`** |
+
+### 4.3 Practical Usage Example
+
+Developers define application-specific layers without modifying framework code:
+
+```zig
+// 1. Define game-specific layers
+const Layers = struct {
+    pub const PLAYER:      CollisionMask = Collision.layer(0);
+    pub const ENEMY:       CollisionMask = Collision.layer(1);
+    pub const PLAYER_SHOT: CollisionMask = Collision.layer(2);
+    pub const ENEMY_SHOT:  CollisionMask = Collision.layer(3);
+    pub const ITEM:        CollisionMask = Collision.layer(4);
+};
+
+// 2. Configure Sprite instances
+player.layer = Layers.PLAYER;
+player.mask = Layers.ENEMY | Layers.ENEMY_SHOT | Layers.ITEM;
+
+bullet.layer = Layers.PLAYER_SHOT;
+bullet.mask = Layers.ENEMY; // Only hits enemies
+
+// 3. Collision filtering query in tick()
+if (bullet.canCollideWith(&enemy) and bullet.aabb.isColliding(enemy.aabb)) {
+    // Trigger hit logic
+}
+```
+
+---
+
+## 5. Development Plan & Progress
 
 ### Phase 1: Math and Base Physics (`src/engine/physics/math.zig`, `src/engine/physics/aabb.zig`)
 - Implement `Fixed24_8` data type.
