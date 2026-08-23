@@ -86,6 +86,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`sprite_engine`** (`demo/engine/sprite_engine.zig`): Showcases our high-level **Static Namespace / File** engine loop. State is declared cleanly as file-scope `var` variables, and the loop is started via `eng.run(@This())`. The engine automatically manages VBlank timing, OAM hardware uploads, and dynamic slot allocation.
 *   **`sprite_instanced`** (`demo/engine/sprite_instanced.zig`): Showcases our high-level **Pointer-to-Instance** engine loop. Encapsulates the entire game state inside a type-safe structure (`const Game = struct { ... }`) and passes an instance pointer `eng.run(&game)`. This is the recommended structure for larger, multi-sprite/multi-level modular games requiring state serialization (SRAM/Flash cartridge saving).
 *   **`joypad_instanced`** (`demo/engine/joypad_instanced.zig`): Demonstrates high-level sprite movement via D-pad input using engine-layer APIs. Changes sprite color dynamically upon hitting screen boundaries (Top: Red, Bottom: White, Left: Yellow, Right: Green).
+*   **`collision_demo`** (`demo/engine/collision_demo.zig`): Demonstrates the 2D physics engine, AABB collision detection, and `CollisionMap` streaming. Features a player square responding to D-pad inputs, two bouncing patrol enemies, and game state reset upon collision.
 
 ### Can I reference your library as a dependency?
 
@@ -116,25 +117,25 @@ Enjoy!
 ## Milestones
 
 * **Version 0.1.0**: Capable of writing a classic pong game. Supported features:
-  - Respond to gamepad input
-  - Single color/square sprites
-  - Hardcoded collision detection 
+  - [x] Respond to gamepad input
+  - [x] Single color/square sprites
+  - [x] Hardcoded collision detection 
 * **Version 0.2.0**: Capable of writing a game with rich sprites graphics. Supported features:
-  - Mode 0 support
-  - PNG-sprite-to-code conversion tool
-  - Color palettes conversion tool
+  - [x] Mode 0 support
+  - [ ] PNG-sprite-to-code conversion tool
+  - [ ] Color palettes conversion tool
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
-  - Camera
-  - True color background, via mode 3, 4, 5
+  - [ ] Camera
+  - [x] True color background, via mode 3, 4, 5
 * **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
-  - Chiptune-to-code conversion tool
-  - Support chiptune playing music
+  - [ ] Chiptune-to-code conversion tool
+  - [ ] Support chiptune playing music
 * **Version 0.5.0**: Capable of writing a game with save data. Supported features:
-  - Save state read/write API
+  - [ ] Save state read/write API
 * **Version 0.6.0**: Capable of playing Direct Audio. Supported features:
-  - Wav file to code conversion tool
-  - Direct Audio playback API
+  - [ ] Wav file to code conversion tool
+  - [ ] Direct Audio playback API
 * **Version 0.7.0**: Capable of writing a game with 2D physics. Supported features:
-  - 2D collision & detection API
+  - [x] 2D collision & detection API
 * **Version 1.0.0**: Capable of writing a 2D platformer game.
 * **Version 2.0.0**: Capable of writing a pseudo-3D game.
