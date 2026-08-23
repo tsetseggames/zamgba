@@ -1,9 +1,10 @@
+const std = @import("std");
 const hal = @import("zamgba-hal");
 const Color = @import("color.zig").Color;
 const physics = @import("physics/physics.zig");
 const AABB = physics.AABB;
 const Fixed24_8 = physics.Fixed24_8;
-const PhysicsSprite = physics.PhysicsSprite;
+const CollisionMap = physics.CollisionMap;
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -15,7 +16,7 @@ pub const ShapeSize = struct {
 };
 
 /// Validates width and height against GBA hardware OBJ dimensions and returns Shape and Size bits.
-pub fn getShapeAndSize(width: u32, height: u32) SpriteError!ShapeSize {
+pub fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
     if (width == 8 and height == 8) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 };
     if (width == 16 and height == 16) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 };
     if (width == 32 and height == 32) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_2 };
@@ -47,53 +48,82 @@ fn colorToBgr555(color: anytype) u16 {
     }
 }
 
-/// A high-level representation of a Sprite.
-/// This structure holds engine-level data (x, y, scale, texture)
-/// which is automatically translated to hardware `ObjAttr` format by the engine.
+/// Result of collision check during movement.
+pub const CollisionResult = struct {
+    collided_x: bool = false,
+    collided_y: bool = false,
+
+    pub fn hasCollided(self: CollisionResult) bool {
+        return self.collided_x or self.collided_y;
+    }
+};
+
+/// High-level Sprite with unified AABB bounding box and velocity physics.
 pub const Sprite = struct {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
+    aabb: AABB,
+    velocity_x: Fixed24_8 = Fixed24_8.fromInt(0),
+    velocity_y: Fixed24_8 = Fixed24_8.fromInt(0),
 
     /// Hardware tile index start
-    tile_index: u16,
+    tile_index: u16 = 0,
 
     /// Palette bank (0-15)
-    palette_bank: u8,
+    palette_bank: u8 = 0,
 
     visible: bool = true,
 
-    pub fn init(x: i32, y: i32, width: u32, height: u32) Sprite {
+    /// Initialize a Sprite with integer pixel coordinates and dimensions.
+    pub fn init(x: u32, y: u32, width: u16, height: u16) Sprite {
         return .{
-            .x = x,
-            .y = y,
-            .width = width,
-            .height = height,
-            .tile_index = 0,
-            .palette_bank = 0,
+            .aabb = AABB.fromInt(x, y, width, height),
+        };
+    }
+
+    /// Initialize a Sprite with Fixed24_8 sub-pixel coordinates.
+    pub fn initFixed(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16) Sprite {
+        return .{
+            .aabb = AABB.init(x, y, width, height),
         };
     }
 
     /// Initializes a sprite and verifies its width and height are valid GBA sprite dimensions.
-    pub fn initChecked(x: i32, y: i32, width: u32, height: u32) SpriteError!Sprite {
+    pub fn initChecked(x: u32, y: u32, width: u16, height: u16) SpriteError!Sprite {
         _ = try getShapeAndSize(width, height);
         return init(x, y, width, height);
     }
 
-    /// Automatically allocates and returns an AABB matching this Sprite's position and size.
-    pub fn toAABB(self: *const Sprite) AABB {
-        return AABB.init(
-            Fixed24_8.fromInt(@intCast(@max(0, self.x))),
-            Fixed24_8.fromInt(@intCast(@max(0, self.y))),
-            @intCast(self.width),
-            @intCast(self.height),
-        );
-    }
+    /// Move the sprite by its current velocity, checking and resolving collisions
+    /// independently on X and Y axes against the CollisionMap.
+    pub fn moveAndCollide(self: *Sprite, collision_map: CollisionMap) CollisionResult {
+        var result = CollisionResult{};
 
-    /// Automatically wraps this Sprite into a PhysicsSprite with an allocated AABB.
-    pub fn toPhysicsSprite(self: *const Sprite) PhysicsSprite {
-        return PhysicsSprite.fromSprite(self);
+        // 1. Move along X axis
+        if (self.velocity_x.raw != 0) {
+            const next_x = self.aabb.x.add(self.velocity_x);
+            const test_box_x = AABB.init(next_x, self.aabb.y, self.aabb.width, self.aabb.height);
+
+            if (collision_map.isColliding(test_box_x)) {
+                result.collided_x = true;
+                self.velocity_x = Fixed24_8.fromInt(0);
+            } else {
+                self.aabb.x = next_x;
+            }
+        }
+
+        // 2. Move along Y axis
+        if (self.velocity_y.raw != 0) {
+            const next_y = self.aabb.y.add(self.velocity_y);
+            const test_box_y = AABB.init(self.aabb.x, next_y, self.aabb.width, self.aabb.height);
+
+            if (collision_map.isColliding(test_box_y)) {
+                result.collided_y = true;
+                self.velocity_y = Fixed24_8.fromInt(0);
+            } else {
+                self.aabb.y = next_y;
+            }
+        }
+
+        return result;
     }
 
     /// Compiles the engine-level sprite into a hardware OAM attribute.
@@ -102,13 +132,16 @@ pub const Sprite = struct {
             return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
         }
 
-        const shape_size = getShapeAndSize(self.width, self.height) catch ShapeSize{
+        const shape_size = getShapeAndSize(self.aabb.width, self.aabb.height) catch ShapeSize{
             .shape = hal.oam.Shape.SQUARE,
             .size = hal.oam.Size.SIZE_0,
         };
 
-        const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(self.y)))) & 0x00FF;
-        const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(self.x)))) & 0x01FF;
+        const y_val: i32 = @intCast(self.aabb.y.toInt());
+        const x_val: i32 = @intCast(self.aabb.x.toInt());
+
+        const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
+        const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
 
         const attr0: u16 = y_hw | (shape_size.shape << 14);
         const attr1: u16 = x_hw | (shape_size.size << 14);
@@ -129,7 +162,7 @@ pub const Sprite = struct {
         palram_obj_base: []volatile u16,
         color: anytype,
     ) SpriteError!void {
-        _ = try getShapeAndSize(self.width, self.height);
+        _ = try getShapeAndSize(self.aabb.width, self.aabb.height);
         const bgr15 = colorToBgr555(color);
 
         const bank_offset = @as(usize, self.palette_bank & 0x0F) * 16;
@@ -138,7 +171,7 @@ pub const Sprite = struct {
         }
 
         const tile_word_offset = @as(usize, self.tile_index) * 16;
-        const total_tiles = (self.width / 8) * (self.height / 8);
+        const total_tiles = (@as(usize, self.aabb.width) / 8) * (@as(usize, self.aabb.height) / 8);
         const total_words = total_tiles * 16;
 
         if (tile_word_offset + total_words <= vram_obj_base.len) {
@@ -162,18 +195,14 @@ pub const Sprite = struct {
 };
 
 test "initChecked validates dimensions" {
-    const std = @import("std");
-
     const spr = try Sprite.initChecked(10, 20, 8, 8);
-    try std.testing.expectEqual(@as(u32, 8), spr.width);
-    try std.testing.expectEqual(@as(u32, 8), spr.height);
+    try std.testing.expectEqual(@as(u16, 8), spr.aabb.width);
+    try std.testing.expectEqual(@as(u16, 8), spr.aabb.height);
 
     try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.initChecked(10, 20, 12, 12));
 }
 
 test "getShapeAndSize valid dimensions" {
-    const std = @import("std");
-
     // Square
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 }, try getShapeAndSize(8, 8));
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 }, try getShapeAndSize(16, 16));
@@ -194,16 +223,12 @@ test "getShapeAndSize valid dimensions" {
 }
 
 test "getShapeAndSize invalid dimensions" {
-    const std = @import("std");
-
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(10, 10));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(8, 80));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(128, 128));
 }
 
 test "toOamAttr encoding" {
-    const std = @import("std");
-
     var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
     spr.tile_index = 4;
     spr.palette_bank = 2;
@@ -217,23 +242,7 @@ test "toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
 }
 
-test "Sprite toAABB and toPhysicsSprite helpers" {
-    const std = @import("std");
-
-    const spr = Sprite.init(10, 20, 16, 32);
-    const box = spr.toAABB();
-    try std.testing.expectEqual(@as(u32, 10), box.x.toInt());
-    try std.testing.expectEqual(@as(u32, 20), box.y.toInt());
-    try std.testing.expectEqual(@as(u16, 16), box.width);
-    try std.testing.expectEqual(@as(u16, 32), box.height);
-
-    const phys = spr.toPhysicsSprite();
-    try std.testing.expectEqual(@as(u32, 10), phys.aabb.x.toInt());
-}
-
 test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
-    const std = @import("std");
-
     // 1. u16 (e.g., hal.Color)
     const raw_color: u16 = hal.Color.RED;
     try std.testing.expectEqual(hal.Color.RED, colorToBgr555(raw_color));
@@ -254,8 +263,6 @@ test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
 }
 
 test "fillSolidColorToBuffers mock buffer" {
-    const std = @import("std");
-
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
     var mock_palram: [256]u16 = [_]u16{0} ** 256;
 
@@ -274,4 +281,42 @@ test "fillSolidColorToBuffers mock buffer" {
     }
     try std.testing.expectEqual(@as(u16, 0), mock_vram[31]);
     try std.testing.expectEqual(@as(u16, 0), mock_vram[64]);
+}
+
+fn mockWallAtTile3_0(tx: u16, ty: u16) bool {
+    // Tile (3, 0) is at pixel x: [24, 32)
+    return tx == 3 and ty == 0;
+}
+
+test "Sprite moveAndCollide stops against map obstacles" {
+    const map = CollisionMap.init(.size_256x256, mockWallAtTile3_0, .solid);
+
+    // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
+    var spr = Sprite.init(8, 0, 8, 8);
+    spr.velocity_x = Fixed24_8.fromInt(8); // Move right by 8 pixels per step
+
+    // Step 1: Moves from x=8 to x=16 (tile 2) -> Clear
+    var res = spr.moveAndCollide(map);
+    try std.testing.expect(!res.hasCollided());
+    try std.testing.expectEqual(@as(u32, 16), spr.aabb.x.toInt());
+
+    // Step 2: Next step would move from x=16 to x=24 (tile 3, which is solid) -> Collision!
+    res = spr.moveAndCollide(map);
+    try std.testing.expect(res.collided_x);
+    try std.testing.expect(!res.collided_y);
+    try std.testing.expect(res.hasCollided());
+    // Position should NOT have advanced into the wall
+    try std.testing.expectEqual(@as(u32, 16), spr.aabb.x.toInt());
+    // Velocity on X is stopped (zeroed out)
+    try std.testing.expectEqual(@as(u32, 0), spr.velocity_x.raw);
+}
+
+test "Sprite collision via AABB" {
+    const spr1 = Sprite.init(10, 10, 16, 16);
+    const spr2 = Sprite.init(20, 20, 16, 16);
+    const spr3 = Sprite.init(50, 50, 16, 16);
+
+    try std.testing.expect(spr1.aabb.isColliding(spr2.aabb));
+    try std.testing.expect(spr1.aabb.collidesWith(spr2.aabb));
+    try std.testing.expect(!spr1.aabb.isColliding(spr3.aabb));
 }

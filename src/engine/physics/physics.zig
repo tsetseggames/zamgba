@@ -13,13 +13,8 @@ pub const NoContextTileSolidFn = map.NoContextTileSolidFn;
 pub const TileSolidFn = map.TileSolidFn;
 pub const SimpleTileSolidFn = map.SimpleTileSolidFn;
 
-pub const sprite = @import("sprite.zig");
-pub const PhysicsSprite = sprite.PhysicsSprite;
-pub const CollisionResult = sprite.CollisionResult;
-
 test {
     _ = math;
     _ = aabb;
     _ = map;
-    _ = sprite;
 }

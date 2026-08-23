@@ -21,10 +21,12 @@ const Game = struct {
     /// we have access to 'self' to update member variables dynamically.
     pub fn tick(self: *@This(), eng: *engine.Engine) void {
         // 1. Move the sprite using the instance state
-        self.spr.x += self.dx;
-        if (self.spr.x >= 240 - 8 or self.spr.x <= 0) {
+        const cur_x: i32 = @intCast(self.spr.aabb.x.toInt());
+        const next_x = cur_x + self.dx;
+        if (next_x >= 240 - 8 or next_x <= 0) {
             self.dx = -self.dx;
         }
+        self.spr.aabb.x = engine.physics.Fixed24_8.fromInt(@intCast(@max(0, cur_x + self.dx)));
 
         // 2. Draw the sprite via the engine
         eng.drawSprite(&self.spr);

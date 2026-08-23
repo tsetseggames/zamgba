@@ -19,10 +19,12 @@ var dx: i32 = 1;
 /// This runs automatically on every frame within our engine loop.
 pub fn tick(eng: *engine.Engine) void {
     // 1. Move the high-level sprite's position
-    spr.x += dx;
-    if (spr.x >= 240 - 8 or spr.x <= 0) {
+    const cur_x: i32 = @intCast(spr.aabb.x.toInt());
+    const next_x = cur_x + dx;
+    if (next_x >= 240 - 8 or next_x <= 0) {
         dx = -dx;
     }
+    spr.aabb.x = engine.physics.Fixed24_8.fromInt(@intCast(@max(0, cur_x + dx)));
 
     // 2. Draw the sprite (stages it dynamically in the next available OAM slot)
     eng.drawSprite(&spr);
