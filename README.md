@@ -86,15 +86,11 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 
 ### Can I reference your library as a dependency?
 
-Yes. Please check example: https://github.com/fuzhouch/consumezamgba.
+Yes. Please check the example at: https://github.com/fuzhouch/consumezamgba.
 
-I recommend we use git submodule to manage zamgba as dependency. This
-should fit the scenarios when developers have to work under a proxy.
-By the time this doc is written (2024-01), ``zig build`` does not work
-well with a proxy when downloading a remote package.
+You can manage Zamgba as a dependency via git submodule or standard package workflows.
 
-The example project shows three steps to enable your project building
-a GBA rom:
+The example project shows three steps to enable your project building a GBA ROM:
 
 1. ``build.zig`` calls ``@import("zamgba").arm.addROM()`` to define
    a target. The API defines proper target to build code targeting
