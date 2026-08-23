@@ -2,13 +2,6 @@
 // It defines build target for ARM7.
 const std = @import("std");
 
-fn libRoot() []const u8 {
-    return std.fs.path.dirname(@src().file) orelse ".";
-}
-
-const GBALibFile = libRoot() ++ "/../hal/hal.zig";
-const GBALinkerScript = libRoot() ++ "/../hal/gba.ld";
-
 fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
     var query = std.Target.Query{
         .cpu_arch = std.Target.Cpu.Arch.thumb,
@@ -24,7 +17,17 @@ pub const GBARomOptions = struct {
     optimize: std.builtin.OptimizeMode,
     name: []const u8,
     root_source_file: std.Build.LazyPath,
+    linker_script: ?std.Build.LazyPath = null,
 };
+
+fn defaultLinkerScript(b: *std.Build) std.Build.LazyPath {
+    for (b.available_deps) |dep| {
+        if (std.mem.eql(u8, dep[0], "zamgba")) {
+            return b.dependency("zamgba", .{}).path("src/hal/gba.ld");
+        }
+    }
+    return b.path("src/hal/gba.ld");
+}
 
 pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     const gba_thumb_target = buildGBAThumbTarget(b);
@@ -36,10 +39,8 @@ pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
             .target = gba_thumb_target,
         }),
     });
-    rom.setLinkerScript(std.Build.LazyPath{ .src_path = .{
-        .owner = b,
-        .sub_path = GBALinkerScript,
-    } });
+    const linker_script = options.linker_script orelse defaultLinkerScript(b);
+    rom.setLinkerScript(linker_script);
 
     // Keep the original ELF for linker debugging
     b.installArtifact(rom);
@@ -63,13 +64,13 @@ pub fn addStaticLibrary(b: *std.Build, options: GBARomOptions) *std.Build.Step.C
     const gba_thumb_target = buildGBAThumbTarget(b);
     const lib = b.addStaticLibrary(.{
         .name = options.name,
-        .root_source_file = .{ .src_path = .{
-            .owner = b,
-            .sub_path = options.root_source_file,
-        } },
-        .target = gba_thumb_target,
-        .optimize = options.optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = options.root_source_file,
+            .optimize = options.optimize,
+            .target = gba_thumb_target,
+        }),
     });
-    lib.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
+    const linker_script = options.linker_script orelse defaultLinkerScript(b);
+    lib.setLinkerScript(linker_script);
     return lib;
 }
