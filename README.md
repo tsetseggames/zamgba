@@ -133,5 +133,9 @@ Enjoy!
   - [ ] Fixed-point Sin/Cos lookup table (LUT)
   - [ ] 32-slot OAM affine matrix allocator
   - [ ] Sprite rotation and scaling API
-* **Version 1.0.0**: Capable of writing a 2D platformer game.
-* **Version 2.0.0**: Capable of writing a pseudo-3D game.
+## License and Copyright
+
+This repository contains both open-source code for the `zamgba` SDK/engine and proprietary art assets used for testing and demonstration purposes.
+
+* **Source Code**: The library and engine source code is open-source. *(Feel free to add a specific `LICENSE` file like MIT or Zlib to the repository if you haven't already).*
+* **Art Assets (`assets/`)**: All art assets, including the Sprite files inside the `assets/` directory (e.g., `tsetseg-ride-on-broom-*`), are from the author's original game *"Tsetseg's Adventure"*. The copyrights for these assets belong entirely to the author. **All Rights Reserved.** You may use them locally to compile and run the demo ROMs provided in this repository, but you may not redistribute, modify, or use these visual assets in your own projects, open-source or commercial, without explicit permission.
