@@ -142,4 +142,27 @@ pub fn build(b: *std.Build) void {
     });
     const run_engine_unit_tests = b.addRunArtifact(engine_unit_tests);
     test_step.dependOn(&run_engine_unit_tests.step);
+
+    // ====================================================================
+    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
+    // ====================================================================
+    const zurag_exe = b.addExecutable(.{
+        .name = "zurag",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(zurag_exe);
+
+    const zurag_unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_zurag_unit_tests = b.addRunArtifact(zurag_unit_tests);
+    test_step.dependOn(&run_zurag_unit_tests.step);
 }
