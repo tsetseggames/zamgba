@@ -156,6 +156,10 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(zurag_exe);
 
+    const test_palettes_mod = b.createModule(.{
+        .root_source_file = b.path("assets/palettes/test_assets.zig"),
+    });
+
     const zurag_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/zurag/main.zig"),
@@ -163,6 +167,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    zurag_unit_tests.root_module.addImport("test_palettes", test_palettes_mod);
     const run_zurag_unit_tests = b.addRunArtifact(zurag_unit_tests);
     test_step.dependOn(&run_zurag_unit_tests.step);
 }
