@@ -1,15 +1,33 @@
 const std = @import("std");
 pub const png = @import("png.zig");
 
+pub const BppMode = enum {
+    bpp4,
+    bpp4x16,
+    bpp8,
+    auto,
+
+    pub fn fromString(str: []const u8) ?BppMode {
+        if (std.mem.eql(u8, str, "4")) return .bpp4;
+        if (std.mem.eql(u8, str, "4x16")) return .bpp4x16;
+        if (std.mem.eql(u8, str, "8")) return .bpp8;
+        if (std.mem.eql(u8, str, "auto")) return .auto;
+        return null;
+    }
+};
+
 pub const CliArgs = struct {
     png_path: ?[]const u8 = null,
     json_path: ?[]const u8 = null,
     output_path: ?[]const u8 = null,
+    bpp: BppMode = .auto,
+    palette_only: bool = false,
     show_help: bool = false,
 
     pub const ParseError = error{
         MissingValue,
         UnknownFlag,
+        InvalidBppMode,
         MissingRequiredArguments,
     };
 
@@ -23,6 +41,8 @@ pub const CliArgs = struct {
             if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
                 result.show_help = true;
                 return result;
+            } else if (std.mem.eql(u8, arg, "-P") or std.mem.eql(u8, arg, "--palette-only")) {
+                result.palette_only = true;
             } else if (std.mem.eql(u8, arg, "-p") or std.mem.eql(u8, arg, "--png")) {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
@@ -35,12 +55,21 @@ pub const CliArgs = struct {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
                 result.output_path = args[i];
+            } else if (std.mem.eql(u8, arg, "--bpp")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                const mode = BppMode.fromString(args[i]) orelse return error.InvalidBppMode;
+                result.bpp = mode;
             } else {
                 return error.UnknownFlag;
             }
         }
 
-        if (result.png_path == null or result.json_path == null) {
+        if (result.png_path == null) {
+            return error.MissingRequiredArguments;
+        }
+
+        if (!result.palette_only and result.json_path == null) {
             return error.MissingRequiredArguments;
         }
 
@@ -49,19 +78,21 @@ pub const CliArgs = struct {
 };
 
 pub fn printUsage(io: std.Io, program_name: []const u8) void {
-    var buf: [1024]u8 = undefined;
+    var buf: [2048]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf,
         \\zurag - GBA Sprite & Asset converter for Zamgba
         \\
         \\Usage:
-        \\  {s} --png <input.png> --json <input.json> [--output <output.zig>]
+        \\  {s} --png <input.png> [--json <input.json>] [--output <output.zig>] [options]
         \\  {s} -h | --help
         \\
         \\Options:
-        \\  -p, --png <path>      Path to the input Indexed-color PNG sprite sheet (exported from Aseprite)
-        \\  -j, --json <path>     Path to the input Aseprite JSON frame metadata
-        \\  -o, --output <path>   Optional path to output generated Zig file (default: stdout)
-        \\  -h, --help            Display this help message and exit
+        \\  -p, --png <path>        Path to input Indexed-color PNG sprite sheet (Required)
+        \\  -j, --json <path>       Path to input Aseprite JSON frame metadata (Required unless --palette-only)
+        \\  -o, --output <path>     Optional path to output generated Zig file (default: stdout)
+        \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
+        \\  -P, --palette-only      Extract palette data only (skips tiles, --json not required)
+        \\  -h, --help              Display this help message and exit
         \\
         \\Note:
         \\  Options can be specified in any order.
@@ -93,8 +124,11 @@ pub fn main(init: std.process.Init) !void {
             error.MissingValue => {
                 std.debug.print("Error: option requires a value.\n\n", .{});
             },
+            error.InvalidBppMode => {
+                std.debug.print("Error: invalid --bpp mode. Expected '4', '4x16', '8', or 'auto'.\n\n", .{});
+            },
             error.MissingRequiredArguments => {
-                std.debug.print("Error: missing required options (--png and --json must be specified).\n\n", .{});
+                std.debug.print("Error: missing required options (--png is always required, --json is required unless --palette-only is set).\n\n", .{});
             },
         }
         printUsage(init.io, program_name);
@@ -107,7 +141,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     const input_png_path = parsed_args.png_path.?;
-    const input_json_path = parsed_args.json_path.?;
+    const input_json_path = parsed_args.json_path;
     const output_zig_path = parsed_args.output_path;
 
     _ = input_json_path;
@@ -134,32 +168,74 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    std.debug.print("Validated indexed PNG: {s} ({}x{}, {}-bit indexed)\n", .{ input_png_path, header.width, header.height, header.bit_depth });
+    std.debug.print("Validated indexed PNG: {s} ({}x{}, {}-bit indexed, bpp: {s}, palette_only: {})\n", .{
+        input_png_path,
+        header.width,
+        header.height,
+        header.bit_depth,
+        @tagName(parsed_args.bpp),
+        parsed_args.palette_only,
+    });
 }
 
-test "CliArgs parse in standard order" {
-    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--output", "out.zig" };
+test "CliArgs parse in standard order with all options" {
+    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--output", "out.zig", "--bpp", "4" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
     try std.testing.expectEqualStrings("test.json", parsed.json_path.?);
     try std.testing.expectEqualStrings("out.zig", parsed.output_path.?);
+    try std.testing.expectEqual(BppMode.bpp4, parsed.bpp);
+    try std.testing.expect(!parsed.palette_only);
     try std.testing.expect(!parsed.show_help);
 }
 
-test "CliArgs parse without optional --output" {
+test "CliArgs default values" {
     const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
     try std.testing.expectEqualStrings("test.json", parsed.json_path.?);
     try std.testing.expect(parsed.output_path == null);
+    try std.testing.expectEqual(BppMode.auto, parsed.bpp);
+    try std.testing.expect(!parsed.palette_only);
+    try std.testing.expect(!parsed.show_help);
 }
 
-test "CliArgs parse in reordered order with short flags" {
-    const raw_args = [_][]const u8{ "-o", "gen.zig", "-j", "data.json", "-p", "sprite.png" };
+test "CliArgs parse --bpp modes" {
+    const modes = [_]struct { str: []const u8, expected: BppMode }{
+        .{ .str = "4", .expected = .bpp4 },
+        .{ .str = "4x16", .expected = .bpp4x16 },
+        .{ .str = "8", .expected = .bpp8 },
+        .{ .str = "auto", .expected = .auto },
+    };
+
+    for (modes) |m| {
+        const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--bpp", m.str };
+        const parsed = try CliArgs.parse(&raw_args);
+        try std.testing.expectEqual(m.expected, parsed.bpp);
+    }
+}
+
+test "CliArgs reject invalid --bpp value" {
+    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--bpp", "16" };
+    try std.testing.expectError(error.InvalidBppMode, CliArgs.parse(&raw_args));
+}
+
+test "CliArgs parse --palette-only without --json" {
+    const raw_args = [_][]const u8{ "--png", "palette.png", "--palette-only", "--bpp", "4x16", "-o", "pal.zig" };
     const parsed = try CliArgs.parse(&raw_args);
-    try std.testing.expectEqualStrings("sprite.png", parsed.png_path.?);
-    try std.testing.expectEqualStrings("data.json", parsed.json_path.?);
-    try std.testing.expectEqualStrings("gen.zig", parsed.output_path.?);
+    try std.testing.expectEqualStrings("palette.png", parsed.png_path.?);
+    try std.testing.expect(parsed.json_path == null);
+    try std.testing.expectEqualStrings("pal.zig", parsed.output_path.?);
+    try std.testing.expectEqual(BppMode.bpp4x16, parsed.bpp);
+    try std.testing.expect(parsed.palette_only);
+}
+
+test "CliArgs parse reordered with short flags" {
+    const raw_args = [_][]const u8{ "-P", "-o", "pal.zig", "-p", "sheet.png" };
+    const parsed = try CliArgs.parse(&raw_args);
+    try std.testing.expectEqualStrings("sheet.png", parsed.png_path.?);
+    try std.testing.expect(parsed.palette_only);
+    try std.testing.expectEqualStrings("pal.zig", parsed.output_path.?);
 }
 
 test "CliArgs parse help flag" {
@@ -172,14 +248,21 @@ test "CliArgs parse help flag" {
     try std.testing.expect(parsed_short.show_help);
 }
 
-test "CliArgs parse missing value and missing args" {
-    const missing_val = [_][]const u8{ "--png", "test.png", "--json" };
+test "CliArgs parse error conditions" {
+    // Missing required png
+    const no_png = [_][]const u8{ "--json", "test.json" };
+    try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&no_png));
+
+    // Missing required json when not palette-only
+    const no_json = [_][]const u8{ "--png", "test.png" };
+    try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&no_json));
+
+    // Missing value
+    const missing_val = [_][]const u8{ "--png", "test.png", "--bpp" };
     try std.testing.expectError(error.MissingValue, CliArgs.parse(&missing_val));
 
-    const incomplete = [_][]const u8{ "--png", "test.png" };
-    try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&incomplete));
-
-    const unknown = [_][]const u8{ "--invalid", "foo" };
+    // Unknown flag
+    const unknown = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--unknown" };
     try std.testing.expectError(error.UnknownFlag, CliArgs.parse(&unknown));
 }
 
