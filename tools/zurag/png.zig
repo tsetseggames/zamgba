@@ -10,8 +10,15 @@ pub const CHUNK_TYPE_SIZE: usize = 4;
 pub const CHUNK_CRC_SIZE: usize = 4;
 
 pub const IHDR_CHUNK_TYPE: *const [4]u8 = "IHDR";
+pub const PLTE_CHUNK_TYPE: *const [4]u8 = "PLTE";
+pub const IEND_CHUNK_TYPE: *const [4]u8 = "IEND";
+
 pub const IHDR_DATA_LEN: u32 = 13;
 pub const MIN_PNG_HEADER_LEN: usize = PNG_SIGNATURE_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + IHDR_DATA_LEN + CHUNK_CRC_SIZE;
+
+pub const BYTES_PER_PALETTE_COLOR: usize = 3;
+pub const MAX_PALETTE_COLORS: usize = 256;
+pub const MAX_PLTE_DATA_LEN: usize = MAX_PALETTE_COLORS * BYTES_PER_PALETTE_COLOR;
 
 // Byte offsets for parsing the PNG header and IHDR chunk
 const IHDR_LEN_START: usize = PNG_SIGNATURE_LEN;
@@ -52,12 +59,15 @@ pub const PngHeader = struct {
     interlace_method: u8,
 };
 
-pub const PngError = error{
+pub const PngHeaderError = error{
     InvalidPngSignature,
     TruncatedHeader,
     InvalidIhdrChunk,
     NotIndexedColor,
     UnsupportedBitDepth,
+};
+
+pub const PngError = PngHeaderError || error{
     MissingPaletteChunk,
     InvalidPaletteChunk,
     ColorCountExceedsLimit,
@@ -81,13 +91,42 @@ pub fn rgbToGba(r: u8, g: u8, b: u8) u16 {
 
 /// Extracts and converts the palette from an indexed PNG according to the requested BppMode.
 pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
-    const header = try parseHeader(bytes);
-    _ = header;
+    _ = try parseHeader(bytes);
     _ = mode;
-    return error.Unimplemented;
+
+    var offset: usize = MIN_PNG_HEADER_LEN;
+
+    while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= bytes.len) {
+        const chunk_len = std.mem.readInt(u32, bytes[offset..][0..CHUNK_LEN_SIZE], .big);
+        const chunk_type = bytes[offset + CHUNK_LEN_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE];
+
+        const total_chunk_len = CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len + CHUNK_CRC_SIZE;
+        if (offset + total_chunk_len > bytes.len) {
+            return error.TruncatedHeader;
+        }
+
+        if (std.mem.eql(u8, chunk_type, PLTE_CHUNK_TYPE)) {
+            if (chunk_len > MAX_PLTE_DATA_LEN) {
+                return error.ColorCountExceedsLimit;
+            }
+            if (chunk_len % BYTES_PER_PALETTE_COLOR != 0) {
+                return error.InvalidPaletteChunk;
+            }
+            // For TDD 02, we successfully verified PLTE chunk size limits!
+            return error.Unimplemented;
+        }
+
+        if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
+            break;
+        }
+
+        offset += total_chunk_len;
+    }
+
+    return error.MissingPaletteChunk;
 }
 
-pub fn parseHeader(bytes: []const u8) PngError!PngHeader {
+pub fn parseHeader(bytes: []const u8) PngHeaderError!PngHeader {
     if (bytes.len < MIN_PNG_HEADER_LEN) {
         return error.TruncatedHeader;
     }
