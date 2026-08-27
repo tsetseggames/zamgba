@@ -2,7 +2,36 @@ const std = @import("std");
 
 pub const BppMode = @import("main.zig").BppMode;
 
-pub const PNG_SIGNATURE = [8]u8{ 137, 80, 78, 71, 13, 10, 26, 10 };
+pub const PNG_SIGNATURE_LEN: usize = 8;
+pub const PNG_SIGNATURE: [PNG_SIGNATURE_LEN]u8 = .{ 137, 80, 78, 71, 13, 10, 26, 10 };
+
+pub const CHUNK_LEN_SIZE: usize = 4;
+pub const CHUNK_TYPE_SIZE: usize = 4;
+pub const CHUNK_CRC_SIZE: usize = 4;
+
+pub const IHDR_CHUNK_TYPE: *const [4]u8 = "IHDR";
+pub const IHDR_DATA_LEN: u32 = 13;
+pub const MIN_PNG_HEADER_LEN: usize = PNG_SIGNATURE_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + IHDR_DATA_LEN + CHUNK_CRC_SIZE;
+
+// Byte offsets for parsing the PNG header and IHDR chunk
+const IHDR_LEN_START: usize = PNG_SIGNATURE_LEN;
+const IHDR_LEN_END: usize = IHDR_LEN_START + CHUNK_LEN_SIZE;
+
+const IHDR_TYPE_START: usize = IHDR_LEN_END;
+const IHDR_TYPE_END: usize = IHDR_TYPE_START + CHUNK_TYPE_SIZE;
+
+const IHDR_DATA_START: usize = IHDR_TYPE_END;
+const IHDR_WIDTH_START: usize = IHDR_DATA_START + 0;
+const IHDR_WIDTH_END: usize = IHDR_WIDTH_START + 4;
+
+const IHDR_HEIGHT_START: usize = IHDR_WIDTH_END;
+const IHDR_HEIGHT_END: usize = IHDR_HEIGHT_START + 4;
+
+const IHDR_BIT_DEPTH_POS: usize = IHDR_HEIGHT_END;
+const IHDR_COLOR_TYPE_POS: usize = IHDR_BIT_DEPTH_POS + 1;
+const IHDR_COMPRESSION_POS: usize = IHDR_COLOR_TYPE_POS + 1;
+const IHDR_FILTER_POS: usize = IHDR_COMPRESSION_POS + 1;
+const IHDR_INTERLACE_POS: usize = IHDR_FILTER_POS + 1;
 
 pub const ColorType = enum(u8) {
     grayscale = 0,
@@ -52,37 +81,37 @@ pub fn rgbToGba(r: u8, g: u8, b: u8) u16 {
 
 /// Extracts and converts the palette from an indexed PNG according to the requested BppMode.
 pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
-    _ = bytes;
+    const header = try parseHeader(bytes);
+    _ = header;
     _ = mode;
-    // Stub for TDD (intentionally returns Unimplemented)
     return error.Unimplemented;
 }
 
 pub fn parseHeader(bytes: []const u8) PngError!PngHeader {
-    if (bytes.len < 33) {
+    if (bytes.len < MIN_PNG_HEADER_LEN) {
         return error.TruncatedHeader;
     }
 
-    if (!std.mem.eql(u8, bytes[0..8], &PNG_SIGNATURE)) {
+    if (!std.mem.eql(u8, bytes[0..PNG_SIGNATURE_LEN], &PNG_SIGNATURE)) {
         return error.InvalidPngSignature;
     }
 
-    const ihdr_len = std.mem.readInt(u32, bytes[8..12], .big);
-    if (ihdr_len != 13) {
+    const ihdr_len = std.mem.readInt(u32, bytes[IHDR_LEN_START..IHDR_LEN_END], .big);
+    if (ihdr_len != IHDR_DATA_LEN) {
         return error.InvalidIhdrChunk;
     }
 
-    if (!std.mem.eql(u8, bytes[12..16], "IHDR")) {
+    if (!std.mem.eql(u8, bytes[IHDR_TYPE_START..IHDR_TYPE_END], IHDR_CHUNK_TYPE)) {
         return error.InvalidIhdrChunk;
     }
 
-    const width = std.mem.readInt(u32, bytes[16..20], .big);
-    const height = std.mem.readInt(u32, bytes[20..24], .big);
-    const bit_depth = bytes[24];
-    const raw_color_type = bytes[25];
-    const compression_method = bytes[26];
-    const filter_method = bytes[27];
-    const interlace_method = bytes[28];
+    const width = std.mem.readInt(u32, bytes[IHDR_WIDTH_START..IHDR_WIDTH_END], .big);
+    const height = std.mem.readInt(u32, bytes[IHDR_HEIGHT_START..IHDR_HEIGHT_END], .big);
+    const bit_depth = bytes[IHDR_BIT_DEPTH_POS];
+    const raw_color_type = bytes[IHDR_COLOR_TYPE_POS];
+    const compression_method = bytes[IHDR_COMPRESSION_POS];
+    const filter_method = bytes[IHDR_FILTER_POS];
+    const interlace_method = bytes[IHDR_INTERLACE_POS];
 
     const color_type: ColorType = @enumFromInt(raw_color_type);
 
@@ -132,12 +161,12 @@ test "TDD 01: reject RGB PNG file" {
 // Test 2: Corrupted PLTE with > 256 colors
 test "TDD 02: reject palette chunk declaring > 256 colors" {
     // Construct fake header + oversized PLTE chunk (257 colors = 771 bytes)
-    var fake_png: [33 + 8 + 771 + 4]u8 = undefined;
-    @memcpy(fake_png[0..33], png_pal256[0..33]);
-    std.mem.writeInt(u32, fake_png[33..37], 771, .big);
-    @memcpy(fake_png[37..41], "PLTE");
-    @memset(fake_png[41 .. 41 + 771], 0);
-    std.mem.writeInt(u32, fake_png[41 + 771 ..][0..4], 0, .big);
+    var fake_png: [MIN_PNG_HEADER_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + 771 + CHUNK_CRC_SIZE]u8 = undefined;
+    @memcpy(fake_png[0..MIN_PNG_HEADER_LEN], png_pal256[0..MIN_PNG_HEADER_LEN]);
+    std.mem.writeInt(u32, fake_png[MIN_PNG_HEADER_LEN .. MIN_PNG_HEADER_LEN + 4], 771, .big);
+    @memcpy(fake_png[MIN_PNG_HEADER_LEN + 4 .. MIN_PNG_HEADER_LEN + 8], "PLTE");
+    @memset(fake_png[MIN_PNG_HEADER_LEN + 8 .. MIN_PNG_HEADER_LEN + 8 + 771], 0);
+    std.mem.writeInt(u32, fake_png[MIN_PNG_HEADER_LEN + 8 + 771 ..][0..4], 0, .big);
 
     try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(&fake_png, .auto));
 }
@@ -156,12 +185,12 @@ test "TDD 03: reject missing or malformed PLTE chunk" {
     try std.testing.expectError(error.MissingPaletteChunk, extractPalette(&no_plte_png, .auto));
 
     // Malformed PLTE length (10 bytes, not a multiple of 3)
-    var malformed_len_png: [33 + 8 + 10 + 4]u8 = undefined;
-    @memcpy(malformed_len_png[0..33], png_pal256[0..33]);
-    std.mem.writeInt(u32, malformed_len_png[33..37], 10, .big);
-    @memcpy(malformed_len_png[37..41], "PLTE");
-    @memset(malformed_len_png[41 .. 41 + 10], 0);
-    std.mem.writeInt(u32, malformed_len_png[41 + 10 ..][0..4], 0, .big);
+    var malformed_len_png: [MIN_PNG_HEADER_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + 10 + CHUNK_CRC_SIZE]u8 = undefined;
+    @memcpy(malformed_len_png[0..MIN_PNG_HEADER_LEN], png_pal256[0..MIN_PNG_HEADER_LEN]);
+    std.mem.writeInt(u32, malformed_len_png[MIN_PNG_HEADER_LEN .. MIN_PNG_HEADER_LEN + 4], 10, .big);
+    @memcpy(malformed_len_png[MIN_PNG_HEADER_LEN + 4 .. MIN_PNG_HEADER_LEN + 8], "PLTE");
+    @memset(malformed_len_png[MIN_PNG_HEADER_LEN + 8 .. MIN_PNG_HEADER_LEN + 8 + 10], 0);
+    std.mem.writeInt(u32, malformed_len_png[MIN_PNG_HEADER_LEN + 8 + 10 ..][0..4], 0, .big);
 
     try std.testing.expectError(error.InvalidPaletteChunk, extractPalette(&malformed_len_png, .auto));
 }
