@@ -22,6 +22,7 @@ pub const CliArgs = struct {
     output_path: ?[]const u8 = null,
     bpp: BppMode = .auto,
     palette_only: bool = false,
+    color_adjust: bool = false,
     show_help: bool = false,
 
     pub const ParseError = error{
@@ -41,6 +42,8 @@ pub const CliArgs = struct {
             if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
                 result.show_help = true;
                 return result;
+            } else if (std.mem.eql(u8, arg, "-c") or std.mem.eql(u8, arg, "--color-adjust")) {
+                result.color_adjust = true;
             } else if (std.mem.eql(u8, arg, "-P") or std.mem.eql(u8, arg, "--palette-only")) {
                 result.palette_only = true;
             } else if (std.mem.eql(u8, arg, "-p") or std.mem.eql(u8, arg, "--png")) {
@@ -91,6 +94,7 @@ pub fn printUsage(io: std.Io, program_name: []const u8) void {
         \\  -j, --json <path>       Path to input Aseprite JSON frame metadata (Required unless --palette-only)
         \\  -o, --output <path>     Optional path to output generated Zig file (default: stdout)
         \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
+        \\  -c, --color-adjust      Enable full-range rounded RGB to GBA BGR555 scaling
         \\  -P, --palette-only      Extract palette data only (skips tiles, --json not required)
         \\  -h, --help              Display this help message and exit
         \\
@@ -187,6 +191,20 @@ test "CliArgs parse in standard order with all options" {
     try std.testing.expectEqual(BppMode.bpp4, parsed.bpp);
     try std.testing.expect(!parsed.palette_only);
     try std.testing.expect(!parsed.show_help);
+}
+
+test "CliArgs parse --color-adjust flag" {
+    const raw_args_long = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--color-adjust" };
+    const parsed_long = try CliArgs.parse(&raw_args_long);
+    try std.testing.expect(parsed_long.color_adjust);
+
+    const raw_args_short = [_][]const u8{ "-p", "test.png", "-j", "test.json", "-c" };
+    const parsed_short = try CliArgs.parse(&raw_args_short);
+    try std.testing.expect(parsed_short.color_adjust);
+
+    const raw_args_default = [_][]const u8{ "--png", "test.png", "--json", "test.json" };
+    const parsed_default = try CliArgs.parse(&raw_args_default);
+    try std.testing.expect(!parsed_default.color_adjust);
 }
 
 test "CliArgs default values" {

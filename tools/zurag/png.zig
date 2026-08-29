@@ -86,16 +86,30 @@ pub const PaletteResult = union(enum) {
     bpp8: [256]u16,
 };
 
+pub const ExtractPaletteOptions = struct {
+    mode: BppMode = .auto,
+    color_adjust: bool = false,
+};
+
 /// Converts 24-bit RGB (8 bits per channel) to GBA 15-bit BGR555 color.
-pub fn rgbToGba(r: u8, g: u8, b: u8) u16 {
-    const r5: u16 = r >> 3;
-    const g5: u16 = g >> 3;
-    const b5: u16 = b >> 3;
-    return r5 | (g5 << 5) | (b5 << 10);
+/// If color_adjust is true, uses full-range rounded scaling: ((c * 31 + 127) / 255).
+/// If color_adjust is false, uses standard fast 3-bit truncation: (c >> 3).
+pub fn rgbToGba(r: u8, g: u8, b: u8, color_adjust: bool) u16 {
+    if (color_adjust) {
+        const r5: u16 = @intCast((@as(u32, r) * 31 + 127) / 255);
+        const g5: u16 = @intCast((@as(u32, g) * 31 + 127) / 255);
+        const b5: u16 = @intCast((@as(u32, b) * 31 + 127) / 255);
+        return r5 | (g5 << 5) | (b5 << 10);
+    } else {
+        const r5: u16 = r >> 3;
+        const g5: u16 = g >> 3;
+        const b5: u16 = b >> 3;
+        return r5 | (g5 << 5) | (b5 << 10);
+    }
 }
 
-/// Extracts and converts the palette from an indexed PNG according to the requested BppMode.
-pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
+/// Extracts and converts the palette from an indexed PNG according to the requested BppMode and options.
+pub fn extractPalette(bytes: []const u8, options: ExtractPaletteOptions) PngError!PaletteResult {
     _ = try parseHeader(bytes);
 
     var offset: usize = MIN_PNG_HEADER_LEN;
@@ -125,12 +139,12 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
                 const r = plte_data[i * BYTES_PER_PALETTE_COLOR + 0];
                 const g = plte_data[i * BYTES_PER_PALETTE_COLOR + 1];
                 const b = plte_data[i * BYTES_PER_PALETTE_COLOR + 2];
-                raw_colors[i] = rgbToGba(r, g, b);
+                raw_colors[i] = rgbToGba(r, g, b, options.color_adjust);
             }
 
-            const effective_mode: BppMode = switch (mode) {
+            const effective_mode: BppMode = switch (options.mode) {
                 .auto => if (color_count <= COLORS_PER_BANK) .bpp4 else .bpp8,
-                else => mode,
+                else => options.mode,
             };
 
             switch (effective_mode) {
@@ -236,7 +250,7 @@ const png_pal8 = @import("test_palettes").png_pal8;
 
 // Test 1: RGB/RGBA PNG mode -> errors out with NotIndexedColor
 test "TDD 01: reject RGB PNG file" {
-    try std.testing.expectError(error.NotIndexedColor, extractPalette(png_rgb, .auto));
+    try std.testing.expectError(error.NotIndexedColor, extractPalette(png_rgb, .{}));
 }
 
 // Test 2: Corrupted PLTE with > 256 colors
@@ -249,7 +263,7 @@ test "TDD 02: reject palette chunk declaring > 256 colors" {
     @memset(fake_png[MIN_PNG_HEADER_LEN + 8 .. MIN_PNG_HEADER_LEN + 8 + 771], 0);
     std.mem.writeInt(u32, fake_png[MIN_PNG_HEADER_LEN + 8 + 771 ..][0..4], 0, .big);
 
-    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(&fake_png, .auto));
+    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(&fake_png, .{}));
 }
 
 // Test 3: Missing PLTE or non-multiple-of-3 length
@@ -263,7 +277,7 @@ test "TDD 03: reject missing or malformed PLTE chunk" {
         0xd6, 0x00, 0x00, 0x00, 0x00, 'I',  'E',  'N',
         'D',  0xae, 0x42, 0x60, 0x82,
     };
-    try std.testing.expectError(error.MissingPaletteChunk, extractPalette(&no_plte_png, .auto));
+    try std.testing.expectError(error.MissingPaletteChunk, extractPalette(&no_plte_png, .{}));
 
     // Malformed PLTE length (10 bytes, not a multiple of 3)
     var malformed_len_png: [MIN_PNG_HEADER_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + 10 + CHUNK_CRC_SIZE]u8 = undefined;
@@ -273,12 +287,12 @@ test "TDD 03: reject missing or malformed PLTE chunk" {
     @memset(malformed_len_png[MIN_PNG_HEADER_LEN + 8 .. MIN_PNG_HEADER_LEN + 8 + 10], 0);
     std.mem.writeInt(u32, malformed_len_png[MIN_PNG_HEADER_LEN + 8 + 10 ..][0..4], 0, .big);
 
-    try std.testing.expectError(error.InvalidPaletteChunk, extractPalette(&malformed_len_png, .auto));
+    try std.testing.expectError(error.InvalidPaletteChunk, extractPalette(&malformed_len_png, .{}));
 }
 
 // Test 4: 256 colors, --bpp 8 -> returns 256 colors
 test "TDD 04: 256-color PNG with --bpp 8 returns full 256 palette" {
-    const res = try extractPalette(png_pal256, .bpp8);
+    const res = try extractPalette(png_pal256, .{ .mode = .bpp8 });
     switch (res) {
         .bpp8 => |pal| {
             try std.testing.expectEqual(@as(usize, 256), pal.len);
@@ -289,7 +303,7 @@ test "TDD 04: 256-color PNG with --bpp 8 returns full 256 palette" {
 
 // Test 5: 256 colors, --bpp 4x16 -> returns 16 banks of 16 colors
 test "TDD 05: 256-color PNG with --bpp 4x16 returns 16 banks" {
-    const res = try extractPalette(png_pal256, .bpp4x16);
+    const res = try extractPalette(png_pal256, .{ .mode = .bpp4x16 });
     switch (res) {
         .bpp4x16 => |banks| {
             try std.testing.expectEqual(@as(usize, 16), banks.len);
@@ -301,12 +315,12 @@ test "TDD 05: 256-color PNG with --bpp 4x16 returns 16 banks" {
 
 // Test 6: 256 colors, --bpp 4 -> errors out (exceeds 16 colors)
 test "TDD 06: 256-color PNG with --bpp 4 errors out" {
-    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(png_pal256, .bpp4));
+    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(png_pal256, .{ .mode = .bpp4 }));
 }
 
 // Test 7: 32 colors, --bpp 8 -> returns 256 colors with 0x0000 padding
 test "TDD 07: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
-    const res = try extractPalette(png_pal32, .bpp8);
+    const res = try extractPalette(png_pal32, .{ .mode = .bpp8 });
     switch (res) {
         .bpp8 => |pal| {
             // Colors after index 31 must be padded with GBA_COLOR_BLACK
@@ -320,7 +334,7 @@ test "TDD 07: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
 
 // Test 8: 32 colors, --bpp 4x16 -> returns 16 banks with banks 2..15 padded with 0x0000
 test "TDD 08: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing banks" {
-    const res = try extractPalette(png_pal32, .bpp4x16);
+    const res = try extractPalette(png_pal32, .{ .mode = .bpp4x16 });
     switch (res) {
         .bpp4x16 => |banks| {
             for (banks[2..]) |bank| {
@@ -335,12 +349,12 @@ test "TDD 08: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing
 
 // Test 9: 32 colors, --bpp 4 -> errors out (exceeds 16 colors)
 test "TDD 09: 32-color PNG with --bpp 4 errors out" {
-    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(png_pal32, .bpp4));
+    try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(png_pal32, .{ .mode = .bpp4 }));
 }
 
 // Test 10: 32 colors, --bpp auto -> automatically selects 8-bpp mode
 test "TDD 10: 32-color PNG with --bpp auto selects 8-bpp mode" {
-    const res = try extractPalette(png_pal32, .auto);
+    const res = try extractPalette(png_pal32, .{ .mode = .auto });
     switch (res) {
         .bpp8 => {},
         else => return error.TestExpectedEqual,
@@ -349,7 +363,7 @@ test "TDD 10: 32-color PNG with --bpp auto selects 8-bpp mode" {
 
 // Test 11: 16 colors, --bpp 4 -> returns 16 colors
 test "TDD 11: 16-color PNG with --bpp 4 returns 16-color palette" {
-    const res = try extractPalette(png_pal16, .bpp4);
+    const res = try extractPalette(png_pal16, .{ .mode = .bpp4 });
     switch (res) {
         .bpp4 => |pal| {
             try std.testing.expectEqual(@as(usize, 16), pal.len);
@@ -360,7 +374,7 @@ test "TDD 11: 16-color PNG with --bpp 4 returns 16-color palette" {
 
 // Test 12: 16 colors, --bpp 4x16 -> returns 16 banks with banks 1..15 padded with 0x0000
 test "TDD 12: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 padded" {
-    const res = try extractPalette(png_pal16, .bpp4x16);
+    const res = try extractPalette(png_pal16, .{ .mode = .bpp4x16 });
     switch (res) {
         .bpp4x16 => |banks| {
             for (banks[1..]) |bank| {
@@ -375,7 +389,7 @@ test "TDD 12: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 pad
 
 // Test 13: 16 colors, --bpp 8 -> returns 256 colors with indices 16..255 padded with 0x0000
 test "TDD 13: 16-color PNG with --bpp 8 returns 256 palette padded" {
-    const res = try extractPalette(png_pal16, .bpp8);
+    const res = try extractPalette(png_pal16, .{ .mode = .bpp8 });
     switch (res) {
         .bpp8 => |pal| {
             for (pal[16..]) |color| {
@@ -388,7 +402,7 @@ test "TDD 13: 16-color PNG with --bpp 8 returns 256 palette padded" {
 
 // Test 14: 16 colors, --bpp auto -> automatically selects 4-bpp mode
 test "TDD 14: 16-color PNG with --bpp auto selects 4-bpp mode" {
-    const res = try extractPalette(png_pal16, .auto);
+    const res = try extractPalette(png_pal16, .{ .mode = .auto });
     switch (res) {
         .bpp4 => {},
         else => return error.TestExpectedEqual,
@@ -397,7 +411,7 @@ test "TDD 14: 16-color PNG with --bpp auto selects 4-bpp mode" {
 
 // Test 15: 8 colors, --bpp 4 -> returns 16 colors with indices 8..15 padded with 0x0000
 test "TDD 15: 8-color PNG with --bpp 4 returns 16 palette padded" {
-    const res = try extractPalette(png_pal8, .bpp4);
+    const res = try extractPalette(png_pal8, .{ .mode = .bpp4 });
     switch (res) {
         .bpp4 => |pal| {
             for (pal[8..]) |color| {
@@ -410,7 +424,7 @@ test "TDD 15: 8-color PNG with --bpp 4 returns 16 palette padded" {
 
 // Test 16: 8 colors, --bpp 4x16 -> returns 16 banks with bank 0 padded and banks 1..15 zeroed
 test "TDD 16: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
-    const res = try extractPalette(png_pal8, .bpp4x16);
+    const res = try extractPalette(png_pal8, .{ .mode = .bpp4x16 });
     switch (res) {
         .bpp4x16 => |banks| {
             for (banks[0][8..]) |color| {
@@ -428,7 +442,7 @@ test "TDD 16: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
 
 // Test 17: 8 colors, --bpp 8 -> returns 256 colors with indices 8..255 padded with 0x0000
 test "TDD 17: 8-color PNG with --bpp 8 returns 256 palette padded" {
-    const res = try extractPalette(png_pal8, .bpp8);
+    const res = try extractPalette(png_pal8, .{ .mode = .bpp8 });
     switch (res) {
         .bpp8 => |pal| {
             for (pal[8..]) |color| {
@@ -441,7 +455,7 @@ test "TDD 17: 8-color PNG with --bpp 8 returns 256 palette padded" {
 
 // Test 18: 8 colors, --bpp auto -> automatically selects 4-bpp mode
 test "TDD 18: 8-color PNG with --bpp auto selects 4-bpp mode" {
-    const res = try extractPalette(png_pal8, .auto);
+    const res = try extractPalette(png_pal8, .{ .mode = .auto });
     switch (res) {
         .bpp4 => {},
         else => return error.TestExpectedEqual,
@@ -449,12 +463,22 @@ test "TDD 18: 8-color PNG with --bpp auto selects 4-bpp mode" {
 }
 
 // Test 19: BGR555 conversion precision for standard extreme colors
-test "TDD 19: rgbToGba conversion accuracy" {
-    try std.testing.expectEqual(Color.BLACK.toBgr555(), rgbToGba(0, 0, 0)); // Black
-    try std.testing.expectEqual(Color.RED.toBgr555(), rgbToGba(255, 0, 0)); // Red: R=31, G=0, B=0
-    try std.testing.expectEqual(Color.LIME.toBgr555(), rgbToGba(0, 255, 0)); // Green: R=0, G=31, B=0
-    try std.testing.expectEqual(Color.BLUE.toBgr555(), rgbToGba(0, 0, 255)); // Blue: R=0, G=0, B=31
-    try std.testing.expectEqual(Color.WHITE.toBgr555(), rgbToGba(255, 255, 255)); // White: R=31, G=31, B=31
-    // Truncation check (lower 3 bits discarded: 7 >> 3 == 0)
-    try std.testing.expectEqual(GBA_COLOR_BLACK, rgbToGba(7, 7, 7));
+test "TDD 19: rgbToGba conversion accuracy (standard vs color-adjust)" {
+    // Standard mode (color_adjust = false)
+    try std.testing.expectEqual(Color.BLACK.toBgr555(), rgbToGba(0, 0, 0, false));
+    try std.testing.expectEqual(Color.RED.toBgr555(), rgbToGba(255, 0, 0, false));
+    try std.testing.expectEqual(Color.LIME.toBgr555(), rgbToGba(0, 255, 0, false));
+    try std.testing.expectEqual(Color.BLUE.toBgr555(), rgbToGba(0, 0, 255, false));
+    try std.testing.expectEqual(Color.WHITE.toBgr555(), rgbToGba(255, 255, 255, false));
+    // Truncation check (7 >> 3 == 0)
+    try std.testing.expectEqual(GBA_COLOR_BLACK, rgbToGba(7, 7, 7, false));
+
+    // Color-adjust mode (color_adjust = true)
+    try std.testing.expectEqual(Color.BLACK.toBgr555(), rgbToGba(0, 0, 0, true));
+    try std.testing.expectEqual(Color.RED.toBgr555(), rgbToGba(255, 0, 0, true));
+    try std.testing.expectEqual(Color.LIME.toBgr555(), rgbToGba(0, 255, 0, true));
+    try std.testing.expectEqual(Color.BLUE.toBgr555(), rgbToGba(0, 0, 255, true));
+    try std.testing.expectEqual(Color.WHITE.toBgr555(), rgbToGba(255, 255, 255, true));
+    // Rounded scaling check ((7 * 31 + 127) / 255 == 1)
+    try std.testing.expectEqual(@as(u16, 1 | (1 << 5) | (1 << 10)), rgbToGba(7, 7, 7, true));
 }

@@ -31,6 +31,7 @@ zurag -h | --help
 | `--json <path>` | `-j` | Path to the input Aseprite JSON frame metadata. Required unless `--palette-only` is set. | *None* |
 | `--output <path>`| `-o` | Path to write the generated Zig source file. If omitted, outputs to `stdout`. | `stdout` |
 | `--bpp <mode>` | | Bits-per-pixel color mode: `4`, `4x16`, `8`, `auto`. | `auto` |
+| `--color-adjust`| `-c` | Enable full-range rounded RGB to GBA BGR555 color scaling: `(c * 31 + 127) / 255`. | `false` |
 | `--palette-only`| `-P` | Extract palette data only. Skips tile/frame conversion; `--json` is not required. | `false` |
 | `--help` | `-h` | Display usage and help message to `stdout`. | |
 
