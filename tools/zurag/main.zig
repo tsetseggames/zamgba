@@ -1,6 +1,6 @@
 const std = @import("std");
-pub const png = @import("png.zig");
-pub const tile = @import("tile.zig");
+const png = @import("png.zig");
+const tile = @import("tile.zig");
 
 pub const BppMode = enum {
     bpp4,
@@ -17,7 +17,7 @@ pub const BppMode = enum {
     }
 };
 
-pub const CliArgs = struct {
+const CliArgs = struct {
     png_path: ?[]const u8 = null,
     json_path: ?[]const u8 = null,
     output_path: ?[]const u8 = null,
@@ -26,14 +26,14 @@ pub const CliArgs = struct {
     color_adjust: bool = false,
     show_help: bool = false,
 
-    pub const ParseError = error{
+    const ParseError = error{
         MissingValue,
         UnknownFlag,
         InvalidBppMode,
         MissingRequiredArguments,
     };
 
-    pub fn parse(args: []const []const u8) ParseError!CliArgs {
+    fn parse(args: []const []const u8) ParseError!CliArgs {
         var result = CliArgs{};
         var i: usize = 0;
 
@@ -81,7 +81,7 @@ pub const CliArgs = struct {
     }
 };
 
-pub fn printUsage(io: std.Io, program_name: []const u8) void {
+fn printUsage(io: std.Io, program_name: []const u8) void {
     var buf: [2048]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf,
         \\zurag - GBA Sprite & Asset converter for Zamgba

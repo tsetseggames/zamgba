@@ -3,28 +3,28 @@ const Color = @import("zamgba-engine").Color;
 
 pub const BppMode = @import("main.zig").BppMode;
 
-pub const GBA_COLOR_BLACK: u16 = Color.BLACK.toBgr555();
+const GBA_COLOR_BLACK: u16 = Color.BLACK.toBgr555();
 
-pub const PNG_SIGNATURE_LEN: usize = 8;
-pub const PNG_SIGNATURE: [PNG_SIGNATURE_LEN]u8 = .{ 137, 80, 78, 71, 13, 10, 26, 10 };
+const PNG_SIGNATURE_LEN: usize = 8;
+const PNG_SIGNATURE: [PNG_SIGNATURE_LEN]u8 = .{ 137, 80, 78, 71, 13, 10, 26, 10 };
 
-pub const CHUNK_LEN_SIZE: usize = 4;
-pub const CHUNK_TYPE_SIZE: usize = 4;
-pub const CHUNK_CRC_SIZE: usize = 4;
+const CHUNK_LEN_SIZE: usize = 4;
+const CHUNK_TYPE_SIZE: usize = 4;
+const CHUNK_CRC_SIZE: usize = 4;
 
-pub const IHDR_CHUNK_TYPE: *const [4]u8 = "IHDR";
-pub const PLTE_CHUNK_TYPE: *const [4]u8 = "PLTE";
-pub const IDAT_CHUNK_TYPE: *const [4]u8 = "IDAT";
-pub const IEND_CHUNK_TYPE: *const [4]u8 = "IEND";
+const IHDR_CHUNK_TYPE: *const [4]u8 = "IHDR";
+const PLTE_CHUNK_TYPE: *const [4]u8 = "PLTE";
+const IDAT_CHUNK_TYPE: *const [4]u8 = "IDAT";
+const IEND_CHUNK_TYPE: *const [4]u8 = "IEND";
 
-pub const IHDR_DATA_LEN: u32 = 13;
-pub const MIN_PNG_HEADER_LEN: usize = PNG_SIGNATURE_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + IHDR_DATA_LEN + CHUNK_CRC_SIZE;
+const IHDR_DATA_LEN: u32 = 13;
+const MIN_PNG_HEADER_LEN: usize = PNG_SIGNATURE_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + IHDR_DATA_LEN + CHUNK_CRC_SIZE;
 
-pub const BYTES_PER_PALETTE_COLOR: usize = 3;
-pub const MAX_PALETTE_COLORS: usize = 256;
-pub const MAX_PLTE_DATA_LEN: usize = MAX_PALETTE_COLORS * BYTES_PER_PALETTE_COLOR;
+const BYTES_PER_PALETTE_COLOR: usize = 3;
+const MAX_PALETTE_COLORS: usize = 256;
+const MAX_PLTE_DATA_LEN: usize = MAX_PALETTE_COLORS * BYTES_PER_PALETTE_COLOR;
 
-pub const PALETTE_BANKS_COUNT: usize = 16;
+const PALETTE_BANKS_COUNT: usize = 16;
 pub const COLORS_PER_BANK: usize = 16;
 
 // Byte offsets for parsing the PNG header and IHDR chunk
@@ -101,7 +101,7 @@ pub const IndexedImage = struct {
     }
 };
 
-pub fn paethPredictor(a: u8, b: u8, c: u8) u8 {
+fn paethPredictor(a: u8, b: u8, c: u8) u8 {
     const p: i32 = @as(i32, a) + @as(i32, b) - @as(i32, c);
     const pa = @abs(p - @as(i32, a));
     const pb = @abs(p - @as(i32, b));
@@ -111,7 +111,7 @@ pub fn paethPredictor(a: u8, b: u8, c: u8) u8 {
     return c;
 }
 
-pub fn unfilterScanlines(
+fn unfilterScanlines(
     pixels: []u8,
     raw_scanlines: []const u8,
     width: usize,
