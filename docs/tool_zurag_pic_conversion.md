@@ -119,3 +119,38 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
 ### Build Caching & Concurrency
 * **Automatic Cache Invalidation**: Zig automatically hashes `assets/player.png` and `assets/player.json`. If neither file changes, `zurag` will not be re-executed.
 * **Parallel Execution**: Multiple `RunArtifact` steps execute concurrently across available CPU cores.
+
+---
+
+## 6. Slicing Architecture & Separation of Concerns
+
+`zurag` strictly decouples file parsing from image transformations using a modular pipeline:
+
+```
+┌─────────────────────────────────┐
+│     Aseprite JSON Parser        │  Extracts: []Rect, []durations, []AnimationTag
+└────────────────┬────────────────┘
+                 │ Slice Coordinates (Rect{ x, y, w, h })
+                 ▼
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│       IndexedImage (2D)         │ ──> │ sliceSpriteFrame (Image Slicer)  │
+│  (Decompressed & Unfiltered)    │     └────────────────┬─────────────────┘
+└─────────────────────────────────┘                      │ 1D Tile Byte Streams
+                                                         ▼
+                                        ┌──────────────────────────────────┐
+                                        │          Code Generator          │
+                                        │ (Combines Palettes, Tiles, Tags) │
+                                        └──────────────────────────────────┘
+```
+
+### Pipeline Responsibilities:
+1. **Image Slicer (`sliceSpriteFrame` in `tile.zig`)**:
+   * Operates purely on raw `IndexedImage` pixels and a `Rect` without coupling to JSON formats.
+   * Enforces GBA hardware alignment: width and height must be non-zero multiples of 8x8 tiles (`hal.oam.Tile.WIDTH_PIXELS` and `HEIGHT_PIXELS`).
+   * Slices 2D rectangular areas into 1D row-major 8x8 tile sequences.
+   * Packs pixels using `packTile4bpp` (32 bytes/tile, `% 16` modulo folding with lower/upper nibble packing) or `packTile8bpp` (64 bytes/tile).
+   * Validates color bank consistency for 4-bpp frames, detecting and rejecting `error.MultiBankColorConflict`.
+2. **Metadata Parser (`json.zig`)**:
+   * Parses Aseprite frame schemas, slice bounds, duration arrays, and animation tag sequences.
+3. **Code Generator (`main.zig`)**:
+   * Emits type-safe Zig source code adhering to the `zamgba-engine` data contract (`engine.SpriteSheet`).

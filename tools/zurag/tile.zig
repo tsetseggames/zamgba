@@ -87,12 +87,95 @@ pub fn sliceSpriteFrame(
     rect: Rect,
     mode: BppMode,
 ) TileError!SlicedFrame {
-    _ = allocator;
-    _ = img;
-    _ = rect;
-    _ = mode;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
+    // 1. Dimension validation (must be non-zero multiples of 8)
+    if (rect.w == 0 or rect.h == 0 or rect.w % TILE_WIDTH != 0 or rect.h % TILE_HEIGHT != 0) {
+        return error.InvalidDimensions;
+    }
+
+    // 2. Bounds check against image
+    if (rect.x + rect.w > img.width or rect.y + rect.h > img.height) {
+        return error.SliceOutOfBounds;
+    }
+
+    const tiles_x = rect.w / TILE_WIDTH;
+    const tiles_y = rect.h / TILE_HEIGHT;
+    const tile_count = tiles_x * tiles_y;
+
+    const is_8bpp = (mode == .bpp8);
+    const bytes_per_tile = if (is_8bpp) hal.oam.Tile.BYTES_8BPP else hal.oam.Tile.BYTES_4BPP;
+    const total_bytes = tile_count * bytes_per_tile;
+
+    // 3. Multi-bank conflict detection (for 4-bpp modes)
+    var detected_bank: u8 = 0;
+    var first_bank: ?u8 = null;
+
+    if (mode == .bpp4) {
+        // In single 16-color mode (bpp4), all non-transparent pixels must be <= 15 (Bank 0)
+        for (0..rect.h) |ry| {
+            for (0..rect.w) |rx| {
+                const px = img.getPixel(rect.x + @as(u32, @intCast(rx)), rect.y + @as(u32, @intCast(ry)));
+                if (px >= COLORS_PER_BANK) {
+                    return error.MultiBankColorConflict;
+                }
+            }
+        }
+        detected_bank = 0;
+    } else if (mode == .bpp4x16) {
+        // In 16-bank mode (bpp4x16), all non-transparent pixels in this frame must share the same bank
+        for (0..rect.h) |ry| {
+            for (0..rect.w) |rx| {
+                const px = img.getPixel(rect.x + @as(u32, @intCast(rx)), rect.y + @as(u32, @intCast(ry)));
+                if (px > 0) {
+                    const bank: u8 = @intCast(px / COLORS_PER_BANK);
+                    if (first_bank) |b| {
+                        if (b != bank) {
+                            return error.MultiBankColorConflict;
+                        }
+                    } else {
+                        first_bank = bank;
+                    }
+                }
+            }
+        }
+        detected_bank = first_bank orelse 0;
+    }
+
+    // 4. Allocate output 1D tile buffer
+    const bytes = try allocator.alloc(u8, total_bytes);
+    errdefer allocator.free(bytes);
+
+    // 5. Slice and pack each 8x8 tile in row-major 1D order
+    for (0..tiles_y) |ty| {
+        for (0..tiles_x) |tx| {
+            var block_8x8: [TILE_HEIGHT][TILE_WIDTH]u8 = undefined;
+
+            for (0..TILE_HEIGHT) |py| {
+                for (0..TILE_WIDTH) |px| {
+                    const img_x = rect.x + @as(u32, @intCast(tx * TILE_WIDTH + px));
+                    const img_y = rect.y + @as(u32, @intCast(ty * TILE_HEIGHT + py));
+                    block_8x8[py][px] = img.getPixel(img_x, img_y);
+                }
+            }
+
+            const tile_idx = ty * tiles_x + tx;
+            if (is_8bpp) {
+                const packed_tile = try packTile8bpp(&block_8x8);
+                @memcpy(bytes[tile_idx * hal.oam.Tile.BYTES_8BPP .. (tile_idx + 1) * hal.oam.Tile.BYTES_8BPP], &packed_tile);
+            } else {
+                const packed_tile = try packTile4bpp(&block_8x8);
+                @memcpy(bytes[tile_idx * hal.oam.Tile.BYTES_4BPP .. (tile_idx + 1) * hal.oam.Tile.BYTES_4BPP], &packed_tile);
+            }
+        }
+    }
+
+    return SlicedFrame{
+        .width = rect.w,
+        .height = rect.h,
+        .tile_count = tile_count,
+        .bytes = bytes,
+        .detected_bank = detected_bank,
+        .allocator = allocator,
+    };
 }
 
 // ====================================================================
@@ -129,20 +212,21 @@ test "packTile8bpp: 64-byte linear packing" {
 }
 
 test "sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
-    var img = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
-    defer img.deinit();
-
     const frame0_rect = Rect{ .x = 0, .y = 0, .w = 32, .h = 32 };
     const expected_tiles_32x32 = (32 / TILE_WIDTH) * (32 / TILE_HEIGHT); // 16 tiles
 
-    // 1. Slicing under 4-bpp mode
-    var frame_4bpp = try sliceSpriteFrame(std.testing.allocator, &img, frame0_rect, .bpp4);
+    // 1. Slicing 16-color asset under 4-bpp mode
+    var img_16 = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_pal16);
+    defer img_16.deinit();
+    var frame_4bpp = try sliceSpriteFrame(std.testing.allocator, &img_16, frame0_rect, .bpp4);
     defer frame_4bpp.deinit();
     try std.testing.expectEqual(expected_tiles_32x32, frame_4bpp.tile_count);
     try std.testing.expectEqual(expected_tiles_32x32 * hal.oam.Tile.BYTES_4BPP, frame_4bpp.bytes.len); // 512 bytes
 
-    // 2. Slicing under 8-bpp mode
-    var frame_8bpp = try sliceSpriteFrame(std.testing.allocator, &img, frame0_rect, .bpp8);
+    // 2. Slicing rich broom asset under 8-bpp mode
+    var img_broom = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
+    defer img_broom.deinit();
+    var frame_8bpp = try sliceSpriteFrame(std.testing.allocator, &img_broom, frame0_rect, .bpp8);
     defer frame_8bpp.deinit();
     try std.testing.expectEqual(expected_tiles_32x32, frame_8bpp.tile_count);
     try std.testing.expectEqual(expected_tiles_32x32 * hal.oam.Tile.BYTES_8BPP, frame_8bpp.bytes.len); // 1024 bytes
