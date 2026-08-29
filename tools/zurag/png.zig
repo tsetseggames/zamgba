@@ -82,17 +82,15 @@ pub const PaletteResult = union(enum) {
 
 /// Converts 24-bit RGB (8 bits per channel) to GBA 15-bit BGR555 color.
 pub fn rgbToGba(r: u8, g: u8, b: u8) u16 {
-    _ = r;
-    _ = g;
-    _ = b;
-    // Stub for TDD (intentionally unfulfilled)
-    return 0;
+    const r5: u16 = r >> 3;
+    const g5: u16 = g >> 3;
+    const b5: u16 = b >> 3;
+    return r5 | (g5 << 5) | (b5 << 10);
 }
 
 /// Extracts and converts the palette from an indexed PNG according to the requested BppMode.
 pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
     _ = try parseHeader(bytes);
-    _ = mode;
 
     var offset: usize = MIN_PNG_HEADER_LEN;
 
@@ -112,8 +110,26 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
             if (chunk_len % BYTES_PER_PALETTE_COLOR != 0) {
                 return error.InvalidPaletteChunk;
             }
-            // For TDD 02, we successfully verified PLTE chunk size limits!
-            return error.Unimplemented;
+
+            const plte_data = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
+            const color_count = chunk_len / BYTES_PER_PALETTE_COLOR;
+
+            var raw_colors: [MAX_PALETTE_COLORS]u16 = @splat(0x0000);
+            for (0..color_count) |i| {
+                const r = plte_data[i * BYTES_PER_PALETTE_COLOR + 0];
+                const g = plte_data[i * BYTES_PER_PALETTE_COLOR + 1];
+                const b = plte_data[i * BYTES_PER_PALETTE_COLOR + 2];
+                raw_colors[i] = rgbToGba(r, g, b);
+            }
+
+            switch (mode) {
+                .bpp8 => {
+                    return PaletteResult{ .bpp8 = raw_colors };
+                },
+                else => {
+                    return error.Unimplemented;
+                },
+            }
         }
 
         if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
