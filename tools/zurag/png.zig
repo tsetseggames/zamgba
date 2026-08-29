@@ -1,5 +1,6 @@
 const std = @import("std");
 const Color = @import("zamgba-engine").Color;
+const unfilter = @import("algo/unfilter.zig");
 
 pub const BppMode = @import("main.zig").BppMode;
 
@@ -74,22 +75,26 @@ pub const PngHeaderError = error{
     UnsupportedBitDepth,
 };
 
-pub const PngError = PngHeaderError || error{
+pub const PngError = PngHeaderError || unfilter.UnfilterError || error{
     MissingPaletteChunk,
     InvalidPaletteChunk,
     ColorCountExceedsLimit,
     MissingIdatChunk,
     DecompressionFailed,
-    InvalidFilterType,
-    InvalidScanlineLength,
     OutOfMemory,
     Unimplemented,
+};
+
+pub const PngAuxChunks = struct {
+    has_trns: bool = false,
+    has_bkgd: bool = false,
 };
 
 pub const IndexedImage = struct {
     width: u32,
     height: u32,
     pixels: []u8,
+    aux_chunks: PngAuxChunks = .{},
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *IndexedImage) void {
@@ -101,28 +106,6 @@ pub const IndexedImage = struct {
     }
 };
 
-fn paethPredictor(a: u8, b: u8, c: u8) u8 {
-    _ = a;
-    _ = b;
-    _ = c;
-    // Stub for TDD
-    return 0;
-}
-
-fn unfilterScanlines(
-    pixels: []u8,
-    raw_scanlines: []const u8,
-    width: usize,
-    height: usize,
-) PngError!void {
-    _ = pixels;
-    _ = raw_scanlines;
-    _ = width;
-    _ = height;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
-}
-
 /// Decompresses PNG IDAT chunks and restores the uncompressed, unfiltered 2D indexed pixel array.
 pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) PngError!IndexedImage {
     const header = try parseHeader(bytes);
@@ -132,6 +115,7 @@ pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) 
 
     var offset: usize = MIN_PNG_HEADER_LEN;
     var has_idat = false;
+    var aux_chunks = PngAuxChunks{};
 
     while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= bytes.len) {
         const chunk_len = std.mem.readInt(u32, bytes[offset..][0..CHUNK_LEN_SIZE], .big);
@@ -146,6 +130,10 @@ pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) 
             has_idat = true;
             const idat_payload = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
             try idat_list.appendSlice(allocator, idat_payload);
+        } else if (std.mem.eql(u8, chunk_type, "tRNS")) {
+            aux_chunks.has_trns = true;
+        } else if (std.mem.eql(u8, chunk_type, "bKGD")) {
+            aux_chunks.has_bkgd = true;
         } else if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
             break;
         }
@@ -171,12 +159,13 @@ pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) 
     const pixels = try allocator.alloc(u8, width * height);
     errdefer allocator.free(pixels);
 
-    try unfilterScanlines(pixels, raw_scanlines, width, height);
+    try unfilter.unfilterScanlines(pixels, raw_scanlines, width, height);
 
     return IndexedImage{
         .width = header.width,
         .height = header.height,
         .pixels = pixels,
+        .aux_chunks = aux_chunks,
         .allocator = allocator,
     };
 }
@@ -587,7 +576,7 @@ test "TDD 19: rgbToGba conversion accuracy (standard vs color-adjust)" {
 }
 
 // ====================================================================
-// IDAT Decompression & Unfiltering Unit Tests
+// IDAT Decompression Unit Tests
 // ====================================================================
 
 test "decompressIndexedPixels from real tsetseg flying broom asset" {
@@ -616,41 +605,80 @@ test "decompressIndexedPixels from real tsetseg flying broom asset" {
     try std.testing.expect(found_non_zero);
 }
 
-test "unfilterScanlines filter types coverage (None, Sub, Up, Average, Paeth)" {
-    // 4 pixels per row, 5 rows (each testing a different filter type 0..4)
-    const raw_test_scanlines = [_]u8{
-        // Row 0 (Type 0: None): 10, 20, 30, 40
-        0, 10, 20, 30, 40,
-        // Row 1 (Type 1: Sub): 5, 5, 5, 5 -> Recon: 5, 10, 15, 20
-        1, 5,  5,  5,  5,
-        // Row 2 (Type 2: Up): 1, 2, 3, 4 -> Recon: 6, 12, 18, 24 (Row 1 + delta)
-        2, 1,  2,  3,  4,
-        // Row 3 (Type 3: Average): 2, 2, 2, 2
-        3, 2,  2,  2,  2,
-        // Row 4 (Type 4: Paeth): 0, 0, 0, 0
-        4, 0,  0,  0,  0,
-    };
+test "decompressIndexedPixels: multiple IDAT chunks concatenation" {
+    // Locate the original IDAT in png_broom
+    var offset: usize = MIN_PNG_HEADER_LEN;
+    var idat_offset: usize = 0;
+    var idat_len: usize = 0;
 
-    var pixels: [4 * 5]u8 = undefined;
-    try unfilterScanlines(&pixels, &raw_test_scanlines, 4, 5);
+    while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= png_broom.len) {
+        const chunk_len = std.mem.readInt(u32, png_broom[offset..][0..CHUNK_LEN_SIZE], .big);
+        const chunk_type = png_broom[offset + CHUNK_LEN_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE];
+        if (std.mem.eql(u8, chunk_type, IDAT_CHUNK_TYPE)) {
+            idat_offset = offset;
+            idat_len = chunk_len;
+            break;
+        }
+        offset += CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len + CHUNK_CRC_SIZE;
+    }
 
-    // Row 0
-    try std.testing.expectEqual(@as(u8, 10), pixels[0]);
-    try std.testing.expectEqual(@as(u8, 20), pixels[1]);
-    try std.testing.expectEqual(@as(u8, 30), pixels[2]);
-    try std.testing.expectEqual(@as(u8, 40), pixels[3]);
+    // Split IDAT payload into 2 chunks (half1, half2)
+    const half1 = idat_len / 2;
+    const half2 = idat_len - half1;
+    const payload = png_broom[idat_offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. idat_offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + idat_len];
 
-    // Row 1 (Sub)
-    try std.testing.expectEqual(@as(u8, 5), pixels[4]);
-    try std.testing.expectEqual(@as(u8, 10), pixels[5]);
-    try std.testing.expectEqual(@as(u8, 15), pixels[6]);
-    try std.testing.expectEqual(@as(u8, 20), pixels[7]);
+    var multi_idat_png: std.ArrayList(u8) = .empty;
+    defer multi_idat_png.deinit(std.testing.allocator);
 
-    // Row 2 (Up)
-    try std.testing.expectEqual(@as(u8, 6), pixels[8]);
-    try std.testing.expectEqual(@as(u8, 12), pixels[9]);
-    try std.testing.expectEqual(@as(u8, 18), pixels[10]);
-    try std.testing.expectEqual(@as(u8, 24), pixels[11]);
+    // Copy up to start of original IDAT
+    try multi_idat_png.appendSlice(std.testing.allocator, png_broom[0..idat_offset]);
+
+    // Append IDAT 1
+    var len_buf1: [4]u8 = undefined;
+    std.mem.writeInt(u32, &len_buf1, @intCast(half1), .big);
+    try multi_idat_png.appendSlice(std.testing.allocator, &len_buf1);
+    try multi_idat_png.appendSlice(std.testing.allocator, IDAT_CHUNK_TYPE);
+    try multi_idat_png.appendSlice(std.testing.allocator, payload[0..half1]);
+    try multi_idat_png.appendSlice(std.testing.allocator, &[_]u8{ 0, 0, 0, 0 }); // Dummy CRC
+
+    // Append IDAT 2
+    var len_buf2: [4]u8 = undefined;
+    std.mem.writeInt(u32, &len_buf2, @intCast(half2), .big);
+    try multi_idat_png.appendSlice(std.testing.allocator, &len_buf2);
+    try multi_idat_png.appendSlice(std.testing.allocator, IDAT_CHUNK_TYPE);
+    try multi_idat_png.appendSlice(std.testing.allocator, payload[half1..]);
+    try multi_idat_png.appendSlice(std.testing.allocator, &[_]u8{ 0, 0, 0, 0 }); // Dummy CRC
+
+    // Append IEND
+    const iend_chunk = [_]u8{ 0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xae, 0x42, 0x60, 0x82 };
+    try multi_idat_png.appendSlice(std.testing.allocator, &iend_chunk);
+
+    var img = try decompressIndexedPixels(std.testing.allocator, multi_idat_png.items);
+    defer img.deinit();
+
+    try std.testing.expectEqual(@as(u32, 256), img.width);
+    try std.testing.expectEqual(@as(u32, 32), img.height);
+}
+
+test "decompressIndexedPixels: detect tRNS and bKGD auxiliary chunks" {
+    // 1. Real asset png_broom contains tRNS
+    var img = try decompressIndexedPixels(std.testing.allocator, png_broom);
+    defer img.deinit();
+    try std.testing.expect(img.aux_chunks.has_trns);
+    try std.testing.expect(!img.aux_chunks.has_bkgd);
+
+    // 2. Insert synthetic bKGD chunk
+    var bkgd_png: std.ArrayList(u8) = .empty;
+    defer bkgd_png.deinit(std.testing.allocator);
+
+    try bkgd_png.appendSlice(std.testing.allocator, png_broom[0..MIN_PNG_HEADER_LEN]);
+    // bKGD chunk: length 1, type bKGD, data 0x00, crc 0x00000000
+    try bkgd_png.appendSlice(std.testing.allocator, &[_]u8{ 0, 0, 0, 1, 'b', 'K', 'G', 'D', 0, 0, 0, 0, 0 });
+    try bkgd_png.appendSlice(std.testing.allocator, png_broom[MIN_PNG_HEADER_LEN..]);
+
+    var img_bkgd = try decompressIndexedPixels(std.testing.allocator, bkgd_png.items);
+    defer img_bkgd.deinit();
+    try std.testing.expect(img_bkgd.aux_chunks.has_bkgd);
 }
 
 test "decompressIndexedPixels error on missing or corrupted IDAT" {

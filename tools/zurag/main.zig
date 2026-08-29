@@ -181,6 +181,21 @@ pub fn main(init: std.process.Init) !void {
         @tagName(parsed_args.bpp),
         parsed_args.palette_only,
     });
+
+    if (!parsed_args.palette_only) {
+        var img = png.decompressIndexedPixels(allocator, png_data) catch |err| {
+            std.debug.print("Error: failed to decompress image data '{s}': {s}\n", .{ input_png_path, @errorName(err) });
+            std.process.exit(1);
+        };
+        defer img.deinit();
+
+        if (img.aux_chunks.has_trns) {
+            std.debug.print("Warning: '{s}' contains a tRNS chunk which is ignored. GBA hardware enforces palette index 0 as transparent.\n", .{input_png_path});
+        }
+        if (img.aux_chunks.has_bkgd) {
+            std.debug.print("Warning: '{s}' contains a bKGD chunk which is ignored.\n", .{input_png_path});
+        }
+    }
 }
 
 test "CliArgs parse in standard order with all options" {
@@ -288,4 +303,6 @@ test "CliArgs parse error conditions" {
 test {
     _ = png;
     _ = tile;
+    _ = @import("algo/paeth.zig");
+    _ = @import("algo/unfilter.zig");
 }
