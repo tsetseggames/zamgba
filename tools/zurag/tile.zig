@@ -53,16 +53,31 @@ pub const TileError = error{
 /// Packs a single 8x8 pixel block into a GBA 4-bpp tile (32 bytes).
 /// Even pixels are placed in lower nibbles, odd pixels in upper nibbles with % 16 folding.
 pub fn packTile4bpp(pixels_8x8: *const [TILE_HEIGHT][TILE_WIDTH]u8) TileError!Tile4bpp {
-    _ = pixels_8x8;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
+    var tile: Tile4bpp = undefined;
+    var byte_idx: usize = 0;
+
+    for (0..TILE_HEIGHT) |y| {
+        var x: usize = 0;
+        while (x < TILE_WIDTH) : (x += PIXELS_PER_BYTE_4BPP) {
+            const p0: u8 = @truncate(pixels_8x8[y][x] % COLORS_PER_BANK);
+            const p1: u8 = @truncate(pixels_8x8[y][x + 1] % COLORS_PER_BANK);
+            tile[byte_idx] = (p0 & PIXEL_4BPP_MASK) | ((p1 & PIXEL_4BPP_MASK) << BITS_PER_PIXEL_4BPP);
+            byte_idx += 1;
+        }
+    }
+
+    return tile;
 }
 
 /// Packs a single 8x8 pixel block into a GBA 8-bpp tile (64 bytes).
 pub fn packTile8bpp(pixels_8x8: *const [TILE_HEIGHT][TILE_WIDTH]u8) TileError!Tile8bpp {
-    _ = pixels_8x8;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
+    var tile: Tile8bpp = undefined;
+    for (0..TILE_HEIGHT) |y| {
+        for (0..TILE_WIDTH) |x| {
+            tile[y * TILE_WIDTH + x] = pixels_8x8[y][x];
+        }
+    }
+    return tile;
 }
 
 /// Slices a sprite frame from an IndexedImage according to a Rect and packs it into 1D GBA tiles.
