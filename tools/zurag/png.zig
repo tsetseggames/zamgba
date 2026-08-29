@@ -128,7 +128,12 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
                 raw_colors[i] = rgbToGba(r, g, b);
             }
 
-            switch (mode) {
+            const effective_mode: BppMode = switch (mode) {
+                .auto => if (color_count <= COLORS_PER_BANK) .bpp4 else .bpp8,
+                else => mode,
+            };
+
+            switch (effective_mode) {
                 .bpp8 => {
                     return PaletteResult{ .bpp8 = raw_colors };
                 },
@@ -149,9 +154,7 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
                     @memcpy(pal[0..color_count], raw_colors[0..color_count]);
                     return PaletteResult{ .bpp4 = pal };
                 },
-                else => {
-                    return error.Unimplemented;
-                },
+                .auto => unreachable,
             }
         }
 
