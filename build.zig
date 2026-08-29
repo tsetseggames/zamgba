@@ -150,6 +150,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
     b.installArtifact(zurag_exe);
 
     const test_palettes_mod = b.createModule(.{
@@ -166,6 +167,7 @@ pub fn build(b: *std.Build) void {
         .use_lld = true,
     });
     zurag_unit_tests.root_module.addImport("test_palettes", test_palettes_mod);
+    zurag_unit_tests.root_module.addImport("zamgba-engine", engine_module);
     const run_zurag_unit_tests = b.addRunArtifact(zurag_unit_tests);
     test_step.dependOn(&run_zurag_unit_tests.step);
 

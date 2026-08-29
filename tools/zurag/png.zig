@@ -1,6 +1,9 @@
 const std = @import("std");
+const Color = @import("zamgba-engine").Color;
 
 pub const BppMode = @import("main.zig").BppMode;
+
+pub const GBA_COLOR_BLACK: u16 = Color.BLACK.toBgr555();
 
 pub const PNG_SIGNATURE_LEN: usize = 8;
 pub const PNG_SIGNATURE: [PNG_SIGNATURE_LEN]u8 = .{ 137, 80, 78, 71, 13, 10, 26, 10 };
@@ -117,7 +120,7 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
             const plte_data = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
             const color_count = chunk_len / BYTES_PER_PALETTE_COLOR;
 
-            var raw_colors: [MAX_PALETTE_COLORS]u16 = @splat(0x0000);
+            var raw_colors: [MAX_PALETTE_COLORS]u16 = @splat(GBA_COLOR_BLACK);
             for (0..color_count) |i| {
                 const r = plte_data[i * BYTES_PER_PALETTE_COLOR + 0];
                 const g = plte_data[i * BYTES_PER_PALETTE_COLOR + 1];
@@ -130,7 +133,7 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
                     return PaletteResult{ .bpp8 = raw_colors };
                 },
                 .bpp4x16 => {
-                    var banks: [PALETTE_BANKS_COUNT][COLORS_PER_BANK]u16 = @splat(@splat(0x0000));
+                    var banks: [PALETTE_BANKS_COUNT][COLORS_PER_BANK]u16 = @splat(@splat(GBA_COLOR_BLACK));
                     for (0..PALETTE_BANKS_COUNT) |b| {
                         for (0..COLORS_PER_BANK) |c| {
                             banks[b][c] = raw_colors[b * COLORS_PER_BANK + c];
@@ -295,9 +298,9 @@ test "TDD 07: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
     const res = try extractPalette(png_pal32, .bpp8);
     switch (res) {
         .bpp8 => |pal| {
-            // Colors after index 31 must be padded with 0x0000 (black)
+            // Colors after index 31 must be padded with GBA_COLOR_BLACK
             for (pal[32..]) |color| {
-                try std.testing.expectEqual(@as(u16, 0x0000), color);
+                try std.testing.expectEqual(GBA_COLOR_BLACK, color);
             }
         },
         else => return error.TestExpectedEqual,
@@ -311,7 +314,7 @@ test "TDD 08: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing
         .bpp4x16 => |banks| {
             for (banks[2..]) |bank| {
                 for (bank) |color| {
-                    try std.testing.expectEqual(@as(u16, 0x0000), color);
+                    try std.testing.expectEqual(GBA_COLOR_BLACK, color);
                 }
             }
         },
@@ -351,7 +354,7 @@ test "TDD 12: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 pad
         .bpp4x16 => |banks| {
             for (banks[1..]) |bank| {
                 for (bank) |color| {
-                    try std.testing.expectEqual(@as(u16, 0x0000), color);
+                    try std.testing.expectEqual(GBA_COLOR_BLACK, color);
                 }
             }
         },
@@ -365,7 +368,7 @@ test "TDD 13: 16-color PNG with --bpp 8 returns 256 palette padded" {
     switch (res) {
         .bpp8 => |pal| {
             for (pal[16..]) |color| {
-                try std.testing.expectEqual(@as(u16, 0x0000), color);
+                try std.testing.expectEqual(GBA_COLOR_BLACK, color);
             }
         },
         else => return error.TestExpectedEqual,
@@ -387,7 +390,7 @@ test "TDD 15: 8-color PNG with --bpp 4 returns 16 palette padded" {
     switch (res) {
         .bpp4 => |pal| {
             for (pal[8..]) |color| {
-                try std.testing.expectEqual(@as(u16, 0x0000), color);
+                try std.testing.expectEqual(GBA_COLOR_BLACK, color);
             }
         },
         else => return error.TestExpectedEqual,
@@ -400,11 +403,11 @@ test "TDD 16: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
     switch (res) {
         .bpp4x16 => |banks| {
             for (banks[0][8..]) |color| {
-                try std.testing.expectEqual(@as(u16, 0x0000), color);
+                try std.testing.expectEqual(GBA_COLOR_BLACK, color);
             }
             for (banks[1..]) |bank| {
                 for (bank) |color| {
-                    try std.testing.expectEqual(@as(u16, 0x0000), color);
+                    try std.testing.expectEqual(GBA_COLOR_BLACK, color);
                 }
             }
         },
@@ -418,7 +421,7 @@ test "TDD 17: 8-color PNG with --bpp 8 returns 256 palette padded" {
     switch (res) {
         .bpp8 => |pal| {
             for (pal[8..]) |color| {
-                try std.testing.expectEqual(@as(u16, 0x0000), color);
+                try std.testing.expectEqual(GBA_COLOR_BLACK, color);
             }
         },
         else => return error.TestExpectedEqual,
@@ -436,11 +439,11 @@ test "TDD 18: 8-color PNG with --bpp auto selects 4-bpp mode" {
 
 // Test 19: BGR555 conversion precision for standard extreme colors
 test "TDD 19: rgbToGba conversion accuracy" {
-    try std.testing.expectEqual(@as(u16, 0x0000), rgbToGba(0, 0, 0)); // Black
-    try std.testing.expectEqual(@as(u16, 0x001F), rgbToGba(255, 0, 0)); // Red: R=31, G=0, B=0
-    try std.testing.expectEqual(@as(u16, 0x03E0), rgbToGba(0, 255, 0)); // Green: R=0, G=31, B=0
-    try std.testing.expectEqual(@as(u16, 0x7C00), rgbToGba(0, 0, 255)); // Blue: R=0, G=0, B=31
-    try std.testing.expectEqual(@as(u16, 0x7FFF), rgbToGba(255, 255, 255)); // White: R=31, G=31, B=31
+    try std.testing.expectEqual(Color.BLACK.toBgr555(), rgbToGba(0, 0, 0)); // Black
+    try std.testing.expectEqual(Color.RED.toBgr555(), rgbToGba(255, 0, 0)); // Red: R=31, G=0, B=0
+    try std.testing.expectEqual(Color.LIME.toBgr555(), rgbToGba(0, 255, 0)); // Green: R=0, G=31, B=0
+    try std.testing.expectEqual(Color.BLUE.toBgr555(), rgbToGba(0, 0, 255)); // Blue: R=0, G=0, B=31
+    try std.testing.expectEqual(Color.WHITE.toBgr555(), rgbToGba(255, 255, 255)); // White: R=31, G=31, B=31
     // Truncation check (lower 3 bits discarded: 7 >> 3 == 0)
-    try std.testing.expectEqual(@as(u16, 0x0000), rgbToGba(7, 7, 7));
+    try std.testing.expectEqual(GBA_COLOR_BLACK, rgbToGba(7, 7, 7));
 }
