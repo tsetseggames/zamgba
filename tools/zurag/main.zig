@@ -1,7 +1,7 @@
 const std = @import("std");
 const png = @import("png.zig");
 const tile = @import("tile.zig");
-pub const json = @import("json.zig");
+pub const metadata = @import("metadata.zig");
 
 pub const BppMode = enum {
     bpp4,
@@ -304,7 +304,7 @@ test "CliArgs parse error conditions" {
 test {
     _ = png;
     _ = tile;
-    _ = json;
+    _ = metadata;
     _ = @import("algo/paeth.zig");
     _ = @import("algo/unfilter.zig");
 }

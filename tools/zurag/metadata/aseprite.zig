@@ -1,83 +1,16 @@
 const std = @import("std");
-const tile = @import("tile.zig");
+const metadata = @import("../metadata.zig");
 
-pub const AnimationDirection = enum(u2) {
-    forward = 0,
-    reverse = 1,
-    pingpong = 2,
-
-    pub fn fromString(str: []const u8) AnimationDirection {
-        if (std.mem.eql(u8, str, "reverse")) return .reverse;
-        if (std.mem.eql(u8, str, "pingpong")) return .pingpong;
-        return .forward;
-    }
-};
-
-pub const Frame = struct {
-    rect: tile.Rect,
-    duration_ms: u16,
-};
-
-pub const Tag = struct {
-    name: []const u8,
-    from: u16,
-    to: u16,
-    direction: AnimationDirection = .forward,
-};
-
-/// Unified sprite metadata domain model (decoupled from specific export software)
-pub const SpriteMetadata = struct {
-    frames: []Frame,
-    tags: []Tag,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *SpriteMetadata) void {
-        self.allocator.free(self.frames);
-        for (self.tags) |tag| {
-            self.allocator.free(tag.name);
-        }
-        self.allocator.free(self.tags);
-    }
-};
-
-pub const MetadataFormat = enum {
-    auto,
-    aseprite,
-};
-
-pub const MetadataError = error{
-    InvalidJson,
-    MissingFrames,
-    MissingMeta,
-    InvalidFrameData,
-    UnsupportedJsonFormat,
-    OutOfMemory,
-    Unimplemented,
-};
-
-/// Parses Aseprite-exported JSON metadata into the unified SpriteMetadata model.
-pub fn parseAsepriteJson(allocator: std.mem.Allocator, json_content: []const u8) MetadataError!SpriteMetadata {
+/// Parses Aseprite-exported JSON metadata (Hash or Array format) into the unified SpriteMetadata model.
+pub fn parseAsepriteJson(allocator: std.mem.Allocator, json_content: []const u8) metadata.MetadataError!metadata.SpriteMetadata {
     _ = allocator;
     _ = json_content;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
-}
-
-/// Automatically detects metadata format (or uses requested format) and parses into SpriteMetadata.
-pub fn parseMetadata(
-    allocator: std.mem.Allocator,
-    json_content: []const u8,
-    format: MetadataFormat,
-) MetadataError!SpriteMetadata {
-    _ = allocator;
-    _ = json_content;
-    _ = format;
     // Stub for TDD (intentionally unimplemented)
     return error.Unimplemented;
 }
 
 // ====================================================================
-// Unit Tests for JSON Metadata Parser (TDD Red Phase)
+// Unit Tests for Aseprite Adapter (TDD Red Phase)
 // ====================================================================
 
 const test_assets = @import("test_palettes");
@@ -101,15 +34,7 @@ test "parseAsepriteJson: real tsetseg broom asset JSON" {
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
     try std.testing.expectEqual(@as(u16, 0), meta.tags[0].from);
     try std.testing.expectEqual(@as(u16, 7), meta.tags[0].to);
-    try std.testing.expectEqual(AnimationDirection.forward, meta.tags[0].direction);
-}
-
-test "parseMetadata: auto-detection of Aseprite format" {
-    var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
-    defer meta.deinit();
-
-    try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
-    try std.testing.expectEqualStrings("flying", meta.tags[0].name);
+    try std.testing.expectEqual(metadata.AnimationDirection.forward, meta.tags[0].direction);
 }
 
 test "parseAsepriteJson: frames as array format support" {
@@ -141,7 +66,7 @@ test "parseAsepriteJson: frames as array format support" {
     try std.testing.expectEqual(@as(usize, 2), meta.frames.len);
     try std.testing.expectEqual(@as(u32, 16), meta.frames[1].rect.x);
     try std.testing.expectEqual(@as(u16, 200), meta.frames[1].duration_ms);
-    try std.testing.expectEqual(AnimationDirection.pingpong, meta.tags[0].direction);
+    try std.testing.expectEqual(metadata.AnimationDirection.pingpong, meta.tags[0].direction);
 }
 
 test "parseAsepriteJson: error handling on malformed JSON" {
