@@ -1,5 +1,6 @@
 const std = @import("std");
 pub const png = @import("png.zig");
+pub const tile = @import("tile.zig");
 
 pub const BppMode = enum {
     bpp4,
@@ -286,4 +287,5 @@ test "CliArgs parse error conditions" {
 
 test {
     _ = png;
+    _ = tile;
 }

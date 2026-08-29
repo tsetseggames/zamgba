@@ -14,6 +14,7 @@ pub const CHUNK_CRC_SIZE: usize = 4;
 
 pub const IHDR_CHUNK_TYPE: *const [4]u8 = "IHDR";
 pub const PLTE_CHUNK_TYPE: *const [4]u8 = "PLTE";
+pub const IDAT_CHUNK_TYPE: *const [4]u8 = "IDAT";
 pub const IEND_CHUNK_TYPE: *const [4]u8 = "IEND";
 
 pub const IHDR_DATA_LEN: u32 = 13;
@@ -77,8 +78,159 @@ pub const PngError = PngHeaderError || error{
     MissingPaletteChunk,
     InvalidPaletteChunk,
     ColorCountExceedsLimit,
+    MissingIdatChunk,
+    DecompressionFailed,
+    InvalidFilterType,
+    InvalidScanlineLength,
+    OutOfMemory,
     Unimplemented,
 };
+
+pub const IndexedImage = struct {
+    width: u32,
+    height: u32,
+    pixels: []u8,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *IndexedImage) void {
+        self.allocator.free(self.pixels);
+    }
+
+    pub fn getPixel(self: *const IndexedImage, x: u32, y: u32) u8 {
+        return self.pixels[y * self.width + x];
+    }
+};
+
+pub fn paethPredictor(a: u8, b: u8, c: u8) u8 {
+    const p: i32 = @as(i32, a) + @as(i32, b) - @as(i32, c);
+    const pa = @abs(p - @as(i32, a));
+    const pb = @abs(p - @as(i32, b));
+    const pc = @abs(p - @as(i32, c));
+    if (pa <= pb and pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
+}
+
+pub fn unfilterScanlines(
+    pixels: []u8,
+    raw_scanlines: []const u8,
+    width: usize,
+    height: usize,
+) PngError!void {
+    const stride = width; // 1 byte per pixel for 8-bit indexed
+    const row_size = 1 + stride;
+    if (raw_scanlines.len != height * row_size) {
+        return error.InvalidScanlineLength;
+    }
+
+    for (0..height) |y| {
+        const row_start = y * row_size;
+        const filter_type = raw_scanlines[row_start];
+        const src_row = raw_scanlines[row_start + 1 .. row_start + row_size];
+        const dst_row = pixels[y * stride .. (y + 1) * stride];
+        const prev_row = if (y > 0) pixels[(y - 1) * stride .. y * stride] else null;
+
+        switch (filter_type) {
+            0 => { // None
+                @memcpy(dst_row, src_row);
+            },
+            1 => { // Sub
+                var a: u8 = 0;
+                for (0..stride) |x| {
+                    const val = src_row[x] +% a;
+                    dst_row[x] = val;
+                    a = val;
+                }
+            },
+            2 => { // Up
+                for (0..stride) |x| {
+                    const b: u8 = if (prev_row) |p| p[x] else 0;
+                    dst_row[x] = src_row[x] +% b;
+                }
+            },
+            3 => { // Average
+                var a: u8 = 0;
+                for (0..stride) |x| {
+                    const b: u8 = if (prev_row) |p| p[x] else 0;
+                    const avg: u8 = @intCast((@as(u16, a) + @as(u16, b)) / 2);
+                    const val = src_row[x] +% avg;
+                    dst_row[x] = val;
+                    a = val;
+                }
+            },
+            4 => { // Paeth
+                var a: u8 = 0;
+                for (0..stride) |x| {
+                    const b: u8 = if (prev_row) |p| p[x] else 0;
+                    const c: u8 = if (x > 0 and prev_row != null) prev_row.?[x - 1] else 0;
+                    const p = paethPredictor(a, b, c);
+                    const val = src_row[x] +% p;
+                    dst_row[x] = val;
+                    a = val;
+                }
+            },
+            else => return error.InvalidFilterType,
+        }
+    }
+}
+
+/// Decompresses PNG IDAT chunks and restores the uncompressed, unfiltered 2D indexed pixel array.
+pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) PngError!IndexedImage {
+    const header = try parseHeader(bytes);
+
+    var idat_list: std.ArrayList(u8) = .empty;
+    defer idat_list.deinit(allocator);
+
+    var offset: usize = MIN_PNG_HEADER_LEN;
+    var has_idat = false;
+
+    while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= bytes.len) {
+        const chunk_len = std.mem.readInt(u32, bytes[offset..][0..CHUNK_LEN_SIZE], .big);
+        const chunk_type = bytes[offset + CHUNK_LEN_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE];
+
+        const total_chunk_len = CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len + CHUNK_CRC_SIZE;
+        if (offset + total_chunk_len > bytes.len) {
+            return error.TruncatedHeader;
+        }
+
+        if (std.mem.eql(u8, chunk_type, IDAT_CHUNK_TYPE)) {
+            has_idat = true;
+            const idat_payload = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
+            try idat_list.appendSlice(allocator, idat_payload);
+        } else if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
+            break;
+        }
+
+        offset += total_chunk_len;
+    }
+
+    if (!has_idat or idat_list.items.len == 0) {
+        return error.MissingIdatChunk;
+    }
+
+    var in_reader: std.Io.Reader = .fixed(idat_list.items);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+
+    var decompress: std.compress.flate.Decompress = .init(&in_reader, .zlib, &.{});
+    _ = decompress.reader.streamRemaining(&aw.writer) catch return error.DecompressionFailed;
+
+    const raw_scanlines = aw.written();
+    const width: usize = header.width;
+    const height: usize = header.height;
+
+    const pixels = try allocator.alloc(u8, width * height);
+    errdefer allocator.free(pixels);
+
+    try unfilterScanlines(pixels, raw_scanlines, width, height);
+
+    return IndexedImage{
+        .width = header.width,
+        .height = header.height,
+        .pixels = pixels,
+        .allocator = allocator,
+    };
+}
 
 pub const PaletteResult = union(enum) {
     bpp4: [16]u16,
@@ -236,6 +388,7 @@ const test_palettes = if (@hasDecl(root, "test_palettes")) @import("test_palette
     pub const png_pal32: []const u8 = "";
     pub const png_pal16: []const u8 = "";
     pub const png_pal8: []const u8 = "";
+    pub const png_broom: []const u8 = "";
 };
 const root = @import("root");
 const png_rgb = @import("test_palettes").png_rgb;
@@ -243,6 +396,7 @@ const png_pal256 = @import("test_palettes").png_pal256;
 const png_pal32 = @import("test_palettes").png_pal32;
 const png_pal16 = @import("test_palettes").png_pal16;
 const png_pal8 = @import("test_palettes").png_pal8;
+const png_broom = @import("test_palettes").png_broom;
 
 // ====================================================================
 // 19 TDD Test Cases for Palette Extraction
@@ -481,4 +635,100 @@ test "TDD 19: rgbToGba conversion accuracy (standard vs color-adjust)" {
     try std.testing.expectEqual(Color.WHITE.toBgr555(), rgbToGba(255, 255, 255, true));
     // Rounded scaling check ((7 * 31 + 127) / 255 == 1)
     try std.testing.expectEqual(@as(u16, 1 | (1 << 5) | (1 << 10)), rgbToGba(7, 7, 7, true));
+}
+
+// ====================================================================
+// IDAT Decompression & Unfiltering Unit Tests
+// ====================================================================
+
+test "decompressIndexedPixels from real tsetseg flying broom asset" {
+    var img = try decompressIndexedPixels(std.testing.allocator, png_broom);
+    defer img.deinit();
+
+    // Verify dimensions & buffer length
+    try std.testing.expectEqual(@as(u32, 256), img.width);
+    try std.testing.expectEqual(@as(u32, 32), img.height);
+    try std.testing.expectEqual(@as(usize, 256 * 32), img.pixels.len);
+
+    // Verify background top-left pixel is transparent color (index 0)
+    try std.testing.expectEqual(@as(u8, 0), img.getPixel(0, 0));
+
+    // Sample character area in Frame 0 (center of 32x32 area)
+    var found_non_zero = false;
+    for (0..32) |y| {
+        for (0..32) |x| {
+            if (img.getPixel(@intCast(x), @intCast(y)) > 0) {
+                found_non_zero = true;
+                break;
+            }
+        }
+        if (found_non_zero) break;
+    }
+    try std.testing.expect(found_non_zero);
+}
+
+test "unfilterScanlines filter types coverage (None, Sub, Up, Average, Paeth)" {
+    // 4 pixels per row, 5 rows (each testing a different filter type 0..4)
+    const raw_test_scanlines = [_]u8{
+        // Row 0 (Type 0: None): 10, 20, 30, 40
+        0, 10, 20, 30, 40,
+        // Row 1 (Type 1: Sub): 5, 5, 5, 5 -> Recon: 5, 10, 15, 20
+        1, 5,  5,  5,  5,
+        // Row 2 (Type 2: Up): 1, 2, 3, 4 -> Recon: 6, 12, 18, 24 (Row 1 + delta)
+        2, 1,  2,  3,  4,
+        // Row 3 (Type 3: Average): 2, 2, 2, 2
+        3, 2,  2,  2,  2,
+        // Row 4 (Type 4: Paeth): 0, 0, 0, 0
+        4, 0,  0,  0,  0,
+    };
+
+    var pixels: [4 * 5]u8 = undefined;
+    try unfilterScanlines(&pixels, &raw_test_scanlines, 4, 5);
+
+    // Row 0
+    try std.testing.expectEqual(@as(u8, 10), pixels[0]);
+    try std.testing.expectEqual(@as(u8, 20), pixels[1]);
+    try std.testing.expectEqual(@as(u8, 30), pixels[2]);
+    try std.testing.expectEqual(@as(u8, 40), pixels[3]);
+
+    // Row 1 (Sub)
+    try std.testing.expectEqual(@as(u8, 5), pixels[4]);
+    try std.testing.expectEqual(@as(u8, 10), pixels[5]);
+    try std.testing.expectEqual(@as(u8, 15), pixels[6]);
+    try std.testing.expectEqual(@as(u8, 20), pixels[7]);
+
+    // Row 2 (Up)
+    try std.testing.expectEqual(@as(u8, 6), pixels[8]);
+    try std.testing.expectEqual(@as(u8, 12), pixels[9]);
+    try std.testing.expectEqual(@as(u8, 18), pixels[10]);
+    try std.testing.expectEqual(@as(u8, 24), pixels[11]);
+}
+
+test "decompressIndexedPixels error on missing or corrupted IDAT" {
+    // PNG with no IDAT
+    const no_idat = [_]u8{
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d, 'I',  'H',  'D',  'R',
+        0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20,
+        0x08, 0x03, 0x00, 0x00, 0x00, 0xca, 0x77, 0x56,
+        0xd6, 0x00, 0x00, 0x00, 0x00, 'I',  'E',  'N',
+        'D',  0xae, 0x42, 0x60, 0x82,
+    };
+    try std.testing.expectError(error.MissingIdatChunk, decompressIndexedPixels(std.testing.allocator, &no_idat));
+
+    // PNG with corrupted IDAT payload
+    const corrupted_idat = [_]u8{
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d, 'I',  'H',  'D',  'R',
+        0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20,
+        0x08, 0x03, 0x00, 0x00, 0x00, 0xca, 0x77, 0x56,
+        0xd6, 0x00, 0x00, 0x00, 0x04, 'I',  'D',  'A',
+        'T',
+        0xff, 0xff, 0xff, 0xff, // Invalid zlib header/stream
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        'I',  'E',  'N',  'D',
+        0xae, 0x42, 0x60, 0x82,
+    };
+    try std.testing.expectError(error.DecompressionFailed, decompressIndexedPixels(std.testing.allocator, &corrupted_idat));
 }
