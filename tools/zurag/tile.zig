@@ -182,8 +182,6 @@ pub fn sliceSpriteFrame(
 // Unit Tests for Tile Slicing & Packing (TDD Red Phase)
 // ====================================================================
 
-const test_assets = @import("test_palettes");
-
 test "packTile4bpp: nibble order and modulo re-indexing" {
     var sample: [TILE_HEIGHT][TILE_WIDTH]u8 = @splat(@splat(0));
     // Pixel 0 = 3 (lower nibble), Pixel 1 = 5 (upper nibble) -> byte 0 = (5 << 4) | 3 = 0x53
@@ -212,6 +210,7 @@ test "packTile8bpp: 64-byte linear packing" {
 }
 
 test "sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
+    const test_assets = @import("test_palettes");
     const frame0_rect = Rect{ .x = 0, .y = 0, .w = 32, .h = 32 };
     const expected_tiles_32x32 = (32 / TILE_WIDTH) * (32 / TILE_HEIGHT); // 16 tiles
 
@@ -233,6 +232,7 @@ test "sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
 }
 
 test "sliceSpriteFrame: reject invalid dimensions and out of bounds" {
+    const test_assets = @import("test_palettes");
     var img = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
     defer img.deinit();
 

@@ -73,9 +73,8 @@ pub fn parseMetadata(
 // Unit Tests for Metadata Dispatcher (TDD Red Phase)
 // ====================================================================
 
-const test_assets = @import("test_palettes");
-
 test "parseMetadata: auto-detection of Aseprite format" {
+    const test_assets = @import("test_palettes");
     var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
     defer meta.deinit();
 

@@ -13,9 +13,8 @@ pub fn parseAsepriteJson(allocator: std.mem.Allocator, json_content: []const u8)
 // Unit Tests for Aseprite Adapter (TDD Red Phase)
 // ====================================================================
 
-const test_assets = @import("test_palettes");
-
 test "parseAsepriteJson: real tsetseg broom asset JSON" {
+    const test_assets = @import("test_palettes");
     var meta = try parseAsepriteJson(std.testing.allocator, test_assets.json_broom);
     defer meta.deinit();
 
