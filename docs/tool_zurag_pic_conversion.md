@@ -122,16 +122,31 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
 
 ---
 
-## 6. Slicing Architecture & Separation of Concerns
+## 6. Slicing Architecture & Metadata Adapter Pattern
 
-`zurag` strictly decouples file parsing from image transformations using a modular pipeline:
+`zurag` strictly decouples file parsing from image transformations using an **Adapter Pattern** with a unified domain model (`SpriteMetadata`):
 
 ```
-┌─────────────────────────────────┐
-│     Aseprite JSON Parser        │  Extracts: []Rect, []durations, []AnimationTag
-└────────────────┬────────────────┘
-                 │ Slice Coordinates (Rect{ x, y, w, h })
-                 ▼
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│       Aseprite JSON File        │     │      Other Pixel Editors         │
+│     (Hash or Array Schema)      │     │  (e.g., Pixelorama / Tiled / ...)│
+└────────────────┬────────────────┘     └────────────────┬─────────────────┘
+                 │                                       │
+                 ▼                                       ▼
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│      Aseprite JSON Adapter      │     │     Future Software Adapters     │
+└────────────────┬────────────────┘     └────────────────┬─────────────────┘
+                 │                                       │
+                 └───────────────────┬───────────────────┘
+                                     │ Normalizes into unified model
+                                     ▼
+                      ===============================
+                      │       SpriteMetadata        │
+                      │  ([]Frame, []Tag, direction)│
+                      ===============================
+                                     │
+                                     │ Slice Coordinates (Rect{ x, y, w, h })
+                                     ▼
 ┌─────────────────────────────────┐     ┌──────────────────────────────────┐
 │       IndexedImage (2D)         │ ──> │ sliceSpriteFrame (Image Slicer)  │
 │  (Decompressed & Unfiltered)    │     └────────────────┬─────────────────┘
@@ -144,13 +159,15 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
 ```
 
 ### Pipeline Responsibilities:
-1. **Image Slicer (`sliceSpriteFrame` in `tile.zig`)**:
+1. **Metadata Adapter Pipeline (`json.zig`)**:
+   * **Unified Domain Model (`SpriteMetadata`)**: Decouples the engine and image slicer from specific pixel editor schemas. Contains normalized `[]Frame` (`Rect` + `duration_ms`) and `[]Tag` (`name`, `from`, `to`, `direction`).
+   * **Adapter Dispatcher (`parseMetadata`)**: Probes JSON content to auto-detect software origins (e.g. Aseprite `"meta"`/`"frames"` keys) and delegates to the appropriate format adapter.
+   * **Aseprite Adapter (`parseAsepriteJson`)**: Handles both Aseprite's Hash format (`"frames": { ... }`) and Array format (`"frames": [ ... ]`).
+2. **Image Slicer (`sliceSpriteFrame` in `tile.zig`)**:
    * Operates purely on raw `IndexedImage` pixels and a `Rect` without coupling to JSON formats.
    * Enforces GBA hardware alignment: width and height must be non-zero multiples of 8x8 tiles (`hal.oam.Tile.WIDTH_PIXELS` and `HEIGHT_PIXELS`).
    * Slices 2D rectangular areas into 1D row-major 8x8 tile sequences.
    * Packs pixels using `packTile4bpp` (32 bytes/tile, `% 16` modulo folding with lower/upper nibble packing) or `packTile8bpp` (64 bytes/tile).
    * Validates color bank consistency for 4-bpp frames, detecting and rejecting `error.MultiBankColorConflict`.
-2. **Metadata Parser (`json.zig`)**:
-   * Parses Aseprite frame schemas, slice bounds, duration arrays, and animation tag sequences.
 3. **Code Generator (`main.zig`)**:
    * Emits type-safe Zig source code adhering to the `zamgba-engine` data contract (`engine.SpriteSheet`).
