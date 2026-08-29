@@ -120,6 +120,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .target = target,
         }),
+        .use_llvm = true,
+        .use_lld = true,
     });
 
     // Add submodules to unit tests so we can test them on desktop
@@ -130,16 +132,61 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
-    const engine_test_module = b.createModule(.{
-        .root_source_file = b.path("src/engine/engine.zig"),
-        .target = target,
-        .optimize = optimize,
+    // Install unittest executable binary to zig-out/tests/unittest
+    const install_unittest_bin = b.addInstallArtifact(lib_unit_tests, .{
+        .dest_dir = .{ .override = .{ .custom = "tests" } },
+        .dest_sub_path = "unittest",
     });
-    engine_test_module.addImport("zamgba-hal", hal_module);
+    test_step.dependOn(&install_unittest_bin.step);
 
-    const engine_unit_tests = b.addTest(.{
-        .root_module = engine_test_module,
+    // ====================================================================
+    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
+    // ====================================================================
+    const zurag_exe = b.addExecutable(.{
+        .name = "zurag",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
-    const run_engine_unit_tests = b.addRunArtifact(engine_unit_tests);
-    test_step.dependOn(&run_engine_unit_tests.step);
+    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
+    b.installArtifact(zurag_exe);
+
+    const test_palettes_mod = b.createModule(.{
+        .root_source_file = b.path("assets/palettes/test_assets.zig"),
+    });
+
+    const zurag_unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    zurag_unit_tests.root_module.addImport("test_palettes", test_palettes_mod);
+    zurag_unit_tests.root_module.addImport("zamgba-engine", engine_module);
+    const run_zurag_unit_tests = b.addRunArtifact(zurag_unit_tests);
+    test_step.dependOn(&run_zurag_unit_tests.step);
+
+    // If kcov is available on the host system, generate HTML coverage report into zig-out/tests/
+    if (b.findProgram(&.{"kcov"}, &.{})) |kcov_path| {
+        const tests_dir = b.getInstallPath(.{ .custom = "tests" }, "");
+        const run_kcov = b.addSystemCommand(&.{
+            kcov_path,
+            "--clean",
+            "--include-pattern=src/,tools/",
+            tests_dir,
+        });
+        run_kcov.addFileArg(lib_unit_tests.getEmittedBin());
+
+        // Run kcov before installing the binary so kcov --clean does not wipe the installed binary
+        install_unittest_bin.step.dependOn(&run_kcov.step);
+
+        const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
+        coverage_step.dependOn(&run_kcov.step);
+        coverage_step.dependOn(&install_unittest_bin.step);
+    } else |_| {}
 }
