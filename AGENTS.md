@@ -72,3 +72,24 @@ To successfully use Zamgba in an external/client project:
 
 ### Demo Guidelines
 - When adding a new demo, place the newly added demo ROM to the corresponding subfolder inside `demo/` (e.g., `demo/hal/` for hardware-abstraction layer demos).
+
+---
+
+## Strict Test-Driven Development (TDD) Workflow
+
+Every new feature, tool, and algorithm implementation MUST strictly adhere to the following sequence:
+
+1. **Step 1: Interface & Test Definition (Red Phase)**
+   - First, define the public data structures, types, and stub functions (returning `error.Unimplemented`).
+   - Write comprehensive unit tests that cover all edge cases, validations, and expected behaviors.
+   - Run `zig build test` to prove that the new tests fail (Red state) without breaking existing tests.
+   - Present the design to the user for review and wait for explicit confirmation.
+
+2. **Step 2: Incremental Implementation (Green Phase)**
+   - Only after user confirmation, implement the concrete function logic one step at a time.
+   - Run `zig build test` to prove that the target unit tests transition from Red to Green.
+
+3. **Step 3: Refactoring & Review (Refactor Phase)**
+   - Clean up magic numbers (replace with named constants).
+   - Enforce the Principle of Least Visibility (keep internal helpers, constants, and parser details private).
+   - Commit and push only after tests pass.

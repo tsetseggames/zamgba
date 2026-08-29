@@ -102,13 +102,11 @@ pub const IndexedImage = struct {
 };
 
 fn paethPredictor(a: u8, b: u8, c: u8) u8 {
-    const p: i32 = @as(i32, a) + @as(i32, b) - @as(i32, c);
-    const pa = @abs(p - @as(i32, a));
-    const pb = @abs(p - @as(i32, b));
-    const pc = @abs(p - @as(i32, c));
-    if (pa <= pb and pa <= pc) return a;
-    if (pb <= pc) return b;
-    return c;
+    _ = a;
+    _ = b;
+    _ = c;
+    // Stub for TDD
+    return 0;
 }
 
 fn unfilterScanlines(
@@ -117,119 +115,20 @@ fn unfilterScanlines(
     width: usize,
     height: usize,
 ) PngError!void {
-    const stride = width; // 1 byte per pixel for 8-bit indexed
-    const row_size = 1 + stride;
-    if (raw_scanlines.len != height * row_size) {
-        return error.InvalidScanlineLength;
-    }
-
-    for (0..height) |y| {
-        const row_start = y * row_size;
-        const filter_type = raw_scanlines[row_start];
-        const src_row = raw_scanlines[row_start + 1 .. row_start + row_size];
-        const dst_row = pixels[y * stride .. (y + 1) * stride];
-        const prev_row = if (y > 0) pixels[(y - 1) * stride .. y * stride] else null;
-
-        switch (filter_type) {
-            0 => { // None
-                @memcpy(dst_row, src_row);
-            },
-            1 => { // Sub
-                var a: u8 = 0;
-                for (0..stride) |x| {
-                    const val = src_row[x] +% a;
-                    dst_row[x] = val;
-                    a = val;
-                }
-            },
-            2 => { // Up
-                for (0..stride) |x| {
-                    const b: u8 = if (prev_row) |p| p[x] else 0;
-                    dst_row[x] = src_row[x] +% b;
-                }
-            },
-            3 => { // Average
-                var a: u8 = 0;
-                for (0..stride) |x| {
-                    const b: u8 = if (prev_row) |p| p[x] else 0;
-                    const avg: u8 = @intCast((@as(u16, a) + @as(u16, b)) / 2);
-                    const val = src_row[x] +% avg;
-                    dst_row[x] = val;
-                    a = val;
-                }
-            },
-            4 => { // Paeth
-                var a: u8 = 0;
-                for (0..stride) |x| {
-                    const b: u8 = if (prev_row) |p| p[x] else 0;
-                    const c: u8 = if (x > 0 and prev_row != null) prev_row.?[x - 1] else 0;
-                    const p = paethPredictor(a, b, c);
-                    const val = src_row[x] +% p;
-                    dst_row[x] = val;
-                    a = val;
-                }
-            },
-            else => return error.InvalidFilterType,
-        }
-    }
+    _ = pixels;
+    _ = raw_scanlines;
+    _ = width;
+    _ = height;
+    // Stub for TDD (intentionally unimplemented)
+    return error.Unimplemented;
 }
 
 /// Decompresses PNG IDAT chunks and restores the uncompressed, unfiltered 2D indexed pixel array.
 pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) PngError!IndexedImage {
-    const header = try parseHeader(bytes);
-
-    var idat_list: std.ArrayList(u8) = .empty;
-    defer idat_list.deinit(allocator);
-
-    var offset: usize = MIN_PNG_HEADER_LEN;
-    var has_idat = false;
-
-    while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= bytes.len) {
-        const chunk_len = std.mem.readInt(u32, bytes[offset..][0..CHUNK_LEN_SIZE], .big);
-        const chunk_type = bytes[offset + CHUNK_LEN_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE];
-
-        const total_chunk_len = CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len + CHUNK_CRC_SIZE;
-        if (offset + total_chunk_len > bytes.len) {
-            return error.TruncatedHeader;
-        }
-
-        if (std.mem.eql(u8, chunk_type, IDAT_CHUNK_TYPE)) {
-            has_idat = true;
-            const idat_payload = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
-            try idat_list.appendSlice(allocator, idat_payload);
-        } else if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
-            break;
-        }
-
-        offset += total_chunk_len;
-    }
-
-    if (!has_idat or idat_list.items.len == 0) {
-        return error.MissingIdatChunk;
-    }
-
-    var in_reader: std.Io.Reader = .fixed(idat_list.items);
-    var aw: std.Io.Writer.Allocating = .init(allocator);
-    defer aw.deinit();
-
-    var decompress: std.compress.flate.Decompress = .init(&in_reader, .zlib, &.{});
-    _ = decompress.reader.streamRemaining(&aw.writer) catch return error.DecompressionFailed;
-
-    const raw_scanlines = aw.written();
-    const width: usize = header.width;
-    const height: usize = header.height;
-
-    const pixels = try allocator.alloc(u8, width * height);
-    errdefer allocator.free(pixels);
-
-    try unfilterScanlines(pixels, raw_scanlines, width, height);
-
-    return IndexedImage{
-        .width = header.width,
-        .height = header.height,
-        .pixels = pixels,
-        .allocator = allocator,
-    };
+    _ = allocator;
+    _ = bytes;
+    // Stub for TDD (intentionally unimplemented)
+    return error.Unimplemented;
 }
 
 pub const PaletteResult = union(enum) {
