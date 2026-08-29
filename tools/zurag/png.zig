@@ -141,6 +141,14 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
                     }
                     return PaletteResult{ .bpp4x16 = banks };
                 },
+                .bpp4 => {
+                    if (color_count > COLORS_PER_BANK) {
+                        return error.ColorCountExceedsLimit;
+                    }
+                    var pal: [COLORS_PER_BANK]u16 = @splat(GBA_COLOR_BLACK);
+                    @memcpy(pal[0..color_count], raw_colors[0..color_count]);
+                    return PaletteResult{ .bpp4 = pal };
+                },
                 else => {
                     return error.Unimplemented;
                 },
