@@ -20,6 +20,9 @@ pub const BYTES_PER_PALETTE_COLOR: usize = 3;
 pub const MAX_PALETTE_COLORS: usize = 256;
 pub const MAX_PLTE_DATA_LEN: usize = MAX_PALETTE_COLORS * BYTES_PER_PALETTE_COLOR;
 
+pub const PALETTE_BANKS_COUNT: usize = 16;
+pub const COLORS_PER_BANK: usize = 16;
+
 // Byte offsets for parsing the PNG header and IHDR chunk
 const IHDR_LEN_START: usize = PNG_SIGNATURE_LEN;
 const IHDR_LEN_END: usize = IHDR_LEN_START + CHUNK_LEN_SIZE;
@@ -125,6 +128,15 @@ pub fn extractPalette(bytes: []const u8, mode: BppMode) PngError!PaletteResult {
             switch (mode) {
                 .bpp8 => {
                     return PaletteResult{ .bpp8 = raw_colors };
+                },
+                .bpp4x16 => {
+                    var banks: [PALETTE_BANKS_COUNT][COLORS_PER_BANK]u16 = @splat(@splat(0x0000));
+                    for (0..PALETTE_BANKS_COUNT) |b| {
+                        for (0..COLORS_PER_BANK) |c| {
+                            banks[b][c] = raw_colors[b * COLORS_PER_BANK + c];
+                        }
+                    }
+                    return PaletteResult{ .bpp4x16 = banks };
                 },
                 else => {
                     return error.Unimplemented;
