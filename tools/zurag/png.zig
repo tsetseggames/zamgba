@@ -125,10 +125,60 @@ fn unfilterScanlines(
 
 /// Decompresses PNG IDAT chunks and restores the uncompressed, unfiltered 2D indexed pixel array.
 pub fn decompressIndexedPixels(allocator: std.mem.Allocator, bytes: []const u8) PngError!IndexedImage {
-    _ = allocator;
-    _ = bytes;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
+    const header = try parseHeader(bytes);
+
+    var idat_list: std.ArrayList(u8) = .empty;
+    defer idat_list.deinit(allocator);
+
+    var offset: usize = MIN_PNG_HEADER_LEN;
+    var has_idat = false;
+
+    while (offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + CHUNK_CRC_SIZE <= bytes.len) {
+        const chunk_len = std.mem.readInt(u32, bytes[offset..][0..CHUNK_LEN_SIZE], .big);
+        const chunk_type = bytes[offset + CHUNK_LEN_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE];
+
+        const total_chunk_len = CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len + CHUNK_CRC_SIZE;
+        if (offset + total_chunk_len > bytes.len) {
+            return error.TruncatedHeader;
+        }
+
+        if (std.mem.eql(u8, chunk_type, IDAT_CHUNK_TYPE)) {
+            has_idat = true;
+            const idat_payload = bytes[offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE .. offset + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + chunk_len];
+            try idat_list.appendSlice(allocator, idat_payload);
+        } else if (std.mem.eql(u8, chunk_type, IEND_CHUNK_TYPE)) {
+            break;
+        }
+
+        offset += total_chunk_len;
+    }
+
+    if (!has_idat or idat_list.items.len == 0) {
+        return error.MissingIdatChunk;
+    }
+
+    var in_reader: std.Io.Reader = .fixed(idat_list.items);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+
+    var decompress: std.compress.flate.Decompress = .init(&in_reader, .zlib, &.{});
+    _ = decompress.reader.streamRemaining(&aw.writer) catch return error.DecompressionFailed;
+
+    const raw_scanlines = aw.written();
+    const width: usize = header.width;
+    const height: usize = header.height;
+
+    const pixels = try allocator.alloc(u8, width * height);
+    errdefer allocator.free(pixels);
+
+    try unfilterScanlines(pixels, raw_scanlines, width, height);
+
+    return IndexedImage{
+        .width = header.width,
+        .height = header.height,
+        .pixels = pixels,
+        .allocator = allocator,
+    };
 }
 
 pub const PaletteResult = union(enum) {
