@@ -71,8 +71,8 @@ const Game = struct {
 
 export fn main() noreturn {
     hal.display.setMode0();
-    hal.display.setObject();
-    hal.display.setObject1D();
+    hal.display.enableSpriteLayer();
+    hal.display.setSpriteMapping(.linear_1d);
     hal.display.writeRegister();
 
     const spr_width: u16 = 16;

@@ -16,8 +16,8 @@ export fn main() noreturn {
     // We set Mode 0 (Tilemap mode) which is common for 2D games,
     // and enable objects (sprites) to render them.
     hal.display.setMode0();
-    hal.display.setObject();
-    hal.display.setObject1D();
+    hal.display.enableSpriteLayer();
+    hal.display.setSpriteMapping(.linear_1d);
     hal.display.writeRegister();
 
     // 2. Setup Palette (PALRAM)

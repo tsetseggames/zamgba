@@ -36,8 +36,8 @@ const Game = struct {
 export fn main() noreturn {
     // 1. Initialize Display
     hal.display.setMode0();
-    hal.display.setObject();
-    hal.display.setObject1D();
+    hal.display.enableSpriteLayer();
+    hal.display.setSpriteMapping(.linear_1d);
     hal.display.writeRegister();
 
     // 2. Instantiate our game state on the stack

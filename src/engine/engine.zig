@@ -15,8 +15,8 @@ pub const Engine = struct {
     pub fn init() Engine {
         if (builtin.target.os.tag == .freestanding) {
             hal.display.setMode0();
-            hal.display.setObject();
-            hal.display.setObject1D();
+            hal.display.enableSpriteLayer();
+            hal.display.setSpriteMapping(.linear_1d);
             hal.display.writeRegister();
         }
 
