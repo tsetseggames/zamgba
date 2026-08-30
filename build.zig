@@ -200,19 +200,30 @@ pub fn build(b: *std.Build) void {
     // If kcov is available on the host system, generate HTML coverage report into zig-out/tests/
     if (b.findProgram(&.{"kcov"}, &.{})) |kcov_path| {
         const tests_dir = b.getInstallPath(.{ .custom = "tests" }, "");
-        const run_kcov = b.addSystemCommand(&.{
+
+        // Step 1: Trace lib_unit_tests (src/ engine and physics tests)
+        const run_kcov_lib = b.addSystemCommand(&.{
             kcov_path,
             "--clean",
             "--include-pattern=src/,tools/",
             tests_dir,
         });
-        run_kcov.addFileArg(lib_unit_tests.getEmittedBin());
+        run_kcov_lib.addFileArg(lib_unit_tests.getEmittedBin());
+
+        // Step 2: Trace zurag_unit_tests (tools/zurag/ asset converter tests) and merge
+        const run_kcov_zurag = b.addSystemCommand(&.{
+            kcov_path,
+            "--include-pattern=src/,tools/",
+            tests_dir,
+        });
+        run_kcov_zurag.addFileArg(zurag_unit_tests.getEmittedBin());
+        run_kcov_zurag.step.dependOn(&run_kcov_lib.step);
 
         // Run kcov before installing the binary so kcov --clean does not wipe the installed binary
-        install_unittest_bin.step.dependOn(&run_kcov.step);
+        install_unittest_bin.step.dependOn(&run_kcov_zurag.step);
 
         const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
-        coverage_step.dependOn(&run_kcov.step);
+        coverage_step.dependOn(&run_kcov_zurag.step);
         coverage_step.dependOn(&install_unittest_bin.step);
     } else |_| {}
 }
