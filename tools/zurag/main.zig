@@ -2,6 +2,7 @@ const std = @import("std");
 const png = @import("png.zig");
 const tile = @import("tile.zig");
 pub const metadata = @import("metadata.zig");
+pub const codegen = @import("codegen.zig");
 
 pub const BppMode = enum {
     bpp4,
@@ -323,6 +324,7 @@ test {
     _ = png;
     _ = tile;
     _ = metadata;
+    _ = codegen;
     _ = @import("algo/paeth.zig");
     _ = @import("algo/unfilter.zig");
 }

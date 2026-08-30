@@ -90,6 +90,7 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
      - `TIL001`: 8x8 Tile packing and sprite frame slicing tests (`tools/zurag/tile.zig`)
      - `MET001`: Unified metadata dispatcher tests (`tools/zurag/metadata.zig`)
      - `ASE001`: Aseprite JSON metadata adapter tests (`tools/zurag/metadata/aseprite.zig`)
+     - `GEN001`: Code generator output tests (`tools/zurag/codegen.zig`)
      - `CLR001`: Color representation and conversion tests (`src/engine/color.zig`)
      - `SPR001`: Engine sprite representation and OAM encoding tests (`src/engine/sprite.zig`)
      - `MAT001`, `ABB001`, `MAP001`, `LAY001`, `OVL001`: Physics sub-engine tests
