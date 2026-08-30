@@ -99,9 +99,9 @@ GBA Game Pak ROMs can reach up to **32 MB** (1000x larger than OBJ VRAM), while 
 * Target isolation: compiles real hardware writes when `builtin.target.os.tag == .freestanding`, and routes to mock host buffers during unit testing (`zig build test`).
 
 ### Engine Layer Responsibilities (`src/engine/`)
-* **`VramAllocator`**: Flat bit-tree Buddy Allocator in `.bss` allocating hardware tile indices using `@clz` bitwise math with zero dynamic heap allocation.
+* **`VramAllocator`**: Flat bit-tree Buddy Allocator in `.bss` allocating hardware tile indices using `@clz` bitwise math with zero dynamic heap allocation. *(See full specification in [docs/vram_allocator.md](vram_allocator.md))*.
 * **`AnimatedSprite`**: Clean high-level API (`play("run")`, `update()`, `setFrame(i)`).
-* **`DmaQueue`**: Transparently collects pending frame transfers during the game logic tick and executes them via `hal.dma` when `eng.nextFrame()` reaches VBlank.
+* **`DmaQueue`**: Transparently collects pending frame transfers during the game logic tick and executes them via `hal.dma` when `eng.nextFrame()` reaches VBlank. *(See full specification in [docs/tile_dma_queue.md](tile_dma_queue.md))*.
 
 ---
 
