@@ -2,144 +2,33 @@ const std = @import("std");
 const metadata = @import("../metadata.zig");
 const tile = @import("../tile.zig");
 
-fn getIntField(comptime T: type, obj: std.json.ObjectMap, key: []const u8) ?T {
-    const val = obj.get(key) orelse return null;
-    return switch (val) {
-        .integer => |i| if (i >= 0 and i <= std.math.maxInt(T)) @intCast(i) else null,
-        else => null,
-    };
+/// Detects whether the parsed JSON root object belongs to Aseprite or LibreSprite via meta.app signature.
+pub fn detectCreatorAppAndVersion(root: std.json.ObjectMap) bool {
+    _ = root;
+    // Stub for TDD (intentionally unimplemented)
+    return false;
 }
 
-fn parseSingleFrame(obj: std.json.ObjectMap) metadata.MetadataError!metadata.Frame {
-    const frame_val = obj.get("frame") orelse return metadata.MetadataError.InvalidFrameData;
-    const frame_obj = switch (frame_val) {
-        .object => |o| o,
-        else => return metadata.MetadataError.InvalidFrameData,
-    };
-
-    const x = getIntField(u32, frame_obj, "x") orelse return metadata.MetadataError.InvalidFrameData;
-    const y = getIntField(u32, frame_obj, "y") orelse return metadata.MetadataError.InvalidFrameData;
-    const w = getIntField(u32, frame_obj, "w") orelse return metadata.MetadataError.InvalidFrameData;
-    const h = getIntField(u32, frame_obj, "h") orelse return metadata.MetadataError.InvalidFrameData;
-    const duration = getIntField(u16, obj, "duration") orelse 100;
-
-    return metadata.Frame{
-        .rect = tile.Rect{ .x = x, .y = y, .w = w, .h = h },
-        .duration_ms = duration,
-    };
-}
-
-fn parseSingleTag(allocator: std.mem.Allocator, obj: std.json.ObjectMap) metadata.MetadataError!metadata.Tag {
-    const name_val = obj.get("name") orelse return metadata.MetadataError.InvalidFrameData;
-    const name_str = switch (name_val) {
-        .string => |s| s,
-        else => return metadata.MetadataError.InvalidFrameData,
-    };
-
-    const from = getIntField(u16, obj, "from") orelse 0;
-    const to = getIntField(u16, obj, "to") orelse from;
-
-    var direction = metadata.AnimationDirection.forward;
-    if (obj.get("direction")) |dir_val| {
-        if (dir_val == .string) {
-            direction = metadata.AnimationDirection.fromString(dir_val.string);
-        }
-    }
-
-    const owned_name = allocator.dupe(u8, name_str) catch return metadata.MetadataError.OutOfMemory;
-
-    return metadata.Tag{
-        .name = owned_name,
-        .from = from,
-        .to = to,
-        .direction = direction,
-    };
-}
-
-/// Parses Aseprite-exported JSON metadata (Hash or Array format) into the unified SpriteMetadata model.
-pub fn parseAsepriteJson(allocator: std.mem.Allocator, json_content: []const u8) metadata.MetadataError!metadata.SpriteMetadata {
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_content, .{}) catch {
-        return metadata.MetadataError.InvalidJson;
-    };
-    defer parsed.deinit();
-
-    const root = switch (parsed.value) {
-        .object => |obj| obj,
-        else => return metadata.MetadataError.InvalidJson,
-    };
-
-    const frames_val = root.get("frames") orelse return metadata.MetadataError.MissingFrames;
-
-    var frames_list: std.ArrayList(metadata.Frame) = .empty;
-    defer frames_list.deinit(allocator);
-
-    switch (frames_val) {
-        .object => |obj| {
-            var it = obj.iterator();
-            while (it.next()) |entry| {
-                const frame_obj = switch (entry.value_ptr.*) {
-                    .object => |o| o,
-                    else => return metadata.MetadataError.InvalidFrameData,
-                };
-                const frame = try parseSingleFrame(frame_obj);
-                try frames_list.append(allocator, frame);
-            }
-        },
-        .array => |arr| {
-            for (arr.items) |item| {
-                const frame_obj = switch (item) {
-                    .object => |o| o,
-                    else => return metadata.MetadataError.InvalidFrameData,
-                };
-                const frame = try parseSingleFrame(frame_obj);
-                try frames_list.append(allocator, frame);
-            }
-        },
-        else => return metadata.MetadataError.MissingFrames,
-    }
-
-    if (frames_list.items.len == 0) {
-        return metadata.MetadataError.MissingFrames;
-    }
-
-    // Parse meta.frameTags
-    var tags_list: std.ArrayList(metadata.Tag) = .empty;
-    defer tags_list.deinit(allocator);
-
-    if (root.get("meta")) |meta_val| {
-        if (meta_val == .object) {
-            if (meta_val.object.get("frameTags")) |tags_val| {
-                if (tags_val == .array) {
-                    for (tags_val.array.items) |tag_item| {
-                        if (tag_item == .object) {
-                            const tag = try parseSingleTag(allocator, tag_item.object);
-                            try tags_list.append(allocator, tag);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    const owned_frames = try allocator.dupe(metadata.Frame, frames_list.items);
-    errdefer allocator.free(owned_frames);
-
-    const owned_tags = try allocator.dupe(metadata.Tag, tags_list.items);
-
-    return metadata.SpriteMetadata{
-        .frames = owned_frames,
-        .tags = owned_tags,
-        .allocator = allocator,
-    };
+/// Parses pre-parsed Aseprite JSON metadata into the unified SpriteMetadata model without reparsing.
+pub fn parseJsonMetadata(allocator: std.mem.Allocator, root: std.json.ObjectMap) metadata.MetadataError!metadata.SpriteMetadata {
+    _ = allocator;
+    _ = root;
+    // Stub for TDD (intentionally unimplemented)
+    return error.Unimplemented;
 }
 
 // ====================================================================
 // Unit Tests for Aseprite Adapter (TDD Red Phase)
 // ====================================================================
 
-test "ASE001: parseAsepriteJson: real tsetseg broom asset JSON" {
+test "ASE001: parseJsonMetadata: real tsetseg broom asset JSON" {
     const test_assets = @import("test_palettes");
-    var meta = try parseAsepriteJson(std.testing.allocator, test_assets.json_broom);
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, test_assets.json_broom, .{});
+    defer parsed.deinit();
+
+    try std.testing.expect(detectCreatorAppAndVersion(parsed.value.object));
+
+    var meta = try parseJsonMetadata(std.testing.allocator, parsed.value.object);
     defer meta.deinit();
 
     // 1. Frame count & durations
@@ -160,7 +49,7 @@ test "ASE001: parseAsepriteJson: real tsetseg broom asset JSON" {
     try std.testing.expectEqual(metadata.AnimationDirection.forward, meta.tags[0].direction);
 }
 
-test "ASE002: parseAsepriteJson: frames as array format support" {
+test "ASE002: parseJsonMetadata: frames as array format support" {
     const array_json =
         \\{
         \\  "frames": [
@@ -176,6 +65,8 @@ test "ASE002: parseAsepriteJson: frames as array format support" {
         \\    }
         \\  ],
         \\  "meta": {
+        \\    "app": "http://www.aseprite.org/",
+        \\    "version": "1.3.0",
         \\    "frameTags": [
         \\      { "name": "walk", "from": 0, "to": 1, "direction": "pingpong" }
         \\    ]
@@ -183,7 +74,10 @@ test "ASE002: parseAsepriteJson: frames as array format support" {
         \\}
     ;
 
-    var meta = try parseAsepriteJson(std.testing.allocator, array_json);
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, array_json, .{});
+    defer parsed.deinit();
+
+    var meta = try parseJsonMetadata(std.testing.allocator, parsed.value.object);
     defer meta.deinit();
 
     try std.testing.expectEqual(@as(usize, 2), meta.frames.len);
@@ -192,16 +86,46 @@ test "ASE002: parseAsepriteJson: frames as array format support" {
     try std.testing.expectEqual(metadata.AnimationDirection.pingpong, meta.tags[0].direction);
 }
 
-test "ASE003: parseAsepriteJson: error handling on malformed JSON" {
+test "ASE003: parseJsonMetadata: error handling on missing frames or invalid data" {
     // Missing frames
     const no_frames_json =
-        \\{ "meta": { "frameTags": [] } }
+        \\{ "meta": { "app": "http://www.aseprite.org/", "frameTags": [] } }
     ;
-    try std.testing.expectError(error.MissingFrames, parseAsepriteJson(std.testing.allocator, no_frames_json));
+    const parsed_no_frames = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, no_frames_json, .{});
+    defer parsed_no_frames.deinit();
+    try std.testing.expectError(error.MissingFrames, parseJsonMetadata(std.testing.allocator, parsed_no_frames.value.object));
 
-    // Malformed JSON syntax
-    const corrupted_json =
-        \\{ "frames": [ invalid json syntax
+    // Empty frames array
+    const empty_frames_json =
+        \\{ "frames": [], "meta": { "app": "http://www.aseprite.org/" } }
     ;
-    try std.testing.expectError(error.InvalidJson, parseAsepriteJson(std.testing.allocator, corrupted_json));
+    const parsed_empty = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, empty_frames_json, .{});
+    defer parsed_empty.deinit();
+    try std.testing.expectError(error.MissingFrames, parseJsonMetadata(std.testing.allocator, parsed_empty.value.object));
+}
+
+test "ASE004: detectCreatorAppAndVersion: Aseprite and LibreSprite app signatures" {
+    // Valid Aseprite app
+    const ase_json =
+        \\{ "meta": { "app": "http://www.aseprite.org/", "version": "1.3.0" } }
+    ;
+    const parsed_ase = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, ase_json, .{});
+    defer parsed_ase.deinit();
+    try std.testing.expect(detectCreatorAppAndVersion(parsed_ase.value.object));
+
+    // Valid LibreSprite app
+    const libre_json =
+        \\{ "meta": { "app": "https://libresprite.github.io/", "version": "1.0-dev" } }
+    ;
+    const parsed_libre = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, libre_json, .{});
+    defer parsed_libre.deinit();
+    try std.testing.expect(detectCreatorAppAndVersion(parsed_libre.value.object));
+
+    // Foreign app
+    const foreign_json =
+        \\{ "meta": { "app": "https://godotengine.org/", "version": "4.2" } }
+    ;
+    const parsed_foreign = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, foreign_json, .{});
+    defer parsed_foreign.deinit();
+    try std.testing.expect(!detectCreatorAppAndVersion(parsed_foreign.value.object));
 }

@@ -62,11 +62,26 @@ pub fn parseMetadata(
     json_content: []const u8,
     format: MetadataFormat,
 ) MetadataError!SpriteMetadata {
-    _ = allocator;
-    _ = json_content;
-    _ = format;
-    // Stub for TDD (intentionally unimplemented)
-    return error.Unimplemented;
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_content, .{}) catch {
+        return MetadataError.InvalidJson;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value != .object) {
+        return MetadataError.InvalidJson;
+    }
+
+    const root = parsed.value.object;
+
+    switch (format) {
+        .aseprite => return aseprite.parseJsonMetadata(allocator, root),
+        .auto => {
+            if (aseprite.detectCreatorAppAndVersion(root)) {
+                return aseprite.parseJsonMetadata(allocator, root);
+            }
+            return MetadataError.UnsupportedJsonFormat;
+        },
+    }
 }
 
 // ====================================================================
@@ -92,8 +107,12 @@ test "MET002: parseMetadata: explicit format dispatch for Aseprite" {
 }
 
 test "MET003: parseMetadata: reject unsupported JSON format in auto mode" {
+    // Has frames and meta, but app is not Aseprite
     const foreign_json =
-        \\{ "custom_game_engine_data": { "version": 1 } }
+        \\{
+        \\  "frames": [],
+        \\  "meta": { "app": "http://www.custom-foreign-tool.com/", "version": "1.0.0" }
+        \\}
     ;
     try std.testing.expectError(error.UnsupportedJsonFormat, parseMetadata(std.testing.allocator, foreign_json, .auto));
 }
@@ -103,6 +122,24 @@ test "MET004: parseMetadata: memory deinit and leak check" {
     var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
     // Deinit frees all frames, tags, and tag name strings
     meta.deinit();
+}
+
+test "MET005: parseMetadata: auto-detection supports LibreSprite app signature" {
+    const libresprite_json =
+        \\{
+        \\  "frames": {
+        \\    "frame0": { "frame": { "x": 0, "y": 0, "w": 16, "h": 16 }, "duration": 100 }
+        \\  },
+        \\  "meta": {
+        \\    "app": "https://libresprite.github.io/",
+        \\    "version": "1.0-dev",
+        \\    "frameTags": []
+        \\  }
+        \\}
+    ;
+    var meta = try parseMetadata(std.testing.allocator, libresprite_json, .auto);
+    defer meta.deinit();
+    try std.testing.expectEqual(@as(usize, 1), meta.frames.len);
 }
 
 test {
