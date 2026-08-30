@@ -1,5 +1,5 @@
 const std = @import("std");
-const metadata = @import("../metadata.zig");
+const types = @import("types.zig");
 const tile = @import("../tile.zig");
 
 /// Detects whether the parsed JSON root object belongs to Aseprite or LibreSprite via meta.app signature.
@@ -24,45 +24,45 @@ fn getIntField(comptime T: type, obj: std.json.ObjectMap, key: []const u8) ?T {
     };
 }
 
-fn parseSingleFrame(obj: std.json.ObjectMap) metadata.MetadataError!metadata.Frame {
-    const frame_val = obj.get("frame") orelse return metadata.MetadataError.InvalidFrameData;
+fn parseSingleFrame(obj: std.json.ObjectMap) types.MetadataError!types.Frame {
+    const frame_val = obj.get("frame") orelse return types.MetadataError.InvalidFrameData;
     const frame_obj = switch (frame_val) {
         .object => |o| o,
-        else => return metadata.MetadataError.InvalidFrameData,
+        else => return types.MetadataError.InvalidFrameData,
     };
 
-    const x = getIntField(u32, frame_obj, "x") orelse return metadata.MetadataError.InvalidFrameData;
-    const y = getIntField(u32, frame_obj, "y") orelse return metadata.MetadataError.InvalidFrameData;
-    const w = getIntField(u32, frame_obj, "w") orelse return metadata.MetadataError.InvalidFrameData;
-    const h = getIntField(u32, frame_obj, "h") orelse return metadata.MetadataError.InvalidFrameData;
+    const x = getIntField(u32, frame_obj, "x") orelse return types.MetadataError.InvalidFrameData;
+    const y = getIntField(u32, frame_obj, "y") orelse return types.MetadataError.InvalidFrameData;
+    const w = getIntField(u32, frame_obj, "w") orelse return types.MetadataError.InvalidFrameData;
+    const h = getIntField(u32, frame_obj, "h") orelse return types.MetadataError.InvalidFrameData;
     const duration = getIntField(u16, obj, "duration") orelse 100;
 
-    return metadata.Frame{
+    return types.Frame{
         .rect = tile.Rect{ .x = x, .y = y, .w = w, .h = h },
         .duration_ms = duration,
     };
 }
 
-fn parseSingleTag(allocator: std.mem.Allocator, obj: std.json.ObjectMap) metadata.MetadataError!metadata.Tag {
-    const name_val = obj.get("name") orelse return metadata.MetadataError.InvalidFrameData;
+fn parseSingleTag(allocator: std.mem.Allocator, obj: std.json.ObjectMap) types.MetadataError!types.Tag {
+    const name_val = obj.get("name") orelse return types.MetadataError.InvalidFrameData;
     const name_str = switch (name_val) {
         .string => |s| s,
-        else => return metadata.MetadataError.InvalidFrameData,
+        else => return types.MetadataError.InvalidFrameData,
     };
 
     const from = getIntField(u16, obj, "from") orelse 0;
     const to = getIntField(u16, obj, "to") orelse from;
 
-    var direction = metadata.AnimationDirection.forward;
+    var direction = types.AnimationDirection.forward;
     if (obj.get("direction")) |dir_val| {
         if (dir_val == .string) {
-            direction = metadata.AnimationDirection.fromString(dir_val.string);
+            direction = types.AnimationDirection.fromString(dir_val.string);
         }
     }
 
-    const owned_name = allocator.dupe(u8, name_str) catch return metadata.MetadataError.OutOfMemory;
+    const owned_name = allocator.dupe(u8, name_str) catch return types.MetadataError.OutOfMemory;
 
-    return metadata.Tag{
+    return types.Tag{
         .name = owned_name,
         .from = from,
         .to = to,
@@ -85,12 +85,12 @@ fn extractAppName(meta: ?std.json.ObjectMap) []const u8 {
     return "Aseprite";
 }
 
-fn parseFrameTags(allocator: std.mem.Allocator, meta: ?std.json.ObjectMap) metadata.MetadataError![]metadata.Tag {
+fn parseFrameTags(allocator: std.mem.Allocator, meta: ?std.json.ObjectMap) types.MetadataError![]types.Tag {
     const m = meta orelse return &.{};
     const tags_val = m.get("frameTags") orelse return &.{};
     if (tags_val != .array) return &.{};
 
-    var tags_list: std.ArrayList(metadata.Tag) = .empty;
+    var tags_list: std.ArrayList(types.Tag) = .empty;
     defer tags_list.deinit(allocator);
 
     for (tags_val.array.items) |tag_item| {
@@ -103,10 +103,10 @@ fn parseFrameTags(allocator: std.mem.Allocator, meta: ?std.json.ObjectMap) metad
 }
 
 /// Parses pre-parsed Aseprite JSON metadata into the unified SpriteMetadata model without reparsing.
-pub fn parseJsonMetadata(allocator: std.mem.Allocator, root: std.json.ObjectMap) metadata.MetadataError!metadata.SpriteMetadata {
-    const frames_val = root.get("frames") orelse return metadata.MetadataError.MissingFrames;
+pub fn parseJsonMetadata(allocator: std.mem.Allocator, root: std.json.ObjectMap) types.MetadataError!types.SpriteMetadata {
+    const frames_val = root.get("frames") orelse return types.MetadataError.MissingFrames;
 
-    var frames_list: std.ArrayList(metadata.Frame) = .empty;
+    var frames_list: std.ArrayList(types.Frame) = .empty;
     defer frames_list.deinit(allocator);
 
     switch (frames_val) {
@@ -115,7 +115,7 @@ pub fn parseJsonMetadata(allocator: std.mem.Allocator, root: std.json.ObjectMap)
             while (it.next()) |entry| {
                 const frame_obj = switch (entry.value_ptr.*) {
                     .object => |o| o,
-                    else => return metadata.MetadataError.InvalidFrameData,
+                    else => return types.MetadataError.InvalidFrameData,
                 };
                 const frame = try parseSingleFrame(frame_obj);
                 try frames_list.append(allocator, frame);
@@ -125,27 +125,27 @@ pub fn parseJsonMetadata(allocator: std.mem.Allocator, root: std.json.ObjectMap)
             for (arr.items) |item| {
                 const frame_obj = switch (item) {
                     .object => |o| o,
-                    else => return metadata.MetadataError.InvalidFrameData,
+                    else => return types.MetadataError.InvalidFrameData,
                 };
                 const frame = try parseSingleFrame(frame_obj);
                 try frames_list.append(allocator, frame);
             }
         },
-        else => return metadata.MetadataError.MissingFrames,
+        else => return types.MetadataError.MissingFrames,
     }
 
     if (frames_list.items.len == 0) {
-        return metadata.MetadataError.MissingFrames;
+        return types.MetadataError.MissingFrames;
     }
 
     const meta_obj = getMetaMap(root);
     const app_name = extractAppName(meta_obj);
     const owned_tags = try parseFrameTags(allocator, meta_obj);
 
-    const owned_frames = try allocator.dupe(metadata.Frame, frames_list.items);
+    const owned_frames = try allocator.dupe(types.Frame, frames_list.items);
     errdefer allocator.free(owned_frames);
 
-    return metadata.SpriteMetadata{
+    return types.SpriteMetadata{
         .app = app_name,
         .frames = owned_frames,
         .tags = owned_tags,
@@ -185,7 +185,7 @@ test "ASE001: parseJsonMetadata: real tsetseg broom asset JSON" {
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
     try std.testing.expectEqual(@as(u16, 0), meta.tags[0].from);
     try std.testing.expectEqual(@as(u16, 7), meta.tags[0].to);
-    try std.testing.expectEqual(metadata.AnimationDirection.forward, meta.tags[0].direction);
+    try std.testing.expectEqual(types.AnimationDirection.forward, meta.tags[0].direction);
 }
 
 test "ASE002: parseJsonMetadata: frames as array format support" {
@@ -223,7 +223,7 @@ test "ASE002: parseJsonMetadata: frames as array format support" {
     try std.testing.expectEqual(@as(usize, 2), meta.frames.len);
     try std.testing.expectEqual(@as(u32, 16), meta.frames[1].rect.x);
     try std.testing.expectEqual(@as(u16, 200), meta.frames[1].duration_ms);
-    try std.testing.expectEqual(metadata.AnimationDirection.pingpong, meta.tags[0].direction);
+    try std.testing.expectEqual(types.AnimationDirection.pingpong, meta.tags[0].direction);
 }
 
 test "ASE003: parseJsonMetadata: error handling on missing frames or invalid data" {
