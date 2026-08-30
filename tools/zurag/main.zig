@@ -117,6 +117,18 @@ fn printUsage(io: std.Io, program_name: []const u8) void {
     std.Io.File.writeStreamingAll(.stdout(), io, msg) catch {};
 }
 
+fn writeOutputFile(io: std.Io, out_path: []const u8, data: []const u8) !void {
+    if (std.fs.path.dirname(out_path)) |dir_path| {
+        if (dir_path.len > 0) {
+            std.Io.Dir.createDirPath(.cwd(), io, dir_path) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => return err,
+            };
+        }
+    }
+    try std.Io.Dir.writeFile(.cwd(), io, .{ .sub_path = out_path, .data = data });
+}
+
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
 
@@ -169,7 +181,7 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    const header = png.parseHeader(png_data) catch |err| {
+    _ = png.parseHeader(png_data) catch |err| {
         switch (err) {
             error.NotIndexedColor => {
                 std.debug.print("Error: '{s}' is not an indexed-color PNG.\nHint: in Aseprite, export using Sprite -> Color Mode -> Indexed.\n", .{input_png_path});
@@ -184,28 +196,12 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    std.debug.print("Validated indexed PNG: {s} ({}x{}, {}-bit indexed, bpp: {s}, palette_only: {})\n", .{
-        input_png_path,
-        header.width,
-        header.height,
-        header.bit_depth,
-        @tagName(parsed_args.bpp),
-        parsed_args.palette_only,
-    });
-
     if (!parsed_args.palette_only) {
         var img = png.decompressIndexedPixels(allocator, png_data) catch |err| {
             std.debug.print("Error: failed to decompress image data '{s}': {s}\n", .{ input_png_path, @errorName(err) });
             std.process.exit(1);
         };
         defer img.deinit();
-
-        if (img.aux_chunks.has_trns) {
-            std.debug.print("Warning: '{s}' contains a tRNS chunk which is ignored. GBA hardware enforces palette index 0 as transparent.\n", .{input_png_path});
-        }
-        if (img.aux_chunks.has_bkgd) {
-            std.debug.print("Warning: '{s}' contains a bKGD chunk which is ignored.\n", .{input_png_path});
-        }
 
         // Step 2: Open and validate input.json
         const json_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_json_path.?, allocator, .unlimited) catch |err| {
@@ -218,13 +214,6 @@ pub fn main(init: std.process.Init) !void {
             std.process.exit(1);
         };
         defer meta.deinit();
-
-        std.debug.print("Validated JSON metadata: {s} (creator: {s}, {} frames, {} animation tags)\n", .{
-            input_json_path.?,
-            meta.app,
-            meta.frames.len,
-            meta.tags.len,
-        });
 
         // Step 3: Generate Zig Source Code
         const zig_source = codegen.generateZigSource(allocator, png_data, json_data, .{
@@ -240,7 +229,7 @@ pub fn main(init: std.process.Init) !void {
 
         // Step 4: Output to file or stdout
         if (output_zig_path) |out_path| {
-            std.Io.Dir.writeFile(.cwd(), init.io, .{ .sub_path = out_path, .data = zig_source }) catch |err| {
+            writeOutputFile(init.io, out_path, zig_source) catch |err| {
                 std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
                 std.process.exit(1);
             };
@@ -261,7 +250,7 @@ pub fn main(init: std.process.Init) !void {
         defer allocator.free(zig_source);
 
         if (output_zig_path) |out_path| {
-            std.Io.Dir.writeFile(.cwd(), init.io, .{ .sub_path = out_path, .data = zig_source }) catch |err| {
+            writeOutputFile(init.io, out_path, zig_source) catch |err| {
                 std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
                 std.process.exit(1);
             };

@@ -108,6 +108,15 @@ pub const Sprite = struct {
     /// Palette bank (0-15)
     palette_bank: u8 = 0,
 
+    /// Color mode (4-bpp / 16-color vs 8-bpp / 256-color)
+    bpp: BppMode = .bpp4,
+
+    /// Horizontal flip (face left / right)
+    h_flip: bool = false,
+
+    /// Vertical flip
+    v_flip: bool = false,
+
     visible: bool = true,
 
     /// Initialize a Sprite with integer pixel coordinates and dimensions.
@@ -190,8 +199,12 @@ pub const Sprite = struct {
         const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
         const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
 
-        const attr0: u16 = y_hw | (shape_size.shape << 14);
-        const attr1: u16 = x_hw | (shape_size.size << 14);
+        const bpp_bit: u16 = if (self.bpp == .bpp8) (1 << 13) else 0;
+        const h_flip_bit: u16 = if (self.h_flip) (1 << 12) else 0;
+        const v_flip_bit: u16 = if (self.v_flip) (1 << 13) else 0;
+
+        const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
+        const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
         const attr2: u16 = (self.tile_index & 0x03FF) | (@as(u16, self.palette_bank & 0x0F) << 12);
 
         return .{
@@ -287,6 +300,27 @@ test "SPR004: toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x800A), attr.attr1);
     // attr2: tile_index=4, palette_bank=2 -> (2 << 12) | 4 = 0x2004
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
+}
+
+test "SPR010: toOamAttr horizontal and vertical flip encoding" {
+    var spr = Sprite.init(10, 20, 16, 16);
+    spr.h_flip = true;
+    spr.v_flip = true;
+
+    const attr = spr.toOamAttr();
+    // attr1: size=1 (1 << 14), h_flip=1 (1 << 12), v_flip=1 (1 << 13), X=10
+    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
+    try std.testing.expectEqual(expected_attr1, attr.attr1);
+}
+
+test "SPR011: toOamAttr 8-bpp color mode encoding" {
+    var spr = Sprite.init(10, 20, 32, 32);
+    spr.bpp = .bpp8;
+
+    const attr = spr.toOamAttr();
+    // attr0: shape=0 (0 << 14), bpp8=1 (1 << 13), Y=20
+    const expected_attr0: u16 = 20 | (1 << 13);
+    try std.testing.expectEqual(expected_attr0, attr.attr0);
 }
 
 test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" {

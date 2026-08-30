@@ -111,6 +111,45 @@ pub fn build(b: *std.Build) void {
 
     eighth.root_module.addImport(LibName, m);
 
+    // ====================================================================
+    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
+    // ====================================================================
+    const zurag_exe = b.addExecutable(.{
+        .name = "zurag",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    zurag_exe.root_module.addImport("zamgba-hal", hal_module);
+    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
+    b.installArtifact(zurag_exe);
+
+    // Build step: Automatically convert tsetseg flying broom asset to Zig
+    const convert_broom_sprite = b.addRunArtifact(zurag_exe);
+    convert_broom_sprite.addArg("--png");
+    convert_broom_sprite.addFileArg(b.path("assets/tsetseg-ride-on-broom-64x64-0001.png"));
+    convert_broom_sprite.addArg("--json");
+    convert_broom_sprite.addFileArg(b.path("assets/tsetseg-ride-on-broom-64x64-0001.json"));
+    convert_broom_sprite.addArg("--output");
+    const broom_sprite_zig = convert_broom_sprite.addOutputFileArg("tsetseg_broom.zig");
+
+    const broom_sprite_mod = b.createModule(.{
+        .root_source_file = broom_sprite_zig,
+    });
+    broom_sprite_mod.addImport("zamgba-engine", engine_module);
+    broom_sprite_mod.addImport("zamgba-hal", hal_module);
+
+    var ninth = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "flappy_tsetseg",
+        .root_source_file = b.path("demo/engine/flappy_tsetseg.zig"),
+    });
+
+    ninth.root_module.addImport(LibName, m);
+    ninth.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
@@ -138,21 +177,6 @@ pub fn build(b: *std.Build) void {
         .dest_sub_path = "unittest",
     });
     test_step.dependOn(&install_unittest_bin.step);
-
-    // ====================================================================
-    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
-    // ====================================================================
-    const zurag_exe = b.addExecutable(.{
-        .name = "zurag",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/zurag/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    zurag_exe.root_module.addImport("zamgba-hal", hal_module);
-    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
-    b.installArtifact(zurag_exe);
 
     const test_palettes_mod = b.createModule(.{
         .root_source_file = b.path("assets/test_assets.zig"),
