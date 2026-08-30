@@ -15,7 +15,7 @@ const Game = struct {
     input: engine.input.InputState,
     current_color: engine.Color,
 
-    pub fn tick(self: *@This(), eng: *engine.Engine) void {
+    pub fn tick(self: *@This()) void {
         self.input.update();
 
         const speed: i32 = 2;
@@ -65,16 +65,11 @@ const Game = struct {
             }
         }
 
-        eng.drawSprite(&self.spr);
+        engine.drawSprite(&self.spr);
     }
 };
 
 export fn main() noreturn {
-    hal.display.setMode0();
-    hal.display.enableSpriteLayer();
-    hal.display.setSpriteMapping(.linear_1d);
-    hal.display.writeRegister();
-
     const spr_width: u16 = 16;
     const spr_height: u16 = 16;
     const start_x: u32 = @intCast((hal.Screen.WIDTH_PIXELS - @as(i32, @intCast(spr_width))) / 2);
@@ -90,6 +85,5 @@ export fn main() noreturn {
 
     game.spr.fillSolidColor(game.current_color) catch {};
 
-    var eng = engine.Engine.init();
-    eng.run(&game);
+    engine.run(&game);
 }

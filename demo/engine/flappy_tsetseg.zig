@@ -121,7 +121,7 @@ const Game = struct {
         self.enemies[1].velocity_y = ENEMY_2_SPEED_Y;
     }
 
-    pub fn tick(self: *@This(), eng: *engine.Engine) void {
+    pub fn tick(self: *@This()) void {
         self.input.update();
 
         // 1. Process player directional input & horizontal flipping
@@ -168,14 +168,13 @@ const Game = struct {
         }
 
         // 6. Draw active sprites
-        eng.drawSprite(&self.player);
-        eng.drawSprite(&self.enemies[0]);
-        eng.drawSprite(&self.enemies[1]);
+        engine.drawSprite(&self.player);
+        engine.drawSprite(&self.enemies[0]);
+        engine.drawSprite(&self.enemies[1]);
     }
 };
 
 export fn main() noreturn {
     var game = Game.init();
-    var eng = engine.Engine.init();
-    eng.run(&game);
+    engine.run(&game);
 }

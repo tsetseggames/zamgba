@@ -8,93 +8,93 @@ pub const AnimationTag = @import("sprite.zig").AnimationTag;
 pub const SpriteSheet = @import("sprite.zig").SpriteSheet;
 pub const Color = @import("color.zig").Color;
 
-pub const Engine = struct {
-    shadow_oam: [128]hal.oam.ObjAttr,
-    sprite_count: usize,
+pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
+pub var sprite_count: usize = 0;
+pub var is_initialized: bool = false;
 
-    pub fn init() Engine {
-        if (builtin.target.os.tag == .freestanding) {
-            hal.display.setMode0();
-            hal.display.enableSpriteLayer();
-            hal.display.setSpriteMapping(.linear_1d);
-            hal.display.writeRegister();
-        }
+/// Initializes the global engine state and hardware display registers.
+pub fn init() void {
+    if (builtin.target.os.tag == .freestanding) {
+        hal.display.setMode0();
+        hal.display.enableSpriteLayer();
+        hal.display.setSpriteMapping(.linear_1d);
+        hal.display.writeRegister();
+    }
 
-        var eng = Engine{
-            .shadow_oam = undefined,
-            .sprite_count = 0,
+    for (&shadow_oam) |*obj| {
+        obj.* = .{
+            .attr0 = 160, // Pushed offscreen
+            .attr1 = 0,
+            .attr2 = 0,
+            .fill = 0,
         };
-        for (&eng.shadow_oam) |*obj| {
-            obj.* = .{
-                .attr0 = 160, // Pushed offscreen
-                .attr1 = 0,
-                .attr2 = 0,
-                .fill = 0,
-            };
+    }
+    sprite_count = 0;
+    is_initialized = true;
+}
+
+/// Completes the frame lifecycle:
+/// 1. Waits for VBlank.
+/// 2. Flushes staged shadow OAM to GBA hardware OAM.
+/// 3. Resets dynamic frame sprite counter.
+pub fn nextFrame() void {
+    // Wait for VBlank
+    hal.waitForVBlank();
+
+    // Flush shadow memory to hardware
+    const hw_oam = @as([*]volatile hal.oam.ObjAttr, @ptrCast(@alignCast(hal.MemorySections.OAM)));
+    for (shadow_oam, 0..) |obj, i| {
+        hw_oam[i] = obj;
+    }
+
+    // Reset the sprite count so the next frame draws from slot 0
+    sprite_count = 0;
+}
+
+/// Registers a high-level sprite to be rendered in the current frame.
+/// Dynamically maps the high-level sprite into the next available OAM slot.
+pub fn drawSprite(spr: *const Sprite) void {
+    if (sprite_count >= 128) return; // GBA hardware limit
+    shadow_oam[sprite_count] = spr.toOamAttr();
+    sprite_count += 1;
+}
+
+/// Starts the game loop using the global engine singleton.
+/// Supports either:
+/// 1. A static namespace/type with a public `tick() void` function (e.g. `@This()`).
+/// 2. An instantiated struct pointer with a public `tick(self) void` method (e.g. `&game`).
+pub fn run(context: anytype) noreturn {
+    if (!is_initialized) {
+        init();
+    }
+    const T = @TypeOf(context);
+    if (T == type) {
+        // Static namespace/file context
+        const has_tick = @hasDecl(context, "tick");
+        if (!has_tick) {
+            @compileError("Context type must define a public 'tick() void' function.");
         }
-        return eng;
-    }
-
-    /// Should be called at the end of the game loop to complete the frame.
-    /// 1. Waits for the display to finish drawing the current frame (VBlank).
-    /// 2. Commits the staged frame graphics (OAM shadow) to GBA hardware.
-    /// 3. Resets the frame-level state (like sprite slot allocators) so the next frame starts fresh.
-    pub fn nextFrame(self: *Engine) void {
-        // Wait for VBlank
-        hal.waitForVBlank();
-
-        // Flush shadow memory to hardware
-        const hw_oam = @as([*]volatile hal.oam.ObjAttr, @ptrCast(@alignCast(hal.MemorySections.OAM)));
-        for (self.shadow_oam, 0..) |obj, i| {
-            hw_oam[i] = obj;
+        while (true) {
+            context.tick();
+            nextFrame();
         }
-
-        // Reset the sprite count so the next frame draws from slot 0
-        self.sprite_count = 0;
-    }
-
-    /// Registers a high-level sprite to be rendered in the current frame.
-    /// This dynamically maps the high-level sprite into the next available OAM slot.
-    pub fn drawSprite(self: *Engine, spr: *const Sprite) void {
-        if (self.sprite_count >= 128) return; // GBA hardware limit
-        self.shadow_oam[self.sprite_count] = spr.toOamAttr();
-        self.sprite_count += 1;
-    }
-
-    /// Starts the game loop. Automatically detects if you are passing:
-    /// 1. A static namespace/type (e.g., `@This()` representing a Zig file-struct).
-    /// 2. An instantiated struct pointer (e.g., `&game` containing state fields).
-    /// Enforces at compile-time that a public `tick` function/method is defined.
-    pub fn run(self: *Engine, context: anytype) noreturn {
-        const T = @TypeOf(context);
-        if (T == type) {
-            // Static namespace/file context
-            const has_tick = @hasDecl(context, "tick");
-            if (!has_tick) {
-                @compileError("Context type must define a public 'tick(eng: *Engine) void' function.");
-            }
-            while (true) {
-                context.tick(self);
-                self.nextFrame();
-            }
-        } else {
-            // Instantiated object context
-            const PtrInfo = @typeInfo(T);
-            if (PtrInfo != .pointer) {
-                @compileError("Engine.run must be passed a pointer for struct instances (e.g., &game).");
-            }
-            const ChildType = PtrInfo.pointer.child;
-            const has_tick = @hasDecl(ChildType, "tick");
-            if (!has_tick) {
-                @compileError("Instance type must define a public 'tick(eng: *Engine) void' method.");
-            }
-            while (true) {
-                context.tick(self);
-                self.nextFrame();
-            }
+    } else {
+        // Instantiated object context
+        const PtrInfo = @typeInfo(T);
+        if (PtrInfo != .pointer) {
+            @compileError("engine.run must be passed a pointer for struct instances (e.g., &game).");
+        }
+        const ChildType = PtrInfo.pointer.child;
+        const has_tick = @hasDecl(ChildType, "tick");
+        if (!has_tick) {
+            @compileError("Instance type must define a public 'tick() void' method.");
+        }
+        while (true) {
+            context.tick();
+            nextFrame();
         }
     }
-};
+}
 
 pub const gfx2d = @import("gfx2d/gfx2d.zig");
 pub const input = @import("input.zig");
@@ -102,4 +102,24 @@ pub const physics = @import("physics/physics.zig");
 
 test {
     _ = physics;
+    _ = @import("sprite.zig");
+    _ = @import("color.zig");
+}
+
+test "ENG001: Engine singleton init and drawSprite staging" {
+    const std = @import("std");
+    init();
+    try std.testing.expect(is_initialized);
+    try std.testing.expectEqual(@as(usize, 0), sprite_count);
+
+    // Verify all 128 shadow OAM entries were pushed offscreen (attr0 = 160)
+    for (shadow_oam) |obj| {
+        try std.testing.expectEqual(@as(u16, 160), obj.attr0);
+    }
+
+    const test_spr = Sprite.init(10, 20, 8, 8);
+    drawSprite(&test_spr);
+    try std.testing.expectEqual(@as(usize, 1), sprite_count);
+    try std.testing.expectEqual(@as(u16, 20), shadow_oam[0].attr0 & 0x00FF);
+    try std.testing.expectEqual(@as(u16, 10), shadow_oam[0].attr1 & 0x01FF);
 }

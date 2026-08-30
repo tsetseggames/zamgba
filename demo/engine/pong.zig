@@ -80,7 +80,7 @@ const Game = struct {
         self.ball.velocity_y = BALL_SPEED_Y;
     }
 
-    pub fn tick(self: *@This(), eng: *engine.Engine) void {
+    pub fn tick(self: *@This()) void {
         self.input.update();
 
         // 1. Player paddle control (D-Pad Up / Down)
@@ -143,14 +143,13 @@ const Game = struct {
         }
 
         // 7. Commit sprites to engine renderer
-        eng.drawSprite(&self.player);
-        eng.drawSprite(&self.ai);
-        eng.drawSprite(&self.ball);
+        engine.drawSprite(&self.player);
+        engine.drawSprite(&self.ai);
+        engine.drawSprite(&self.ball);
     }
 };
 
 export fn main() noreturn {
     var game = Game.init();
-    var eng = engine.Engine.init();
-    eng.run(&game);
+    engine.run(&game);
 }

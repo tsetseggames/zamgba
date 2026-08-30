@@ -78,6 +78,7 @@ test "DMA006: fill32 fills destination buffer with constant word" {
 }
 
 test {
+    _ = @import("engine/engine.zig");
     _ = @import("engine/physics/math.zig");
     _ = @import("engine/physics/aabb.zig");
     _ = @import("engine/physics/map.zig");
