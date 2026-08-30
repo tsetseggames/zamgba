@@ -2,6 +2,8 @@ const std = @import("std");
 
 test {
     _ = @import("engine/vram_allocator.zig");
+    _ = @import("engine/dma_queue.zig");
+    _ = @import("engine/animated_sprite.zig");
     _ = @import("engine/engine.zig");
     _ = @import("engine/physics/math.zig");
     _ = @import("engine/physics/aabb.zig");
