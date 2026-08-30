@@ -150,7 +150,6 @@ pub fn main(init: std.process.Init) !void {
     const input_json_path = parsed_args.json_path;
     const output_zig_path = parsed_args.output_path;
 
-    _ = input_json_path;
     _ = output_zig_path;
 
     // Step 1: Open and validate input.png
@@ -196,6 +195,25 @@ pub fn main(init: std.process.Init) !void {
         if (img.aux_chunks.has_bkgd) {
             std.debug.print("Warning: '{s}' contains a bKGD chunk which is ignored.\n", .{input_png_path});
         }
+
+        // Step 2: Open and validate input.json
+        const json_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_json_path.?, allocator, .unlimited) catch |err| {
+            std.debug.print("Error: unable to read input JSON '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
+            std.process.exit(1);
+        };
+
+        var meta = metadata.parseMetadata(allocator, json_data, .auto) catch |err| {
+            std.debug.print("Error: failed to parse JSON metadata '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
+            std.process.exit(1);
+        };
+        defer meta.deinit();
+
+        std.debug.print("Validated JSON metadata: {s} (creator: {s}, {} frames, {} animation tags)\n", .{
+            input_json_path.?,
+            meta.app,
+            meta.frames.len,
+            meta.tags.len,
+        });
     }
 }
 

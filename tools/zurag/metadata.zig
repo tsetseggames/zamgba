@@ -28,6 +28,7 @@ pub const Tag = struct {
 
 /// Unified sprite metadata domain model (decoupled from specific export software)
 pub const SpriteMetadata = struct {
+    app: []const u8, // Creator application identifier (e.g. "Aseprite", "LibreSprite")
     frames: []Frame,
     tags: []Tag,
     allocator: std.mem.Allocator,
@@ -93,6 +94,7 @@ test "MET001: parseMetadata: auto-detection of Aseprite format" {
     var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
     defer meta.deinit();
 
+    try std.testing.expectEqualStrings("Aseprite", meta.app);
     try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
 }
@@ -102,6 +104,7 @@ test "MET002: parseMetadata: explicit format dispatch for Aseprite" {
     var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .aseprite);
     defer meta.deinit();
 
+    try std.testing.expectEqualStrings("Aseprite", meta.app);
     try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
 }
@@ -139,6 +142,7 @@ test "MET005: parseMetadata: auto-detection supports LibreSprite app signature" 
     ;
     var meta = try parseMetadata(std.testing.allocator, libresprite_json, .auto);
     defer meta.deinit();
+    try std.testing.expectEqualStrings("LibreSprite", meta.app);
     try std.testing.expectEqual(@as(usize, 1), meta.frames.len);
 }
 

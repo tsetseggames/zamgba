@@ -4,9 +4,16 @@ const tile = @import("../tile.zig");
 
 /// Detects whether the parsed JSON root object belongs to Aseprite or LibreSprite via meta.app signature.
 pub fn detectCreatorAppAndVersion(root: std.json.ObjectMap) bool {
-    _ = root;
-    // Stub for TDD (intentionally unimplemented)
-    return false;
+    const meta_val = root.get("meta") orelse return false;
+    if (meta_val != .object) return false;
+
+    const meta_obj = meta_val.object;
+    const app_val = meta_obj.get("app") orelse return false;
+    if (app_val != .string) return false;
+
+    const app_str = app_val.string;
+    return (std.mem.indexOf(u8, app_str, "aseprite.org") != null or
+        std.mem.indexOf(u8, app_str, "libresprite") != null);
 }
 
 /// Parses pre-parsed Aseprite JSON metadata into the unified SpriteMetadata model without reparsing.
@@ -31,7 +38,10 @@ test "ASE001: parseJsonMetadata: real tsetseg broom asset JSON" {
     var meta = try parseJsonMetadata(std.testing.allocator, parsed.value.object);
     defer meta.deinit();
 
-    // 1. Frame count & durations
+    // 1. App name
+    try std.testing.expectEqualStrings("Aseprite", meta.app);
+
+    // 2. Frame count & durations
     try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
     for (meta.frames, 0..) |frame, i| {
         try std.testing.expectEqual(@as(u32, @intCast(i * 32)), frame.rect.x);
@@ -41,7 +51,7 @@ test "ASE001: parseJsonMetadata: real tsetseg broom asset JSON" {
         try std.testing.expectEqual(@as(u16, 100), frame.duration_ms);
     }
 
-    // 2. Animation tags
+    // 3. Animation tags
     try std.testing.expectEqual(@as(usize, 1), meta.tags.len);
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
     try std.testing.expectEqual(@as(u16, 0), meta.tags[0].from);
@@ -80,6 +90,7 @@ test "ASE002: parseJsonMetadata: frames as array format support" {
     var meta = try parseJsonMetadata(std.testing.allocator, parsed.value.object);
     defer meta.deinit();
 
+    try std.testing.expectEqualStrings("Aseprite", meta.app);
     try std.testing.expectEqual(@as(usize, 2), meta.frames.len);
     try std.testing.expectEqual(@as(u32, 16), meta.frames[1].rect.x);
     try std.testing.expectEqual(@as(u16, 200), meta.frames[1].duration_ms);
