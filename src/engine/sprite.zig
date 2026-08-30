@@ -12,6 +12,36 @@ pub const SpriteError = error{
     InvalidDimensions,
 };
 
+pub const BppMode = enum(u1) {
+    bpp4 = 0,
+    bpp8 = 1,
+};
+
+pub const AnimationDirection = enum(u2) {
+    forward = 0,
+    reverse = 1,
+    pingpong = 2,
+};
+
+pub const AnimationTag = struct {
+    name: []const u8,
+    from_frame: u16,
+    to_frame: u16,
+    direction: AnimationDirection = .forward,
+};
+
+pub const SpriteSheet = struct {
+    bpp: BppMode,
+    width: u16,
+    height: u16,
+    tile_count_per_frame: u16,
+    frame_count: u16,
+    palette: ?[]const u16 = null,
+    tiles: []const u8,
+    durations_ms: []const u16,
+    tags: []const AnimationTag,
+};
+
 pub const ShapeSize = struct {
     shape: u16,
     size: u16,
@@ -77,6 +107,15 @@ pub const Sprite = struct {
 
     /// Palette bank (0-15)
     palette_bank: u8 = 0,
+
+    /// Color mode (4-bpp / 16-color vs 8-bpp / 256-color)
+    bpp: BppMode = .bpp4,
+
+    /// Horizontal flip (face left / right)
+    h_flip: bool = false,
+
+    /// Vertical flip
+    v_flip: bool = false,
 
     visible: bool = true,
 
@@ -160,8 +199,12 @@ pub const Sprite = struct {
         const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
         const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
 
-        const attr0: u16 = y_hw | (shape_size.shape << 14);
-        const attr1: u16 = x_hw | (shape_size.size << 14);
+        const bpp_bit: u16 = if (self.bpp == .bpp8) (1 << 13) else 0;
+        const h_flip_bit: u16 = if (self.h_flip) (1 << 12) else 0;
+        const v_flip_bit: u16 = if (self.v_flip) (1 << 13) else 0;
+
+        const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
+        const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
         const attr2: u16 = (self.tile_index & 0x03FF) | (@as(u16, self.palette_bank & 0x0F) << 12);
 
         return .{
@@ -211,7 +254,7 @@ pub const Sprite = struct {
     }
 };
 
-test "initChecked validates dimensions" {
+test "SPR001: initChecked validates dimensions" {
     const spr = try Sprite.initChecked(10, 20, 8, 8);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.width);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.height);
@@ -219,7 +262,7 @@ test "initChecked validates dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.initChecked(10, 20, 12, 12));
 }
 
-test "getShapeAndSize valid dimensions" {
+test "SPR002: getShapeAndSize valid dimensions" {
     // Square
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 }, try getShapeAndSize(8, 8));
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 }, try getShapeAndSize(16, 16));
@@ -239,13 +282,13 @@ test "getShapeAndSize valid dimensions" {
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.VERTICAL, .size = hal.oam.Size.SIZE_3 }, try getShapeAndSize(32, 64));
 }
 
-test "getShapeAndSize invalid dimensions" {
+test "SPR003: getShapeAndSize invalid dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(10, 10));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(8, 80));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(128, 128));
 }
 
-test "toOamAttr encoding" {
+test "SPR004: toOamAttr encoding" {
     var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
     spr.tile_index = 4;
     spr.palette_bank = 2;
@@ -259,7 +302,28 @@ test "toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
 }
 
-test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
+test "SPR010: toOamAttr horizontal and vertical flip encoding" {
+    var spr = Sprite.init(10, 20, 16, 16);
+    spr.h_flip = true;
+    spr.v_flip = true;
+
+    const attr = spr.toOamAttr();
+    // attr1: size=1 (1 << 14), h_flip=1 (1 << 12), v_flip=1 (1 << 13), X=10
+    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
+    try std.testing.expectEqual(expected_attr1, attr.attr1);
+}
+
+test "SPR011: toOamAttr 8-bpp color mode encoding" {
+    var spr = Sprite.init(10, 20, 32, 32);
+    spr.bpp = .bpp8;
+
+    const attr = spr.toOamAttr();
+    // attr0: shape=0 (0 << 14), bpp8=1 (1 << 13), Y=20
+    const expected_attr0: u16 = 20 | (1 << 13);
+    try std.testing.expectEqual(expected_attr0, attr.attr0);
+}
+
+test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" {
     // 1. u16 (e.g., hal.Color)
     const raw_color: u16 = hal.Color.RED;
     try std.testing.expectEqual(hal.Color.RED, colorToBgr555(raw_color));
@@ -279,7 +343,7 @@ test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
     try std.testing.expectEqual(@as(u16, 0x1234), colorToBgr555(custom));
 }
 
-test "fillSolidColorToBuffers mock buffer" {
+test "SPR006: fillSolidColorToBuffers mock buffer" {
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
     var mock_palram: [256]u16 = [_]u16{0} ** 256;
 
@@ -305,7 +369,7 @@ fn mockWallAtTile3_0(tx: u16, ty: u16) bool {
     return tx == 3 and ty == 0;
 }
 
-test "Sprite moveAndCollide stops against map obstacles" {
+test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     const map = CollisionMap.init(.size_256x256, mockWallAtTile3_0, .solid);
 
     // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
@@ -334,7 +398,7 @@ test "Sprite moveAndCollide stops against map obstacles" {
     try std.testing.expectEqual(@as(u32, 8), spr.aabb.x.toInt());
 }
 
-test "Sprite collision via AABB" {
+test "SPR008: Sprite collision via AABB" {
     const spr1 = Sprite.init(10, 10, 16, 16);
     const spr2 = Sprite.init(20, 20, 16, 16);
     const spr3 = Sprite.init(50, 50, 16, 16);
@@ -344,7 +408,7 @@ test "Sprite collision via AABB" {
     try std.testing.expect(!spr1.aabb.isColliding(spr3.aabb));
 }
 
-test "Sprite layer and mask filtering" {
+test "SPR009: Sprite layer and mask filtering" {
     var player = Sprite.init(0, 0, 16, 16);
     player.layer = Collision.layer(0); // Layer 0: Player
     player.mask = Collision.layer(1); // Mask: Only Enemy (Layer 1)

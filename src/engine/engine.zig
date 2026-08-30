@@ -2,6 +2,10 @@ const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
+pub const BppMode = @import("sprite.zig").BppMode;
+pub const AnimationDirection = @import("sprite.zig").AnimationDirection;
+pub const AnimationTag = @import("sprite.zig").AnimationTag;
+pub const SpriteSheet = @import("sprite.zig").SpriteSheet;
 pub const Color = @import("color.zig").Color;
 
 pub const Engine = struct {

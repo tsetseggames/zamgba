@@ -23,3 +23,12 @@ pub const Size = struct {
     pub const SIZE_2: u16 = 2; // Square: 32x32, Horizontal: 32x16, Vertical: 16x32
     pub const SIZE_3: u16 = 3; // Square: 64x64, Horizontal: 64x32, Vertical: 32x64
 };
+
+/// GBA OBJ Atomic Tile Dimensions & Byte Sizes
+pub const Tile = struct {
+    pub const WIDTH_PIXELS: usize = 8;
+    pub const HEIGHT_PIXELS: usize = 8;
+    pub const PIXEL_COUNT: usize = WIDTH_PIXELS * HEIGHT_PIXELS;
+    pub const BYTES_4BPP: usize = PIXEL_COUNT / 2; // 32 bytes
+    pub const BYTES_8BPP: usize = PIXEL_COUNT; // 64 bytes
+};

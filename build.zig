@@ -111,6 +111,45 @@ pub fn build(b: *std.Build) void {
 
     eighth.root_module.addImport(LibName, m);
 
+    // ====================================================================
+    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
+    // ====================================================================
+    const zurag_exe = b.addExecutable(.{
+        .name = "zurag",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/zurag/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    zurag_exe.root_module.addImport("zamgba-hal", hal_module);
+    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
+    b.installArtifact(zurag_exe);
+
+    // Build step: Automatically convert tsetseg flying broom asset to Zig
+    const convert_broom_sprite = b.addRunArtifact(zurag_exe);
+    convert_broom_sprite.addArg("--png");
+    convert_broom_sprite.addFileArg(b.path("assets/tsetseg-ride-on-broom-64x64-0001.png"));
+    convert_broom_sprite.addArg("--json");
+    convert_broom_sprite.addFileArg(b.path("assets/tsetseg-ride-on-broom-64x64-0001.json"));
+    convert_broom_sprite.addArg("--output");
+    const broom_sprite_zig = convert_broom_sprite.addOutputFileArg("tsetseg_broom.zig");
+
+    const broom_sprite_mod = b.createModule(.{
+        .root_source_file = broom_sprite_zig,
+    });
+    broom_sprite_mod.addImport("zamgba-engine", engine_module);
+    broom_sprite_mod.addImport("zamgba-hal", hal_module);
+
+    var ninth = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "flappy_tsetseg",
+        .root_source_file = b.path("demo/engine/flappy_tsetseg.zig"),
+    });
+
+    ninth.root_module.addImport(LibName, m);
+    ninth.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
@@ -139,22 +178,8 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&install_unittest_bin.step);
 
-    // ====================================================================
-    // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
-    // ====================================================================
-    const zurag_exe = b.addExecutable(.{
-        .name = "zurag",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/zurag/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    zurag_exe.root_module.addImport("zamgba-engine", engine_module);
-    b.installArtifact(zurag_exe);
-
     const test_palettes_mod = b.createModule(.{
-        .root_source_file = b.path("assets/palettes/test_assets.zig"),
+        .root_source_file = b.path("assets/test_assets.zig"),
     });
 
     const zurag_unit_tests = b.addTest(.{
@@ -167,6 +192,7 @@ pub fn build(b: *std.Build) void {
         .use_lld = true,
     });
     zurag_unit_tests.root_module.addImport("test_palettes", test_palettes_mod);
+    zurag_unit_tests.root_module.addImport("zamgba-hal", hal_module);
     zurag_unit_tests.root_module.addImport("zamgba-engine", engine_module);
     const run_zurag_unit_tests = b.addRunArtifact(zurag_unit_tests);
     test_step.dependOn(&run_zurag_unit_tests.step);
@@ -174,19 +200,30 @@ pub fn build(b: *std.Build) void {
     // If kcov is available on the host system, generate HTML coverage report into zig-out/tests/
     if (b.findProgram(&.{"kcov"}, &.{})) |kcov_path| {
         const tests_dir = b.getInstallPath(.{ .custom = "tests" }, "");
-        const run_kcov = b.addSystemCommand(&.{
+
+        // Step 1: Trace lib_unit_tests (src/ engine and physics tests)
+        const run_kcov_lib = b.addSystemCommand(&.{
             kcov_path,
             "--clean",
             "--include-pattern=src/,tools/",
             tests_dir,
         });
-        run_kcov.addFileArg(lib_unit_tests.getEmittedBin());
+        run_kcov_lib.addFileArg(lib_unit_tests.getEmittedBin());
+
+        // Step 2: Trace zurag_unit_tests (tools/zurag/ asset converter tests) and merge
+        const run_kcov_zurag = b.addSystemCommand(&.{
+            kcov_path,
+            "--include-pattern=src/,tools/",
+            tests_dir,
+        });
+        run_kcov_zurag.addFileArg(zurag_unit_tests.getEmittedBin());
+        run_kcov_zurag.step.dependOn(&run_kcov_lib.step);
 
         // Run kcov before installing the binary so kcov --clean does not wipe the installed binary
-        install_unittest_bin.step.dependOn(&run_kcov.step);
+        install_unittest_bin.step.dependOn(&run_kcov_zurag.step);
 
         const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
-        coverage_step.dependOn(&run_kcov.step);
+        coverage_step.dependOn(&run_kcov_zurag.step);
         coverage_step.dependOn(&install_unittest_bin.step);
     } else |_| {}
 }

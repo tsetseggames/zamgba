@@ -82,6 +82,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`sprite_instanced`** (`demo/engine/sprite_instanced.zig`): Showcases our high-level **Pointer-to-Instance** engine loop. Encapsulates the entire game state inside a type-safe structure (`const Game = struct { ... }`) and passes an instance pointer `eng.run(&game)`. This is the recommended structure for larger, multi-sprite/multi-level modular games requiring state serialization (SRAM/Flash cartridge saving).
 *   **`joypad_instanced`** (`demo/engine/joypad_instanced.zig`): Demonstrates high-level sprite movement via D-pad input using engine-layer APIs. Changes sprite color dynamically upon hitting screen boundaries (Top: Red, Bottom: White, Left: Yellow, Right: Green).
 *   **`collision_demo`** (`demo/engine/collision_demo.zig`): Demonstrates the 2D physics engine, AABB collision detection, and `CollisionMap` streaming. Features a player square responding to D-pad inputs, two bouncing patrol enemies, and game state reset upon collision.
+*   **`flappy_tsetseg`** (`demo/engine/flappy_tsetseg.zig`): Demonstrates animated multi-frame 8-bpp sprite playback with real Aseprite assets converted via `zurag`. Control Tsetseg riding her flying broom with directional flipping (Left/Right) while dodging moving vertical pillars in a bounded 2D map.
 *   **`pong`** (`demo/engine/pong.zig`): A complete, playable classic Pong game built entirely on `zamgba-engine`. Features player paddle D-pad controls, AI paddle tracking, top/bottom wall reflections, AABB paddle-ball collision response, and scoring/resets.
 
 ### Can I reference your library as a dependency?
@@ -114,8 +115,9 @@ Enjoy!
   - [x] Hardcoded collision detection 
 * **Version 0.2.0**: Capable of writing a game with rich sprites graphics. Supported features:
   - [x] Mode 0 support
-  - [ ] PNG-sprite-to-code conversion tool
-  - [ ] Color palettes conversion tool
+  - [x] PNG-sprite-to-code conversion tool (`zurag`)
+  - [x] Color palettes conversion tool (`zurag`)
+  - [ ] Engine-level streaming sprite loader & VBlank DMA manager
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
   - [ ] Camera
   - [x] True color background, via mode 3, 4, 5
