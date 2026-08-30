@@ -21,7 +21,7 @@ pub const AABB = struct {
     }
 
     /// Create an AABB with integer coordinates.
-    pub fn fromInt(x: u32, y: u32, width: u16, height: u16) AABB {
+    pub fn fromInt(x: i32, y: i32, width: u16, height: u16) AABB {
         return .{
             .x = Fixed24_8.fromInt(x),
             .y = Fixed24_8.fromInt(y),
@@ -32,12 +32,12 @@ pub const AABB = struct {
 
     /// Returns the right boundary (x + width) in Fixed24_8.
     pub fn right(self: AABB) Fixed24_8 {
-        return .{ .raw = self.x.raw + (@as(u32, self.width) << Fixed24_8.fraction_bits) };
+        return .{ .raw = self.x.raw + (@as(i32, @intCast(self.width)) << Fixed24_8.fraction_bits) };
     }
 
     /// Returns the bottom boundary (y + height) in Fixed24_8.
     pub fn bottom(self: AABB) Fixed24_8 {
-        return .{ .raw = self.y.raw + (@as(u32, self.height) << Fixed24_8.fraction_bits) };
+        return .{ .raw = self.y.raw + (@as(i32, @intCast(self.height)) << Fixed24_8.fraction_bits) };
     }
 
     /// Check if this AABB collides with another AABB.
@@ -69,28 +69,28 @@ pub const AABB = struct {
     }
 };
 
-test "AABB isColliding basic overlap" {
+test "ABB001: AABB isColliding basic overlap" {
     const box1 = AABB.fromInt(10, 10, 20, 20); // [10, 30) x [10, 30)
     const box2 = AABB.fromInt(20, 20, 20, 20); // [20, 40) x [20, 40)
     try std.testing.expect(box1.isColliding(box2));
     try std.testing.expect(box2.collidesWith(box1));
 }
 
-test "AABB isColliding separated" {
+test "ABB002: AABB isColliding separated" {
     const box1 = AABB.fromInt(0, 0, 10, 10);
     const box2 = AABB.fromInt(20, 20, 10, 10);
     try std.testing.expect(!box1.isColliding(box2));
     try std.testing.expect(!box2.collidesWith(box1));
 }
 
-test "AABB isColliding touching boundary does not collide" {
+test "ABB003: AABB isColliding touching boundary does not collide" {
     const box1 = AABB.fromInt(0, 0, 10, 10); // [0, 10) x [0, 10)
     const box2 = AABB.fromInt(10, 0, 10, 10); // [10, 20) x [0, 10)
     try std.testing.expect(!box1.isColliding(box2));
     try std.testing.expect(!box2.collidesWith(box1));
 }
 
-test "AABB sub-pixel collision" {
+test "ABB004: AABB sub-pixel collision" {
     // box1: [0, 10) x [0, 10)
     const box1 = AABB.fromInt(0, 0, 10, 10);
     // box2: [9.5, 19.5) x [0, 10) -> overlaps by 0.5 pixels
@@ -102,7 +102,7 @@ test "AABB sub-pixel collision" {
     try std.testing.expect(!box1.isColliding(box3));
 }
 
-test "AABB containsPoint" {
+test "ABB005: AABB containsPoint" {
     const box = AABB.fromInt(10, 10, 20, 20); // [10, 30) x [10, 30)
 
     try std.testing.expect(box.containsPoint(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10)));
