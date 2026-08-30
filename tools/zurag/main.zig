@@ -163,8 +163,6 @@ pub fn main(init: std.process.Init) !void {
     const input_json_path = parsed_args.json_path;
     const output_zig_path = parsed_args.output_path;
 
-    _ = output_zig_path;
-
     // Step 1: Open and validate input.png
     const png_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_png_path, allocator, .unlimited) catch |err| {
         std.debug.print("Error: unable to read input image '{s}': {s}\n", .{ input_png_path, @errorName(err) });
@@ -227,6 +225,49 @@ pub fn main(init: std.process.Init) !void {
             meta.frames.len,
             meta.tags.len,
         });
+
+        // Step 3: Generate Zig Source Code
+        const zig_source = codegen.generateZigSource(allocator, png_data, json_data, .{
+            .bpp = parsed_args.bpp,
+            .color_adjust = parsed_args.color_adjust,
+            .palette_only = parsed_args.palette_only,
+            .no_palette = parsed_args.no_palette,
+        }) catch |err| {
+            std.debug.print("Error: code generation failed: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        defer allocator.free(zig_source);
+
+        // Step 4: Output to file or stdout
+        if (output_zig_path) |out_path| {
+            std.Io.Dir.writeFile(.cwd(), init.io, .{ .sub_path = out_path, .data = zig_source }) catch |err| {
+                std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                std.process.exit(1);
+            };
+        } else {
+            std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+        }
+    } else {
+        // Palette only mode code generation
+        const zig_source = codegen.generateZigSource(allocator, png_data, null, .{
+            .bpp = parsed_args.bpp,
+            .color_adjust = parsed_args.color_adjust,
+            .palette_only = true,
+            .no_palette = false,
+        }) catch |err| {
+            std.debug.print("Error: palette code generation failed: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        defer allocator.free(zig_source);
+
+        if (output_zig_path) |out_path| {
+            std.Io.Dir.writeFile(.cwd(), init.io, .{ .sub_path = out_path, .data = zig_source }) catch |err| {
+                std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                std.process.exit(1);
+            };
+        } else {
+            std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+        }
     }
 }
 

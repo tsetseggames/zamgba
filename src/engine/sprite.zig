@@ -12,6 +12,36 @@ pub const SpriteError = error{
     InvalidDimensions,
 };
 
+pub const BppMode = enum(u1) {
+    bpp4 = 0,
+    bpp8 = 1,
+};
+
+pub const AnimationDirection = enum(u2) {
+    forward = 0,
+    reverse = 1,
+    pingpong = 2,
+};
+
+pub const AnimationTag = struct {
+    name: []const u8,
+    from_frame: u16,
+    to_frame: u16,
+    direction: AnimationDirection = .forward,
+};
+
+pub const SpriteSheet = struct {
+    bpp: BppMode,
+    width: u16,
+    height: u16,
+    tile_count_per_frame: u16,
+    frame_count: u16,
+    palette: ?[]const u16 = null,
+    tiles: []const u8,
+    durations_ms: []const u16,
+    tags: []const AnimationTag,
+};
+
 pub const ShapeSize = struct {
     shape: u16,
     size: u16,
