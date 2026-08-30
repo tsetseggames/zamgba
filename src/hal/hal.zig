@@ -82,6 +82,7 @@ pub const Screen = struct {
 
 pub const display = @import("display.zig");
 pub const joypad = @import("joypad.zig");
+pub const dma = @import("dma.zig");
 pub const waitForVBlank = display.waitForVBlank;
 
 pub const oam = @import("oam.zig");
