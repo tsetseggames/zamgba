@@ -1,4 +1,4 @@
-const MemorySections = @import("hal.zig").MemorySections;
+const MemorySections = @import("specs.zig").MemorySections;
 const REG_DISPCNT = MemorySections.REG_DISPCNT;
 const REG_DISPSTAT = MemorySections.REG_DISPSTAT;
 const REG_IE = MemorySections.REG_IE;
