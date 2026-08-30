@@ -25,6 +25,7 @@ const CliArgs = struct {
     output_path: ?[]const u8 = null,
     bpp: BppMode = .auto,
     palette_only: bool = false,
+    no_palette: bool = false,
     color_adjust: bool = false,
     show_help: bool = false,
 
@@ -33,6 +34,7 @@ const CliArgs = struct {
         UnknownFlag,
         InvalidBppMode,
         MissingRequiredArguments,
+        ConflictingPaletteOptions,
     };
 
     fn parse(args: []const []const u8) ParseError!CliArgs {
@@ -49,6 +51,8 @@ const CliArgs = struct {
                 result.color_adjust = true;
             } else if (std.mem.eql(u8, arg, "-P") or std.mem.eql(u8, arg, "--palette-only")) {
                 result.palette_only = true;
+            } else if (std.mem.eql(u8, arg, "-N") or std.mem.eql(u8, arg, "--no-palette")) {
+                result.no_palette = true;
             } else if (std.mem.eql(u8, arg, "-p") or std.mem.eql(u8, arg, "--png")) {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
@@ -69,6 +73,10 @@ const CliArgs = struct {
             } else {
                 return error.UnknownFlag;
             }
+        }
+
+        if (result.palette_only and result.no_palette) {
+            return error.ConflictingPaletteOptions;
         }
 
         if (result.png_path == null) {
@@ -99,6 +107,7 @@ fn printUsage(io: std.Io, program_name: []const u8) void {
         \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
         \\  -c, --color-adjust      Enable full-range rounded RGB to GBA BGR555 scaling
         \\  -P, --palette-only      Extract palette data only (skips tiles, --json not required)
+        \\  -N, --no-palette        Omit embedded palette in generated sprite (for external master palettes)
         \\  -h, --help              Display this help message and exit
         \\
         \\Note:
@@ -133,6 +142,9 @@ pub fn main(init: std.process.Init) !void {
             },
             error.InvalidBppMode => {
                 std.debug.print("Error: invalid --bpp mode. Expected '4', '4x16', '8', or 'auto'.\n\n", .{});
+            },
+            error.ConflictingPaletteOptions => {
+                std.debug.print("Error: --palette-only (-P) and --no-palette (-N) cannot be used together.\n\n", .{});
             },
             error.MissingRequiredArguments => {
                 std.debug.print("Error: missing required options (--png is always required, --json is required unless --palette-only is set).\n\n", .{});
@@ -318,6 +330,22 @@ test "CLI009: CliArgs parse error conditions" {
     // Unknown flag
     const unknown = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--unknown" };
     try std.testing.expectError(error.UnknownFlag, CliArgs.parse(&unknown));
+}
+
+test "CLI010: CliArgs parse --no-palette and -N flag" {
+    const raw_args_long = [_][]const u8{ "--png", "hero.png", "--json", "hero.json", "--no-palette" };
+    const parsed_long = try CliArgs.parse(&raw_args_long);
+    try std.testing.expect(parsed_long.no_palette);
+    try std.testing.expect(!parsed_long.palette_only);
+
+    const raw_args_short = [_][]const u8{ "-p", "hero.png", "-j", "hero.json", "-N" };
+    const parsed_short = try CliArgs.parse(&raw_args_short);
+    try std.testing.expect(parsed_short.no_palette);
+}
+
+test "CLI011: CliArgs reject conflicting --palette-only and --no-palette" {
+    const conflicting_args = [_][]const u8{ "-p", "hero.png", "-j", "hero.json", "-P", "-N" };
+    try std.testing.expectError(error.ConflictingPaletteOptions, CliArgs.parse(&conflicting_args));
 }
 
 test {

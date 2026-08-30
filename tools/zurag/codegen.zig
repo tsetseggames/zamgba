@@ -8,6 +8,7 @@ pub const CodegenOptions = struct {
     bpp: png.BppMode = .auto,
     color_adjust: bool = false,
     palette_only: bool = false,
+    no_palette: bool = false,
 };
 
 pub const CodegenError = error{
@@ -83,4 +84,19 @@ test "GEN004: generateZigSource error when missing json in full sprite mode" {
     try std.testing.expectError(error.MetadataParseError, generateZigSource(std.testing.allocator, test_assets.png_broom, null, .{
         .palette_only = false,
     }));
+}
+
+test "GEN005: generateZigSource with --no-palette omits palette definition" {
+    const test_assets = @import("test_palettes");
+    const out = try generateZigSource(std.testing.allocator, test_assets.png_broom, test_assets.json_broom, .{
+        .sprite_name = "tsetseg_flying",
+        .bpp = .bpp8,
+        .no_palette = true,
+    });
+    defer std.testing.allocator.free(out);
+
+    // Frame tiles are generated, but palette definition is omitted
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const frame_tiles") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette: [") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, ".palette = null") != null);
 }

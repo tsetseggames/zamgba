@@ -33,6 +33,7 @@ zurag -h | --help
 | `--bpp <mode>` | | Bits-per-pixel color mode: `4`, `4x16`, `8`, `auto`. | `auto` |
 | `--color-adjust`| `-c` | Enable full-range rounded RGB to GBA BGR555 color scaling: `(c * 31 + 127) / 255`. | `false` |
 | `--palette-only`| `-P` | Extract palette data only. Skips tile/frame conversion; `--json` is not required. | `false` |
+| `--no-palette`  | `-N` | Omit palette definition in generated sprite code (for external shared master palettes). | `false` |
 | `--help` | `-h` | Display usage and help message to `stdout`. | |
 
 *Note: Command-line options may be passed in any order.*
@@ -171,3 +172,49 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
    * Validates color bank consistency for 4-bpp frames, detecting and rejecting `error.MultiBankColorConflict`.
 3. **Code Generator (`main.zig`)**:
    * Emits type-safe Zig source code adhering to the `zamgba-engine` data contract (`engine.SpriteSheet`).
+
+---
+
+## 7. Sprite Generation Workflows
+
+`zurag` supports two primary artist-to-engine workflows to fit different project scales:
+
+### Workflow A: Self-Contained Standalone Sprite
+* **Best For**: Isolated particles, standalone UI elements, interactive tech demos, and quick prototyping.
+* **Characteristics**: Every sprite file includes its own self-contained palette, tile stream, duration list, and `SpriteSheet` contract.
+* **CLI Command**:
+  ```bash
+  zurag --png player.png --json player.json --bpp 4 --output player.zig
+  ```
+* **Runtime Usage**:
+  ```zig
+  const player = @import("player.zig");
+  // Load self-contained palette into OBJ Palette Bank 0
+  hal.dma.copy16(&player.palette, &PALRAM_OBJ[0], player.palette.len);
+  ```
+
+---
+
+### Workflow B: Shared Master Palette (Production Standard)
+* **Best For**: Large-scale retro productions sharing a global 256-color palette (16 banks of 16 colors), palette swapping (1P vs 2P variations, damage flashes, elemental recolors), and minimizing ROM duplication.
+* **Characteristics**: The global master palette is compiled once. Individual character sprites are compiled with `--no-palette` (`-N`) to strip duplicate palette data and prevent ROM bloat.
+* **Step 1 — Compile Master Palette (`--palette-only`)**:
+  ```bash
+  zurag --png master_palette.png --palette-only --bpp 4x16 --output master_palette.zig
+  ```
+* **Step 2 — Compile Individual Sprites (`--no-palette`)**:
+  ```bash
+  zurag --png hero.png --json hero.json --bpp 4x16 --no-palette --output hero.zig
+  zurag --png enemy.png --json enemy.json --bpp 4x16 --no-palette --output enemy.zig
+  ```
+* **Runtime Usage**:
+  ```zig
+  const master_pal = @import("master_palette.zig");
+  const hero = @import("hero.zig");
+  const enemy = @import("enemy.zig");
+
+  // Load global 256-color palette once at scene startup via DMA
+  hal.dma.copy16(&master_pal.raw_palette, PALRAM_OBJ, 256);
+
+  // Render hero using Bank 0, enemy using Bank 1 (zero extra palette ROM overhead!)
+  ```
