@@ -30,6 +30,7 @@ pub fn init() void {
         };
     }
     sprite_count = 0;
+    vram_allocator.init();
     is_initialized = true;
 }
 
@@ -99,6 +100,7 @@ pub fn run(context: anytype) noreturn {
 pub const gfx2d = @import("gfx2d/gfx2d.zig");
 pub const input = @import("input.zig");
 pub const physics = @import("physics/physics.zig");
+pub const vram_allocator = @import("vram_allocator.zig");
 
 test {
     _ = physics;
