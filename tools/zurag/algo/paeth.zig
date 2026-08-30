@@ -11,7 +11,7 @@ pub fn paethPredictor(a: u8, b: u8, c: u8) u8 {
     return c;
 }
 
-test "paethPredictor algorithm accuracy and tie-breaking" {
+test "PTH001: paethPredictor algorithm accuracy and tie-breaking" {
     // 1. Vertical tendency (b == c) -> choose a (10)
     try std.testing.expectEqual(@as(u8, 10), paethPredictor(10, 20, 20));
 

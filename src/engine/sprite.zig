@@ -211,7 +211,7 @@ pub const Sprite = struct {
     }
 };
 
-test "initChecked validates dimensions" {
+test "SPR001: initChecked validates dimensions" {
     const spr = try Sprite.initChecked(10, 20, 8, 8);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.width);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.height);
@@ -219,7 +219,7 @@ test "initChecked validates dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.initChecked(10, 20, 12, 12));
 }
 
-test "getShapeAndSize valid dimensions" {
+test "SPR002: getShapeAndSize valid dimensions" {
     // Square
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 }, try getShapeAndSize(8, 8));
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 }, try getShapeAndSize(16, 16));
@@ -239,13 +239,13 @@ test "getShapeAndSize valid dimensions" {
     try std.testing.expectEqual(ShapeSize{ .shape = hal.oam.Shape.VERTICAL, .size = hal.oam.Size.SIZE_3 }, try getShapeAndSize(32, 64));
 }
 
-test "getShapeAndSize invalid dimensions" {
+test "SPR003: getShapeAndSize invalid dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(10, 10));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(8, 80));
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(128, 128));
 }
 
-test "toOamAttr encoding" {
+test "SPR004: toOamAttr encoding" {
     var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
     spr.tile_index = 4;
     spr.palette_bank = 2;
@@ -259,7 +259,7 @@ test "toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
 }
 
-test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
+test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" {
     // 1. u16 (e.g., hal.Color)
     const raw_color: u16 = hal.Color.RED;
     try std.testing.expectEqual(hal.Color.RED, colorToBgr555(raw_color));
@@ -279,7 +279,7 @@ test "colorToBgr555 supports u16, Color, and custom duck-typed structs" {
     try std.testing.expectEqual(@as(u16, 0x1234), colorToBgr555(custom));
 }
 
-test "fillSolidColorToBuffers mock buffer" {
+test "SPR006: fillSolidColorToBuffers mock buffer" {
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
     var mock_palram: [256]u16 = [_]u16{0} ** 256;
 
@@ -305,7 +305,7 @@ fn mockWallAtTile3_0(tx: u16, ty: u16) bool {
     return tx == 3 and ty == 0;
 }
 
-test "Sprite moveAndCollide stops against map obstacles" {
+test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     const map = CollisionMap.init(.size_256x256, mockWallAtTile3_0, .solid);
 
     // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
@@ -334,7 +334,7 @@ test "Sprite moveAndCollide stops against map obstacles" {
     try std.testing.expectEqual(@as(u32, 8), spr.aabb.x.toInt());
 }
 
-test "Sprite collision via AABB" {
+test "SPR008: Sprite collision via AABB" {
     const spr1 = Sprite.init(10, 10, 16, 16);
     const spr2 = Sprite.init(20, 20, 16, 16);
     const spr3 = Sprite.init(50, 50, 16, 16);
@@ -344,7 +344,7 @@ test "Sprite collision via AABB" {
     try std.testing.expect(!spr1.aabb.isColliding(spr3.aabb));
 }
 
-test "Sprite layer and mask filtering" {
+test "SPR009: Sprite layer and mask filtering" {
     var player = Sprite.init(0, 0, 16, 16);
     player.layer = Collision.layer(0); // Layer 0: Player
     player.mask = Collision.layer(1); // Mask: Only Enemy (Layer 1)

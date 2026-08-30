@@ -82,6 +82,17 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
 1. **Step 1: Interface & Test Definition (Red Phase)**
    - First, define the public data structures, types, and stub functions (returning `error.Unimplemented`).
    - Write comprehensive unit tests that cover all edge cases, validations, and expected behaviors.
+   - **Test Naming Convention**: All unit test blocks MUST follow the `[XXX000: description]` format (a 3-uppercase-letter module prefix + 3-digit sequential number + description):
+     - `CLI001`: CLI argument parser tests (`tools/zurag/main.zig`)
+     - `PNG001`: PNG header, palette, and IDAT decompression tests (`tools/zurag/png.zig`)
+     - `PTH001`: Paeth predictor algorithm tests (`tools/zurag/algo/paeth.zig`)
+     - `UNF001`: PNG scanline unfiltering tests (`tools/zurag/algo/unfilter.zig`)
+     - `TIL001`: 8x8 Tile packing and sprite frame slicing tests (`tools/zurag/tile.zig`)
+     - `MET001`: Unified metadata dispatcher tests (`tools/zurag/metadata.zig`)
+     - `ASE001`: Aseprite JSON metadata adapter tests (`tools/zurag/metadata/aseprite.zig`)
+     - `CLR001`: Color representation and conversion tests (`src/engine/color.zig`)
+     - `SPR001`: Engine sprite representation and OAM encoding tests (`src/engine/sprite.zig`)
+     - `MAT001`, `ABB001`, `MAP001`, `LAY001`, `OVL001`: Physics sub-engine tests
    - Run `zig build test` to prove that the new tests fail (Red state) without breaking existing tests.
    - Present the design to the user for review and wait for explicit confirmation.
 

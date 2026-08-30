@@ -182,7 +182,7 @@ pub fn sliceSpriteFrame(
 // Unit Tests for Tile Slicing & Packing (TDD Red Phase)
 // ====================================================================
 
-test "packTile4bpp: nibble order and modulo re-indexing" {
+test "TIL001: packTile4bpp: nibble order and modulo re-indexing" {
     var sample: [TILE_HEIGHT][TILE_WIDTH]u8 = @splat(@splat(0));
     // Pixel 0 = 3 (lower nibble), Pixel 1 = 5 (upper nibble) -> byte 0 = (5 << 4) | 3 = 0x53
     sample[0][0] = 3;
@@ -198,7 +198,7 @@ test "packTile4bpp: nibble order and modulo re-indexing" {
     try std.testing.expectEqual(expected_byte1, tile[1]);
 }
 
-test "packTile8bpp: 64-byte linear packing" {
+test "TIL002: packTile8bpp: 64-byte linear packing" {
     var sample: [TILE_HEIGHT][TILE_WIDTH]u8 = @splat(@splat(0));
     sample[0][0] = 42;
     sample[TILE_HEIGHT - 1][TILE_WIDTH - 1] = 99;
@@ -209,7 +209,7 @@ test "packTile8bpp: 64-byte linear packing" {
     try std.testing.expectEqual(@as(u8, 99), tile[TILE_PIXEL_COUNT - 1]);
 }
 
-test "sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
+test "TIL003: sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
     const test_assets = @import("test_palettes");
     const frame0_rect = Rect{ .x = 0, .y = 0, .w = 32, .h = 32 };
     const expected_tiles_32x32 = (32 / TILE_WIDTH) * (32 / TILE_HEIGHT); // 16 tiles
@@ -231,7 +231,7 @@ test "sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp)" {
     try std.testing.expectEqual(expected_tiles_32x32 * hal.oam.Tile.BYTES_8BPP, frame_8bpp.bytes.len); // 1024 bytes
 }
 
-test "sliceSpriteFrame: reject invalid dimensions and out of bounds" {
+test "TIL004: sliceSpriteFrame: reject invalid dimensions and out of bounds" {
     const test_assets = @import("test_palettes");
     var img = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
     defer img.deinit();
@@ -245,7 +245,7 @@ test "sliceSpriteFrame: reject invalid dimensions and out of bounds" {
     try std.testing.expectError(error.SliceOutOfBounds, sliceSpriteFrame(std.testing.allocator, &img, oob_rect, .bpp4));
 }
 
-test "sliceSpriteFrame: reject multi-bank color conflict in 4-bpp mode" {
+test "TIL005: sliceSpriteFrame: reject multi-bank color conflict in 4-bpp mode" {
     var fake_pixels: [16 * 16]u8 = @splat(0);
     // Mix non-transparent Bank 0 color (index 2) and Bank 1 color (1 * 16 + 2 = 18) in the same frame
     fake_pixels[0] = 2;

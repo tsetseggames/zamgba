@@ -199,7 +199,7 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-test "CliArgs parse in standard order with all options" {
+test "CLI001: CliArgs parse in standard order with all options" {
     const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--output", "out.zig", "--bpp", "4" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
@@ -210,7 +210,7 @@ test "CliArgs parse in standard order with all options" {
     try std.testing.expect(!parsed.show_help);
 }
 
-test "CliArgs parse --color-adjust flag" {
+test "CLI002: CliArgs parse --color-adjust flag" {
     const raw_args_long = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--color-adjust" };
     const parsed_long = try CliArgs.parse(&raw_args_long);
     try std.testing.expect(parsed_long.color_adjust);
@@ -224,7 +224,7 @@ test "CliArgs parse --color-adjust flag" {
     try std.testing.expect(!parsed_default.color_adjust);
 }
 
-test "CliArgs default values" {
+test "CLI003: CliArgs default values" {
     const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
@@ -235,7 +235,7 @@ test "CliArgs default values" {
     try std.testing.expect(!parsed.show_help);
 }
 
-test "CliArgs parse --bpp modes" {
+test "CLI004: CliArgs parse --bpp modes" {
     const modes = [_]struct { str: []const u8, expected: BppMode }{
         .{ .str = "4", .expected = .bpp4 },
         .{ .str = "4x16", .expected = .bpp4x16 },
@@ -250,12 +250,12 @@ test "CliArgs parse --bpp modes" {
     }
 }
 
-test "CliArgs reject invalid --bpp value" {
+test "CLI005: CliArgs reject invalid --bpp value" {
     const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--bpp", "16" };
     try std.testing.expectError(error.InvalidBppMode, CliArgs.parse(&raw_args));
 }
 
-test "CliArgs parse --palette-only without --json" {
+test "CLI006: CliArgs parse --palette-only without --json" {
     const raw_args = [_][]const u8{ "--png", "palette.png", "--palette-only", "--bpp", "4x16", "-o", "pal.zig" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("palette.png", parsed.png_path.?);
@@ -265,7 +265,7 @@ test "CliArgs parse --palette-only without --json" {
     try std.testing.expect(parsed.palette_only);
 }
 
-test "CliArgs parse reordered with short flags" {
+test "CLI007: CliArgs parse reordered with short flags" {
     const raw_args = [_][]const u8{ "-P", "-o", "pal.zig", "-p", "sheet.png" };
     const parsed = try CliArgs.parse(&raw_args);
     try std.testing.expectEqualStrings("sheet.png", parsed.png_path.?);
@@ -273,7 +273,7 @@ test "CliArgs parse reordered with short flags" {
     try std.testing.expectEqualStrings("pal.zig", parsed.output_path.?);
 }
 
-test "CliArgs parse help flag" {
+test "CLI008: CliArgs parse help flag" {
     const raw_args_long = [_][]const u8{"--help"};
     const parsed_long = try CliArgs.parse(&raw_args_long);
     try std.testing.expect(parsed_long.show_help);
@@ -283,7 +283,7 @@ test "CliArgs parse help flag" {
     try std.testing.expect(parsed_short.show_help);
 }
 
-test "CliArgs parse error conditions" {
+test "CLI009: CliArgs parse error conditions" {
     // Missing required png
     const no_png = [_][]const u8{ "--json", "test.json" };
     try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&no_png));

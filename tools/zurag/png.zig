@@ -319,19 +319,71 @@ pub fn parseHeader(bytes: []const u8) PngHeaderError!PngHeader {
     };
 }
 
-// Compile-time embedded test assets (no runtime disk reading)
 // ====================================================================
-// 19 TDD Test Cases for Palette Extraction
+// PNG Header Parsing Unit Tests
 // ====================================================================
 
-// Test 1: RGB/RGBA PNG mode -> errors out with NotIndexedColor
-test "TDD 01: reject RGB PNG file" {
+test "PNG001: parse valid indexed PNG header from asset bytes" {
+    // Exact 33 header bytes from assets/tsetseg-ride-on-broom-64x64-0001.png
+    const valid_indexed_header = [_]u8{
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG Signature
+        0x00, 0x00, 0x00, 0x0d, // IHDR Length = 13
+        0x49, 0x48, 0x44, 0x52, // "IHDR"
+        0x00, 0x00, 0x01, 0x00, // Width = 256
+        0x00, 0x00, 0x00, 0x20, // Height = 32
+        0x08, // Bit Depth = 8
+        0x03, // Color Type = 3 (Indexed)
+        0x00, // Compression = 0
+        0x00, // Filter = 0
+        0x00, // Interlace = 0
+        0xca, 0x77, 0x56, 0xd6, // CRC
+    };
+
+    const header = try parseHeader(&valid_indexed_header);
+    try std.testing.expectEqual(@as(u32, 256), header.width);
+    try std.testing.expectEqual(@as(u32, 32), header.height);
+    try std.testing.expectEqual(@as(u8, 8), header.bit_depth);
+    try std.testing.expectEqual(ColorType.indexed, header.color_type);
+}
+
+test "PNG002: reject invalid signature" {
+    var corrupted = [_]u8{0} ** MIN_PNG_HEADER_LEN;
+    try std.testing.expectError(error.InvalidPngSignature, parseHeader(&corrupted));
+}
+
+test "PNG003: reject non-indexed RGB or RGBA PNG" {
+    var rgb_header = [_]u8{
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20,
+        0x08,
+        0x06, // RGBA Truecolor with alpha (Color Type 6)
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+    };
+    try std.testing.expectError(error.NotIndexedColor, parseHeader(&rgb_header));
+}
+
+test "PNG004: reject truncated header" {
+    const short_slice = [_]u8{ 0x89, 0x50, 0x4e, 0x47 };
+    try std.testing.expectError(error.TruncatedHeader, parseHeader(&short_slice));
+}
+
+// ====================================================================
+// Palette Extraction Unit Tests
+// ====================================================================
+
+test "PNG005: reject RGB PNG file on palette extraction" {
     const test_assets = @import("test_palettes");
     try std.testing.expectError(error.NotIndexedColor, extractPalette(test_assets.png_rgb, .{}));
 }
 
-// Test 2: Corrupted PLTE with > 256 colors
-test "TDD 02: reject palette chunk declaring > 256 colors" {
+test "PNG006: reject palette chunk declaring > 256 colors" {
     const test_assets = @import("test_palettes");
     // Construct fake header + oversized PLTE chunk (257 colors = 771 bytes)
     var fake_png: [MIN_PNG_HEADER_LEN + CHUNK_LEN_SIZE + CHUNK_TYPE_SIZE + 771 + CHUNK_CRC_SIZE]u8 = undefined;
@@ -344,8 +396,7 @@ test "TDD 02: reject palette chunk declaring > 256 colors" {
     try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(&fake_png, .{}));
 }
 
-// Test 3: Missing PLTE or non-multiple-of-3 length
-test "TDD 03: reject missing or malformed PLTE chunk" {
+test "PNG007: reject missing or malformed PLTE chunk" {
     const test_assets = @import("test_palettes");
     // Missing PLTE chunk
     const no_plte_png = [_]u8{
@@ -369,8 +420,7 @@ test "TDD 03: reject missing or malformed PLTE chunk" {
     try std.testing.expectError(error.InvalidPaletteChunk, extractPalette(&malformed_len_png, .{}));
 }
 
-// Test 4: 256 colors, --bpp 8 -> returns 256 colors
-test "TDD 04: 256-color PNG with --bpp 8 returns full 256 palette" {
+test "PNG008: 256-color PNG with --bpp 8 returns full 256 palette" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal256, .{ .mode = .bpp8 });
     switch (res) {
@@ -381,8 +431,7 @@ test "TDD 04: 256-color PNG with --bpp 8 returns full 256 palette" {
     }
 }
 
-// Test 5: 256 colors, --bpp 4x16 -> returns 16 banks of 16 colors
-test "TDD 05: 256-color PNG with --bpp 4x16 returns 16 banks" {
+test "PNG009: 256-color PNG with --bpp 4x16 returns 16 banks" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal256, .{ .mode = .bpp4x16 });
     switch (res) {
@@ -394,14 +443,12 @@ test "TDD 05: 256-color PNG with --bpp 4x16 returns 16 banks" {
     }
 }
 
-// Test 6: 256 colors, --bpp 4 -> errors out (exceeds 16 colors)
-test "TDD 06: 256-color PNG with --bpp 4 errors out" {
+test "PNG010: 256-color PNG with --bpp 4 errors out" {
     const test_assets = @import("test_palettes");
     try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(test_assets.png_pal256, .{ .mode = .bpp4 }));
 }
 
-// Test 7: 32 colors, --bpp 8 -> returns 256 colors with 0x0000 padding
-test "TDD 07: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
+test "PNG011: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal32, .{ .mode = .bpp8 });
     switch (res) {
@@ -415,8 +462,7 @@ test "TDD 07: 32-color PNG with --bpp 8 returns 256 palette padded with black" {
     }
 }
 
-// Test 8: 32 colors, --bpp 4x16 -> returns 16 banks with banks 2..15 padded with 0x0000
-test "TDD 08: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing banks" {
+test "PNG012: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing banks" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal32, .{ .mode = .bpp4x16 });
     switch (res) {
@@ -431,14 +477,12 @@ test "TDD 08: 32-color PNG with --bpp 4x16 returns 16 banks with padded trailing
     }
 }
 
-// Test 9: 32 colors, --bpp 4 -> errors out (exceeds 16 colors)
-test "TDD 09: 32-color PNG with --bpp 4 errors out" {
+test "PNG013: 32-color PNG with --bpp 4 errors out" {
     const test_assets = @import("test_palettes");
     try std.testing.expectError(error.ColorCountExceedsLimit, extractPalette(test_assets.png_pal32, .{ .mode = .bpp4 }));
 }
 
-// Test 10: 32 colors, --bpp auto -> automatically selects 8-bpp mode
-test "TDD 10: 32-color PNG with --bpp auto selects 8-bpp mode" {
+test "PNG014: 32-color PNG with --bpp auto selects 8-bpp mode" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal32, .{ .mode = .auto });
     switch (res) {
@@ -447,8 +491,7 @@ test "TDD 10: 32-color PNG with --bpp auto selects 8-bpp mode" {
     }
 }
 
-// Test 11: 16 colors, --bpp 4 -> returns 16 colors
-test "TDD 11: 16-color PNG with --bpp 4 returns 16-color palette" {
+test "PNG015: 16-color PNG with --bpp 4 returns 16-color palette" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal16, .{ .mode = .bpp4 });
     switch (res) {
@@ -459,8 +502,7 @@ test "TDD 11: 16-color PNG with --bpp 4 returns 16-color palette" {
     }
 }
 
-// Test 12: 16 colors, --bpp 4x16 -> returns 16 banks with banks 1..15 padded with 0x0000
-test "TDD 12: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 padded" {
+test "PNG016: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 padded" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal16, .{ .mode = .bpp4x16 });
     switch (res) {
@@ -475,8 +517,7 @@ test "TDD 12: 16-color PNG with --bpp 4x16 returns 16 banks with banks 1..15 pad
     }
 }
 
-// Test 13: 16 colors, --bpp 8 -> returns 256 colors with indices 16..255 padded with 0x0000
-test "TDD 13: 16-color PNG with --bpp 8 returns 256 palette padded" {
+test "PNG017: 16-color PNG with --bpp 8 returns 256 palette padded" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal16, .{ .mode = .bpp8 });
     switch (res) {
@@ -489,8 +530,7 @@ test "TDD 13: 16-color PNG with --bpp 8 returns 256 palette padded" {
     }
 }
 
-// Test 14: 16 colors, --bpp auto -> automatically selects 4-bpp mode
-test "TDD 14: 16-color PNG with --bpp auto selects 4-bpp mode" {
+test "PNG018: 16-color PNG with --bpp auto selects 4-bpp mode" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal16, .{ .mode = .auto });
     switch (res) {
@@ -499,8 +539,7 @@ test "TDD 14: 16-color PNG with --bpp auto selects 4-bpp mode" {
     }
 }
 
-// Test 15: 8 colors, --bpp 4 -> returns 16 colors with indices 8..15 padded with 0x0000
-test "TDD 15: 8-color PNG with --bpp 4 returns 16 palette padded" {
+test "PNG019: 8-color PNG with --bpp 4 returns 16 palette padded" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal8, .{ .mode = .bpp4 });
     switch (res) {
@@ -513,8 +552,7 @@ test "TDD 15: 8-color PNG with --bpp 4 returns 16 palette padded" {
     }
 }
 
-// Test 16: 8 colors, --bpp 4x16 -> returns 16 banks with bank 0 padded and banks 1..15 zeroed
-test "TDD 16: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
+test "PNG020: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal8, .{ .mode = .bpp4x16 });
     switch (res) {
@@ -532,8 +570,7 @@ test "TDD 16: 8-color PNG with --bpp 4x16 returns 16 banks padded" {
     }
 }
 
-// Test 17: 8 colors, --bpp 8 -> returns 256 colors with indices 8..255 padded with 0x0000
-test "TDD 17: 8-color PNG with --bpp 8 returns 256 palette padded" {
+test "PNG021: 8-color PNG with --bpp 8 returns 256 palette padded" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal8, .{ .mode = .bpp8 });
     switch (res) {
@@ -546,8 +583,7 @@ test "TDD 17: 8-color PNG with --bpp 8 returns 256 palette padded" {
     }
 }
 
-// Test 18: 8 colors, --bpp auto -> automatically selects 4-bpp mode
-test "TDD 18: 8-color PNG with --bpp auto selects 4-bpp mode" {
+test "PNG022: 8-color PNG with --bpp auto selects 4-bpp mode" {
     const test_assets = @import("test_palettes");
     const res = try extractPalette(test_assets.png_pal8, .{ .mode = .auto });
     switch (res) {
@@ -556,8 +592,7 @@ test "TDD 18: 8-color PNG with --bpp auto selects 4-bpp mode" {
     }
 }
 
-// Test 19: BGR555 conversion precision for standard extreme colors
-test "TDD 19: rgbToGba conversion accuracy (standard vs color-adjust)" {
+test "PNG023: rgbToGba conversion accuracy (standard vs color-adjust)" {
     // Standard mode (color_adjust = false)
     try std.testing.expectEqual(Color.BLACK.toBgr555(), rgbToGba(0, 0, 0, false));
     try std.testing.expectEqual(Color.RED.toBgr555(), rgbToGba(255, 0, 0, false));
@@ -581,7 +616,7 @@ test "TDD 19: rgbToGba conversion accuracy (standard vs color-adjust)" {
 // IDAT Decompression Unit Tests
 // ====================================================================
 
-test "decompressIndexedPixels from real tsetseg flying broom asset" {
+test "PNG024: decompressIndexedPixels from real tsetseg flying broom asset" {
     const test_assets = @import("test_palettes");
     var img = try decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
     defer img.deinit();
@@ -608,7 +643,7 @@ test "decompressIndexedPixels from real tsetseg flying broom asset" {
     try std.testing.expect(found_non_zero);
 }
 
-test "decompressIndexedPixels: multiple IDAT chunks concatenation" {
+test "PNG025: decompressIndexedPixels: multiple IDAT chunks concatenation" {
     const test_assets = @import("test_palettes");
     const png_broom = test_assets.png_broom;
     // Locate the original IDAT in png_broom
@@ -665,7 +700,7 @@ test "decompressIndexedPixels: multiple IDAT chunks concatenation" {
     try std.testing.expectEqual(@as(u32, 32), img.height);
 }
 
-test "decompressIndexedPixels: detect tRNS and bKGD auxiliary chunks" {
+test "PNG026: decompressIndexedPixels: detect tRNS and bKGD auxiliary chunks" {
     const test_assets = @import("test_palettes");
     const png_broom = test_assets.png_broom;
     // 1. Real asset png_broom contains tRNS
@@ -688,7 +723,7 @@ test "decompressIndexedPixels: detect tRNS and bKGD auxiliary chunks" {
     try std.testing.expect(img_bkgd.aux_chunks.has_bkgd);
 }
 
-test "decompressIndexedPixels error on missing or corrupted IDAT" {
+test "PNG027: decompressIndexedPixels error on missing or corrupted IDAT" {
     // PNG with no IDAT
     const no_idat = [_]u8{
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

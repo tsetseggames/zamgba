@@ -73,13 +73,36 @@ pub fn parseMetadata(
 // Unit Tests for Metadata Dispatcher (TDD Red Phase)
 // ====================================================================
 
-test "parseMetadata: auto-detection of Aseprite format" {
+test "MET001: parseMetadata: auto-detection of Aseprite format" {
     const test_assets = @import("test_palettes");
     var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
     defer meta.deinit();
 
     try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
     try std.testing.expectEqualStrings("flying", meta.tags[0].name);
+}
+
+test "MET002: parseMetadata: explicit format dispatch for Aseprite" {
+    const test_assets = @import("test_palettes");
+    var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .aseprite);
+    defer meta.deinit();
+
+    try std.testing.expectEqual(@as(usize, 8), meta.frames.len);
+    try std.testing.expectEqualStrings("flying", meta.tags[0].name);
+}
+
+test "MET003: parseMetadata: reject unsupported JSON format in auto mode" {
+    const foreign_json =
+        \\{ "custom_game_engine_data": { "version": 1 } }
+    ;
+    try std.testing.expectError(error.UnsupportedJsonFormat, parseMetadata(std.testing.allocator, foreign_json, .auto));
+}
+
+test "MET004: parseMetadata: memory deinit and leak check" {
+    const test_assets = @import("test_palettes");
+    var meta = try parseMetadata(std.testing.allocator, test_assets.json_broom, .auto);
+    // Deinit frees all frames, tags, and tag name strings
+    meta.deinit();
 }
 
 test {

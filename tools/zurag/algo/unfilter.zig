@@ -82,7 +82,7 @@ pub fn unfilterScanlines(
     }
 }
 
-test "unfilterScanlines row 0 boundary conditions for Up, Average, and Paeth" {
+test "UNF001: unfilterScanlines row 0 boundary conditions for Up, Average, and Paeth" {
     // 3 pixels per row, 3 independent single-row tests
     // 1. Row 0 with Filter 2 (Up): Above is assumed 0 -> Recon = src
     const raw_row0_up = [_]u8{ 2, 10, 20, 30 };
@@ -115,7 +115,7 @@ test "unfilterScanlines row 0 boundary conditions for Up, Average, and Paeth" {
     try std.testing.expectEqual(@as(u8, 60), pixels_paeth[2]);
 }
 
-test "unfilterScanlines subsequent rows referencing prior row for Up, Average, and Paeth" {
+test "UNF002: unfilterScanlines subsequent rows referencing prior row for Up, Average, and Paeth" {
     // 3 pixels per row, 4 consecutive rows
     const raw_scanlines = [_]u8{
         // Row 0 (None): 10, 20, 30 -> Recon_0 = [10, 20, 30]

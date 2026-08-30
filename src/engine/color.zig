@@ -50,7 +50,7 @@ pub const Color = struct {
     pub const WHITE = fromBgr555(hal.Color.WHITE);
 };
 
-test "Color toBgr555 matches hal.Color hardware values" {
+test "CLR001: Color toBgr555 matches hal.Color hardware values" {
     const std = @import("std");
     try std.testing.expectEqual(hal.Color.BLACK, Color.BLACK.toBgr555());
     try std.testing.expectEqual(hal.Color.RED, Color.RED.toBgr555());
@@ -62,7 +62,7 @@ test "Color toBgr555 matches hal.Color hardware values" {
     try std.testing.expectEqual(hal.Color.WHITE, Color.WHITE.toBgr555());
 }
 
-test "Color roundtrip fromBgr555 and toBgr555" {
+test "CLR002: Color roundtrip fromBgr555 and toBgr555" {
     const std = @import("std");
     const original_bgr: u16 = 0x3E1F; // R=31, G=16, B=15
     const color = Color.fromBgr555(original_bgr);
