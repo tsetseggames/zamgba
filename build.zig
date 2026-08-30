@@ -153,6 +153,17 @@ pub fn build(b: *std.Build) void {
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
+    const hal_unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/hal/hal.zig"),
+            .optimize = optimize,
+            .target = target,
+        }),
+        .use_llvm = true,
+        .use_lld = true,
+    });
+    const run_hal_unit_tests = b.addRunArtifact(hal_unit_tests);
+
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/unittest.zig"),
@@ -169,6 +180,7 @@ pub fn build(b: *std.Build) void {
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_hal_unit_tests.step);
     test_step.dependOn(&run_lib_unit_tests.step);
 
     // Install unittest executable binary to zig-out/tests/unittest
@@ -201,16 +213,25 @@ pub fn build(b: *std.Build) void {
     if (b.findProgram(&.{"kcov"}, &.{})) |kcov_path| {
         const tests_dir = b.getInstallPath(.{ .custom = "tests" }, "");
 
-        // Step 1: Trace lib_unit_tests (src/ engine and physics tests)
-        const run_kcov_lib = b.addSystemCommand(&.{
+        // Step 1: Trace hal_unit_tests (src/hal/ tests)
+        const run_kcov_hal = b.addSystemCommand(&.{
             kcov_path,
             "--clean",
             "--include-pattern=src/,tools/",
             tests_dir,
         });
-        run_kcov_lib.addFileArg(lib_unit_tests.getEmittedBin());
+        run_kcov_hal.addFileArg(hal_unit_tests.getEmittedBin());
 
-        // Step 2: Trace zurag_unit_tests (tools/zurag/ asset converter tests) and merge
+        // Step 2: Trace lib_unit_tests (src/ engine and physics tests)
+        const run_kcov_lib = b.addSystemCommand(&.{
+            kcov_path,
+            "--include-pattern=src/,tools/",
+            tests_dir,
+        });
+        run_kcov_lib.addFileArg(lib_unit_tests.getEmittedBin());
+        run_kcov_lib.step.dependOn(&run_kcov_hal.step);
+
+        // Step 3: Trace zurag_unit_tests (tools/zurag/ asset converter tests) and merge
         const run_kcov_zurag = b.addSystemCommand(&.{
             kcov_path,
             "--include-pattern=src/,tools/",
