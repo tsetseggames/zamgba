@@ -22,9 +22,9 @@ const SCREEN_H: i32 = 160;
 const PLAYER_X: u32 = 12;
 const AI_X: u32 = 240 - 12 - PADDLE_W; // 220
 
-const PADDLE_SPEED: i32 = 2 << 8; // 2.0 pixels/frame
-const BALL_SPEED_X: i32 = (2 << 8) + 64; // 2.25 pixels/frame
-const BALL_SPEED_Y: i32 = (1 << 8) + 128; // 1.5 pixels/frame
+const PADDLE_SPEED = Fixed24_8.fromInt(2); // 2.0 pixels/frame
+const BALL_SPEED_X = Fixed24_8.fromFloat(2.25); // 2.25 pixels/frame
+const BALL_SPEED_Y = Fixed24_8.fromFloat(1.5); // 1.5 pixels/frame
 
 const Game = struct {
     player: engine.Sprite,
@@ -42,12 +42,12 @@ const Game = struct {
 
         // 16-bit collision layer assignments
         self.player.layer = Collision.layer(0); // Player layer
-        self.player.mask = Collision.layer(2);  // Interacts with Ball
+        self.player.mask = Collision.layer(2); // Interacts with Ball
 
-        self.ai.layer = Collision.layer(1);     // AI layer
-        self.ai.mask = Collision.layer(2);      // Interacts with Ball
+        self.ai.layer = Collision.layer(1); // AI layer
+        self.ai.mask = Collision.layer(2); // Interacts with Ball
 
-        self.ball.layer = Collision.layer(2);   // Ball layer
+        self.ball.layer = Collision.layer(2); // Ball layer
         self.ball.mask = Collision.layer(0) | Collision.layer(1);
 
         // Ball initial velocity
@@ -74,9 +74,9 @@ const Game = struct {
     }
 
     pub fn resetBall(self: *@This(), serve_right: bool) void {
-        self.ball.aabb.x = Fixed24_8.fromInt(@intCast((SCREEN_W - BALL_SIZE) / 2));
-        self.ball.aabb.y = Fixed24_8.fromInt(@intCast((SCREEN_H - BALL_SIZE) / 2));
-        self.ball.velocity_x = if (serve_right) BALL_SPEED_X else -BALL_SPEED_X;
+        self.ball.aabb.x = Fixed24_8.fromInt((SCREEN_W - BALL_SIZE) / 2);
+        self.ball.aabb.y = Fixed24_8.fromInt((SCREEN_H - BALL_SIZE) / 2);
+        self.ball.velocity_x = if (serve_right) BALL_SPEED_X else BALL_SPEED_X.neg();
         self.ball.velocity_y = BALL_SPEED_Y;
     }
 
@@ -84,56 +84,53 @@ const Game = struct {
         self.input.update();
 
         // 1. Player paddle control (D-Pad Up / Down)
-        var player_vy: i32 = 0;
-        if (self.input.isPressed(.Up)) player_vy -= PADDLE_SPEED;
-        if (self.input.isPressed(.Down)) player_vy += PADDLE_SPEED;
+        var player_vy = Fixed24_8.zero;
+        if (self.input.isPressed(.Up)) player_vy = player_vy.sub(PADDLE_SPEED);
+        if (self.input.isPressed(.Down)) player_vy = player_vy.add(PADDLE_SPEED);
 
-        const cur_player_y: i32 = @intCast(self.player.aabb.y.toInt());
-        const next_player_y = std.math.clamp(cur_player_y + (player_vy >> 8), 0, SCREEN_H - PADDLE_H);
-        self.player.aabb.y = Fixed24_8.fromInt(@intCast(next_player_y));
+        const cur_player_y = self.player.aabb.y.toInt();
+        const next_player_y = std.math.clamp(cur_player_y + player_vy.toInt(), 0, SCREEN_H - PADDLE_H);
+        self.player.aabb.y = Fixed24_8.fromInt(next_player_y);
 
         // 2. AI paddle tracking logic
-        const ball_center_y: i32 = @intCast(self.ball.aabb.y.toInt() + BALL_SIZE / 2);
-        const ai_center_y: i32 = @intCast(self.ai.aabb.y.toInt() + PADDLE_H / 2);
-        var ai_vy: i32 = 0;
+        const ball_center_y = self.ball.aabb.y.toInt() + BALL_SIZE / 2;
+        const ai_center_y = self.ai.aabb.y.toInt() + PADDLE_H / 2;
+        var ai_vy = Fixed24_8.zero;
         if (ai_center_y < ball_center_y - 2) {
-            ai_vy = PADDLE_SPEED - 64; // Slightly slower for balanced gameplay
+            ai_vy = PADDLE_SPEED.sub(Fixed24_8.fromFloat(0.25)); // Slightly slower for balanced gameplay
         } else if (ai_center_y > ball_center_y + 2) {
-            ai_vy = -(PADDLE_SPEED - 64);
+            ai_vy = PADDLE_SPEED.sub(Fixed24_8.fromFloat(0.25)).neg();
         }
 
-        const cur_ai_y: i32 = @intCast(self.ai.aabb.y.toInt());
-        const next_ai_y = std.math.clamp(cur_ai_y + (ai_vy >> 8), 0, SCREEN_H - PADDLE_H);
-        self.ai.aabb.y = Fixed24_8.fromInt(@intCast(next_ai_y));
+        const cur_ai_y = self.ai.aabb.y.toInt();
+        const next_ai_y = std.math.clamp(cur_ai_y + ai_vy.toInt(), 0, SCREEN_H - PADDLE_H);
+        self.ai.aabb.y = Fixed24_8.fromInt(next_ai_y);
 
         // 3. Move Ball with sub-pixel precision
-        const next_ball_raw_x = @as(i64, self.ball.aabb.x.raw) + self.ball.velocity_x;
-        const next_ball_raw_y = @as(i64, self.ball.aabb.y.raw) + self.ball.velocity_y;
+        self.ball.aabb.x = self.ball.aabb.x.add(self.ball.velocity_x);
+        self.ball.aabb.y = self.ball.aabb.y.add(self.ball.velocity_y);
 
-        self.ball.aabb.x.raw = @intCast(@max(0, next_ball_raw_x));
-        self.ball.aabb.y.raw = @intCast(@max(0, next_ball_raw_y));
-
-        const cur_ball_x_px: i32 = @intCast(self.ball.aabb.x.toInt());
-        const cur_ball_y_px: i32 = @intCast(self.ball.aabb.y.toInt());
+        const cur_ball_x_px = self.ball.aabb.x.toInt();
+        const cur_ball_y_px = self.ball.aabb.y.toInt();
 
         // 4. Ball bounce on top and bottom screen boundaries
         if (cur_ball_y_px <= 0) {
             self.ball.aabb.y = Fixed24_8.fromInt(0);
-            self.ball.velocity_y = @intCast(@abs(self.ball.velocity_y));
+            self.ball.velocity_y = Fixed24_8{ .raw = @intCast(@abs(self.ball.velocity_y.raw)) };
         } else if (cur_ball_y_px >= SCREEN_H - BALL_SIZE) {
-            self.ball.aabb.y = Fixed24_8.fromInt(@intCast(SCREEN_H - BALL_SIZE));
-            self.ball.velocity_y = -@as(i32, @intCast(@abs(self.ball.velocity_y)));
+            self.ball.aabb.y = Fixed24_8.fromInt(SCREEN_H - BALL_SIZE);
+            self.ball.velocity_y = Fixed24_8{ .raw = -@as(i32, @intCast(@abs(self.ball.velocity_y.raw))) };
         }
 
         // 5. Paddle vs Ball AABB collision
         if (self.player.aabb.isColliding(self.ball.aabb)) {
             // Ball hits Player paddle -> bounce right
             self.ball.aabb.x = Fixed24_8.fromInt(PLAYER_X + PADDLE_W);
-            self.ball.velocity_x = @intCast(@abs(self.ball.velocity_x));
+            self.ball.velocity_x = Fixed24_8{ .raw = @intCast(@abs(self.ball.velocity_x.raw)) };
         } else if (self.ai.aabb.isColliding(self.ball.aabb)) {
             // Ball hits AI paddle -> bounce left
             self.ball.aabb.x = Fixed24_8.fromInt(AI_X - BALL_SIZE);
-            self.ball.velocity_x = -@as(i32, @intCast(@abs(self.ball.velocity_x)));
+            self.ball.velocity_x = Fixed24_8{ .raw = -@as(i32, @intCast(@abs(self.ball.velocity_x.raw))) };
         }
 
         // 6. Goal scoring and ball reset

@@ -24,18 +24,18 @@ const Game = struct {
     map: CollisionMap,
     input: engine.input.InputState,
 
-    const PLAYER_START_X: u32 = 0;
-    const PLAYER_START_Y: u32 = 80;
+    const PLAYER_START_X: i32 = 0;
+    const PLAYER_START_Y: i32 = 80;
 
-    const ENEMY_1_START_X: u32 = 80;  // 1/3 of screen width (240 / 3)
-    const ENEMY_1_START_Y: u32 = 8;
-    const ENEMY_1_SPEED_Y: i32 = (1 << 8) + 128; // 1.5 pixels/frame
+    const ENEMY_1_START_X: i32 = 80; // 1/3 of screen width (240 / 3)
+    const ENEMY_1_START_Y: i32 = 8;
+    const ENEMY_1_SPEED_Y = Fixed24_8.fromFloat(1.5); // 1.5 pixels/frame
 
-    const ENEMY_2_START_X: u32 = 160; // 2/3 of screen width (240 * 2 / 3)
-    const ENEMY_2_START_Y: u32 = 144;
-    const ENEMY_2_SPEED_Y: i32 = -((1 << 8) + 128); // -1.5 pixels/frame
+    const ENEMY_2_START_X: i32 = 160; // 2/3 of screen width (240 * 2 / 3)
+    const ENEMY_2_START_Y: i32 = 144;
+    const ENEMY_2_SPEED_Y = Fixed24_8.fromFloat(-1.5); // -1.5 pixels/frame
 
-    const PLAYER_SPEED: i32 = 2 << 8; // 2.0 pixels/frame
+    const PLAYER_SPEED = Fixed24_8.fromInt(2); // 2.0 pixels/frame
 
     pub fn init() Game {
         var self = Game{
@@ -50,10 +50,10 @@ const Game = struct {
 
         // Configure 16-bit collision layers
         self.player.layer = Collision.layer(0); // Layer 0: Player
-        self.player.mask = Collision.layer(1);  // Mask: Enemy
+        self.player.mask = Collision.layer(1); // Mask: Enemy
 
         self.enemies[0].layer = Collision.layer(1); // Layer 1: Enemy
-        self.enemies[0].mask = Collision.layer(0);  // Mask: Player
+        self.enemies[0].mask = Collision.layer(0); // Mask: Player
         self.enemies[0].velocity_y = ENEMY_1_SPEED_Y;
 
         self.enemies[1].layer = Collision.layer(1);
@@ -78,8 +78,8 @@ const Game = struct {
     pub fn reset(self: *@This()) void {
         self.player.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
         self.player.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
-        self.player.velocity_x = 0;
-        self.player.velocity_y = 0;
+        self.player.velocity_x = Fixed24_8.zero;
+        self.player.velocity_y = Fixed24_8.zero;
 
         self.enemies[0].aabb.x = Fixed24_8.fromInt(ENEMY_1_START_X);
         self.enemies[0].aabb.y = Fixed24_8.fromInt(ENEMY_1_START_Y);
@@ -94,13 +94,13 @@ const Game = struct {
         self.input.update();
 
         // 1. Process player input velocity
-        var vx: i32 = 0;
-        var vy: i32 = 0;
+        var vx = Fixed24_8.zero;
+        var vy = Fixed24_8.zero;
 
-        if (self.input.isPressed(.Left)) vx -= PLAYER_SPEED;
-        if (self.input.isPressed(.Right)) vx += PLAYER_SPEED;
-        if (self.input.isPressed(.Up)) vy -= PLAYER_SPEED;
-        if (self.input.isPressed(.Down)) vy += PLAYER_SPEED;
+        if (self.input.isPressed(.Left)) vx = vx.sub(PLAYER_SPEED);
+        if (self.input.isPressed(.Right)) vx = vx.add(PLAYER_SPEED);
+        if (self.input.isPressed(.Up)) vy = vy.sub(PLAYER_SPEED);
+        if (self.input.isPressed(.Down)) vy = vy.add(PLAYER_SPEED);
 
         self.player.velocity_x = vx;
         self.player.velocity_y = vy;
@@ -114,7 +114,7 @@ const Game = struct {
             const res = enemy.moveAndCollide(self.map);
             if (res.collided_y) {
                 // Reverse direction on map wall collision
-                enemy.velocity_y = -initial_vy;
+                enemy.velocity_y = initial_vy.neg();
             }
         }
 

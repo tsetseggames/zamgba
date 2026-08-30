@@ -29,18 +29,20 @@ const Game = struct {
     anim_frame: u16 = 0,
     anim_timer: u16 = 0,
 
-    const PLAYER_START_X: u32 = 8;
-    const PLAYER_START_Y: u32 = 64;
+    const PLAYER_START_X: i32 = 8;
+    const PLAYER_START_Y: i32 = 64;
 
-    const ENEMY_1_START_X: u32 = 90;
-    const ENEMY_1_START_Y: u32 = 8;
-    const ENEMY_1_SPEED_Y: i32 = (1 << 8) + 64; // ~1.25 pixels/frame
+    const ENEMY_1_START_X: i32 = 90;
+    const ENEMY_1_START_Y: i32 = 8;
+    // 1.25 pixels/frame vertical patrol velocity
+    const ENEMY_1_SPEED_Y = Fixed24_8.fromFloat(1.25);
 
-    const ENEMY_2_START_X: u32 = 170;
-    const ENEMY_2_START_Y: u32 = 120;
-    const ENEMY_2_SPEED_Y: i32 = -((1 << 8) + 64);
+    const ENEMY_2_START_X: i32 = 170;
+    const ENEMY_2_START_Y: i32 = 120;
+    const ENEMY_2_SPEED_Y = Fixed24_8.fromFloat(-1.25);
 
-    const PLAYER_SPEED: i32 = 2 << 8; // 2.0 pixels/frame
+    // 2.0 pixels/frame horizontal & vertical movement speed
+    const PLAYER_SPEED = Fixed24_8.fromInt(2);
     const FRAME_DURATION_TICKS: u16 = 6; // 6 frames at 60Hz ~= 100ms per animation frame
 
     // In GBA 1D 8-bpp mapping, a 32x32 sprite (1024 bytes) advances by 32 tile index units per frame
@@ -104,8 +106,8 @@ const Game = struct {
     pub fn reset(self: *@This()) void {
         self.player.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
         self.player.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
-        self.player.velocity_x = 0;
-        self.player.velocity_y = 0;
+        self.player.velocity_x = Fixed24_8.zero;
+        self.player.velocity_y = Fixed24_8.zero;
         self.player.h_flip = false;
         self.anim_frame = 0;
         self.anim_timer = 0;
@@ -123,19 +125,19 @@ const Game = struct {
         self.input.update();
 
         // 1. Process player directional input & horizontal flipping
-        var vx: i32 = 0;
-        var vy: i32 = 0;
+        var vx = Fixed24_8.zero;
+        var vy = Fixed24_8.zero;
 
         if (self.input.isPressed(.Left)) {
-            vx -= PLAYER_SPEED;
+            vx = vx.sub(PLAYER_SPEED);
             self.player.h_flip = true; // Face left
         }
         if (self.input.isPressed(.Right)) {
-            vx += PLAYER_SPEED;
+            vx = vx.add(PLAYER_SPEED);
             self.player.h_flip = false; // Face right
         }
-        if (self.input.isPressed(.Up)) vy -= PLAYER_SPEED;
-        if (self.input.isPressed(.Down)) vy += PLAYER_SPEED;
+        if (self.input.isPressed(.Up)) vy = vy.sub(PLAYER_SPEED);
+        if (self.input.isPressed(.Down)) vy = vy.add(PLAYER_SPEED);
 
         self.player.velocity_x = vx;
         self.player.velocity_y = vy;
@@ -148,7 +150,7 @@ const Game = struct {
             const initial_vy = enemy.velocity_y;
             const res = enemy.moveAndCollide(self.map);
             if (res.collided_y) {
-                enemy.velocity_y = -initial_vy;
+                enemy.velocity_y = initial_vy.neg();
             }
         }
 

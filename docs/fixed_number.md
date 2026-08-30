@@ -9,15 +9,15 @@ This document explains the design principles, performance considerations, and us
 GBA uses an **ARM7TDMI** processor without a Floating-Point Unit (FPU). Any standard 32-bit floating-point operation (`f32`) incurs heavy software emulation (`__aeabi_fadd`, `__aeabi_fmul`, etc.) costing tens to hundreds of CPU cycles per calculation.
 
 To achieve high-performance physics and collision detection, Zamgba uses a fixed-point representation:
-- **Underlying Type**: `u32` (32 bits unsigned integer).
+- **Underlying Type**: `i32` (32-bit signed two's complement integer).
 - **Format**: `Fixed24_8`
-  - High 24 bits (Bits 8–31): Integer part.
+  - High 24 bits (Bits 8–31): Signed integer part (range: $-8,388,608$ to $+8,388,607$).
   - Low 8 bits (Bits 0–7): Fractional part ($1 / 256 \approx 0.00390625$ resolution).
 
 ```
  31                          8 7         0
 +-----------------------------+-----------+
-|        Integer (24 bits)    | Frac (8b) |
+|    Signed Integer (24 bits) | Frac (8b) |
 +-----------------------------+-----------+
 ```
 
@@ -33,16 +33,16 @@ Zig provides the `comptime` parameter qualifier. By constraining the constructor
 
 ```zig
 pub fn fromFloat(comptime f: comptime_float) Fixed24_8 {
-    return .{ .raw = @as(u32, @intFromFloat(f * @as(comptime_float, scale))) };
+    return .{ .raw = @as(i32, @intFromFloat(f * @as(comptime_float, scale))) };
 }
 ```
 
-#### Detailed Breakdown of `@as(u32, @intFromFloat(f * @as(comptime_float, scale)))`
+#### Detailed Breakdown of `@as(i32, @intFromFloat(f * @as(comptime_float, scale)))`
 1. `scale` is defined as `1 << 8` (`256`).
 2. `@as(comptime_float, scale)` coerces the integer `256` into a compile-time float `256.0` to satisfy Zig's strict type-matching for floating-point arithmetic.
-3. `f * 256.0` scales the float value into fixed-point representation (e.g., `3.5 * 256.0 = 896.0`).
-4. `@intFromFloat(...)` converts the compile-time float `896.0` to an integer `896`.
-5. `@as(u32, ...)` coerces the compile-time integer literal `896` into a standard `u32` for storing in `.raw`.
+3. `f * 256.0` scales the float value into fixed-point representation (e.g., `3.5 * 256.0 = 896.0` or `-1.5 * 256.0 = -384.0`).
+4. `@intFromFloat(...)` converts the compile-time float to a signed integer.
+5. `@as(i32, ...)` coerces the compile-time integer literal into an `i32` for storing in `.raw`.
 6. Because all inputs are `comptime`, LLVM folds this entire expression into a single immediate constant (e.g. `896` / `0x380`) during compilation, resulting in **zero** runtime instructions.
 
 ---
@@ -95,16 +95,18 @@ $$\text{fraction} = \text{round}(0.x \times 256)$$
 
 For runtime values where fractions or parts are computed from integers:
 
-- **`fromParts(integer: u32, fraction: u8)`**: Directly combines an integer and an 8-bit fraction counter (`(integer << 8) | fraction`).
-- **`fromFraction(integer: u32, num: u32, den: u32)`**: Constructs value from rational numbers (e.g. `fromFraction(3, 1, 2)` for $3 + \frac{1}{2}$).
-- **`fromInt(i: u32)`**: Simple whole integer constructor (`i << 8`).
+- **`fromParts(integer: i32, fraction: u8)`**: Combines an integer and an 8-bit fraction counter with proper sign handling.
+- **`fromFraction(integer: i32, num: i32, den: i32)`**: Constructs value from rational numbers (e.g. `fromFraction(3, 1, 2)` for $3 + \frac{1}{2}$, using `@divTrunc`).
+- **`fromInt(i: i32)`**: Simple whole integer constructor (`i << 8`).
+- **`Fixed24_8.zero`**: Constant for $0.0$.
+- **`neg()`**: Negates a value (`-self.raw`).
 
 ---
 
 ## 5. Assignment, Passing, and Memory Semantics
 
 ### Direct Assignment (`=`)
-Because `Fixed24_8` wraps a single 32-bit field (`raw: u32`), instances can and should be copied using standard assignment:
+Because `Fixed24_8` wraps a single 32-bit field (`raw: i32`), instances can and should be copied using standard assignment:
 
 ```zig
 var a = Fixed24_8.fromFloat(3.5);
@@ -126,3 +128,28 @@ var b: Fixed24_8 = a; // Direct copy
    ```zig
    @memcpy(dest_slice, src_slice);
    ```
+
+---
+
+## 6. From Unsigned to Signed: Design Decisions & Screen Impact
+
+In earlier versions of Zamgba, `Fixed24_8` was represented as an unsigned integer (`raw: u32`). Moving to a fully signed `raw: i32` representation resolved fundamental architectural trade-offs:
+
+### 1. Unified Velocity & Position Model
+- **Problem**: Velocity components (`velocity_x`, `velocity_y`) are inherently signed vectors (e.g., `-1.5` pixels/frame when moving left or up). With unsigned `Fixed24_8`, velocity had to be kept as raw `i32` with manual bit shifts (`vx >> 8`), creating semantic duplication and risk of mixing raw pixel integers with fixed-point integers.
+- **Solution**: `Sprite.velocity_x` and `velocity_y` are now typed as `Fixed24_8`. Both positions and velocities use identical arithmetic methods (`.add()`, `.sub()`, `.mul()`, `.div()`, `.neg()`), catching unit mismatches at compile time.
+
+### 2. Direction Flipping & Wall Bouncing
+- Inverting movement direction on wall collisions or input flips now executes via `.neg()` (`enemy.velocity_y = enemy.velocity_y.neg()`).
+- On ARM7TDMI, negating a 32-bit signed register is a single-cycle instruction (`rsb r0, r0, #0` or `neg`), avoiding branching and absolute value conversions.
+
+### 3. Screen Coordinate & OAM Hardware Mapping
+Converting `Fixed24_8` to integer screen coordinates (`toInt()`) uses arithmetic right shift (`raw >> 8` / `ASR` on ARM):
+- **Positive Coordinates (On-screen)**: `toInt()` maps directly to the integer pixel grid with sub-pixel truncation.
+- **Negative Coordinates (Entering/Exiting Screen)**: Two's complement arithmetic right shift computes floor division (`floor(x)`), mapping $[-0.5, 0.0)$ consistently to $-1\text{px}$.
+- **GBA OAM Register Alignment**:
+  ```zig
+  const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF; // 8-bit wrap (0..255)
+  const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF; // 9-bit wrap (0..511)
+  ```
+  The GBA OBJ hardware wraps negative coordinates smoothly around screen boundaries (e.g. $X = -8 \implies 504$ in 9-bit coordinates). Floor rounding ensures continuous, jitter-free sprite entry from the left and top screen borders.
