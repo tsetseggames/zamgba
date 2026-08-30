@@ -3,6 +3,7 @@ pub const types = @import("metadata/types.zig");
 pub const aseprite = @import("metadata/aseprite.zig");
 
 // Re-export common domain types for consumers
+pub const Rect = types.Rect;
 pub const AnimationDirection = types.AnimationDirection;
 pub const Frame = types.Frame;
 pub const Tag = types.Tag;

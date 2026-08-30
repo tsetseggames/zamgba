@@ -1,5 +1,12 @@
 const std = @import("std");
-const tile = @import("../tile.zig");
+
+/// 2D rectangular pixel coordinate region (x, y, width, height)
+pub const Rect = struct {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+};
 
 pub const AnimationDirection = enum(u2) {
     forward = 0,
@@ -14,7 +21,7 @@ pub const AnimationDirection = enum(u2) {
 };
 
 pub const Frame = struct {
-    rect: tile.Rect,
+    rect: Rect,
     duration_ms: u16,
 };
 

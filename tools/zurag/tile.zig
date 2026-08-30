@@ -1,7 +1,11 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
 const png = @import("png.zig");
+const types = @import("metadata/types.zig");
 const BppMode = @import("main.zig").BppMode;
+
+// Re-export Rect from metadata/types.zig
+pub const Rect = types.Rect;
 
 // Internal GBA OBJ Tile constants directly referencing HAL hardware definition
 const TILE_WIDTH: usize = hal.oam.Tile.WIDTH_PIXELS;
@@ -19,14 +23,6 @@ pub const Tile4bpp = [hal.oam.Tile.BYTES_4BPP]u8;
 
 // 8-bpp (256-color) Tile: 64 pixels at 8 bits/pixel = 64 bytes
 pub const Tile8bpp = [hal.oam.Tile.BYTES_8BPP]u8;
-
-// Slice rectangle in pixel coordinates
-pub const Rect = struct {
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
-};
 
 // Sliced frame packaging result
 pub const SlicedFrame = struct {

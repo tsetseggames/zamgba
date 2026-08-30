@@ -1,6 +1,5 @@
 const std = @import("std");
 const types = @import("types.zig");
-const tile = @import("../tile.zig");
 
 /// Detects whether the parsed JSON root object belongs to Aseprite or LibreSprite via meta.app signature.
 pub fn detectCreatorAppAndVersion(root: std.json.ObjectMap) bool {
@@ -38,7 +37,7 @@ fn parseSingleFrame(obj: std.json.ObjectMap) types.MetadataError!types.Frame {
     const duration = getIntField(u16, obj, "duration") orelse 100;
 
     return types.Frame{
-        .rect = tile.Rect{ .x = x, .y = y, .w = w, .h = h },
+        .rect = types.Rect{ .x = x, .y = y, .w = w, .h = h },
         .duration_ms = duration,
     };
 }
