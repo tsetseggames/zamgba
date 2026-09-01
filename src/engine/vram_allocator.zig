@@ -152,7 +152,7 @@ pub fn allocUnits(units: u16) VramError!VramAllocation {
     const blk_idx = popFree(order).?;
     while (order > target_order) {
         order -= 1;
-        const buddy_idx = blk_idx + @as(i16, @intCast(@as(usize, 1) << @as(u6, @intCast(order))));
+        const buddy_idx = blk_idx + @as(i16, @intCast(@as(u16, 1) << @as(u4, @intCast(order))));
         pushFree(order, buddy_idx);
     }
 
@@ -185,7 +185,7 @@ pub fn free(alloc_info: VramAllocation) VramError!void {
 
     // Coalesce buddies upwards
     while (current_order < MAX_ORDER) {
-        const buddy_idx = current_idx ^ @as(i16, @intCast(@as(usize, 1) << @as(u6, @intCast(current_order))));
+        const buddy_idx = current_idx ^ @as(i16, @intCast(@as(u16, 1) << @as(u4, @intCast(current_order))));
         if (buddy_idx < 0 or buddy_idx >= @as(i16, @intCast(TOTAL_TILES))) break;
 
         const u_buddy = @as(usize, @intCast(buddy_idx));

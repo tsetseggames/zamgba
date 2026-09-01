@@ -150,6 +150,15 @@ pub fn build(b: *std.Build) void {
     ninth.root_module.addImport(LibName, m);
     ninth.root_module.addImport("tsetseg_broom", broom_sprite_mod);
 
+    var tenth = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "flappy_tsetseg_streaming",
+        .root_source_file = b.path("demo/engine/flappy_tsetseg_streaming.zig"),
+    });
+
+    tenth.root_module.addImport(LibName, m);
+    tenth.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
