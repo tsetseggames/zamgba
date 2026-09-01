@@ -67,12 +67,31 @@ pub const DmaQueue = struct {
 
 ---
 
-## 4. VBlank Bandwidth Budget Guard
+## 4. VBlank Bandwidth Budget Guard & 4 KB Mathematical Derivation
 
-* **The Hardware Redline**: The GBA VBlank window is **83,776 CPU cycles**.
-* **DMA 3 Transfer Rate**: ~2 cycles per 32-bit word.
-* **Safety Margin**: A 4 KB transfer (~1024 words) takes ~2,048 cycles ($< 2.5\%$ of the VBlank window), leaving ample headroom for shadow OAM copying and BIOS interrupt overhead.
-* **Overload Protection**: If multiple large sprites trigger animation frame changes simultaneously such that `staged_bytes > MAX_BYTES_PER_VBLANK`, the queue safely defers non-critical background/effect transfers to the next frame, completely preventing visual tearing and emulator lockups.
+### A. Hardware Timing & Cycle Derivation
+1. **Total Frame Duration**:
+   - GBA CPU runs at **16.78 MHz** (16,777,216 Hz), yielding **280,896 CPU cycles per frame** at ~59.73 FPS.
+   - Each frame consists of **228 total scanlines** (160 visible active rendering lines, **68 VBlank lines**).
+   - Each scanline takes **1,232 cycles**.
+   - Total VBlank duration = $68 \times 1232 = \mathbf{83,776\text{ CPU cycles}}$ (~5.0 milliseconds).
+
+2. **DMA 3 Transfer Bus Timings**:
+   - Reading 32-bit words from 16-bit Game Pak ROM (with prefetch buffer) takes ~2–3 wait states.
+   - Writing 32-bit words to 16-bit OBJ VRAM splits into two halfword writes taking 2 cycles.
+   - Taking bus arbitration and reload cycles into account, DMA 3 throughput averages **~4 cycles per 32-bit word** (4 bytes).
+
+3. **4 KB Budget Evaluation**:
+   $$\text{Words to transfer} = \frac{4096\text{ bytes}}{4\text{ bytes/word}} = 1024\text{ words}$$
+   $$\text{Transfer time} \approx 1024\text{ words} \times 4\text{ cycles/word} = \mathbf{4,096\text{ CPU cycles}}$$
+   $$\text{VBlank Window Utilization} = \frac{4,096\text{ cycles}}{83,776\text{ cycles}} \approx \mathbf{4.88\%}$$
+
+### B. Why 4 KB is the Sweet Spot
+- **Substantial Safety Margin**: Consuming $< 5\%$ of the total VBlank window leaves over **95% of VBlank cycles** for other time-critical operations (Shadow OAM copy of 128 entries = ~512 cycles, scroll register updates, palette animations, audio sample buffer fills, and BIOS SWI interrupt dispatch).
+- **High Animation Concurrency**: 4 KB allows:
+  - **128 tiles in 4-bpp**: Simultaneously switching frames for **8 independent 16x16 characters** or **2 large 32x32 characters** in a single frame tick;
+  - **64 tiles in 8-bpp**: Completely refreshing a **giant 64x64 8-bpp Boss sprite** in a single frame.
+- **Overload Protection**: If staged transfers exceed `MAX_BYTES_PER_VBLANK`, the queue safely rejects/defers excess transfers, preventing DMA from overrunning into scanline 0 (HDraw) and eliminating screen tearing.
 
 ---
 
