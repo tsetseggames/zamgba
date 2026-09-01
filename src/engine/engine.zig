@@ -10,6 +10,7 @@ pub const Color = @import("color.zig").Color;
 
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
 pub var sprite_count: usize = 0;
+pub var dma_queue_instance: dma_queue.DmaQueue = .{};
 pub var is_initialized: bool = false;
 
 /// Initializes the global engine state and hardware display registers.
@@ -30,17 +31,22 @@ pub fn init() void {
         };
     }
     sprite_count = 0;
+    dma_queue_instance.reset();
     vram_allocator.init();
     is_initialized = true;
 }
 
 /// Completes the frame lifecycle:
 /// 1. Waits for VBlank.
-/// 2. Flushes staged shadow OAM to GBA hardware OAM.
-/// 3. Resets dynamic frame sprite counter.
+/// 2. Flushes staged DMA transfer queue to VRAM.
+/// 3. Flushes staged shadow OAM to GBA hardware OAM.
+/// 4. Resets dynamic frame sprite counter.
 pub fn nextFrame() void {
     // Wait for VBlank
     hal.waitForVBlank();
+
+    // Flush DMA transfers to VRAM during VBlank
+    dma_queue_instance.flush();
 
     // Flush shadow memory to hardware
     const hw_oam = @as([*]volatile hal.oam.ObjAttr, @ptrCast(@alignCast(hal.MemorySections.OAM)));
@@ -50,6 +56,21 @@ pub fn nextFrame() void {
 
     // Reset the sprite count so the next frame draws from slot 0
     sprite_count = 0;
+}
+
+/// Enqueues a DMA memory transfer to be executed during the upcoming VBlank.
+pub fn enqueueDmaTask(task: hal.dma.DmaTask) dma_queue.DmaQueueError!void {
+    return dma_queue_instance.enqueue(task);
+}
+
+/// Enqueues a raw byte transfer via DMA to be executed during the upcoming VBlank.
+pub fn enqueueDmaBytes(src: [*]const u8, dest: [*]volatile u8, bytes: u16) dma_queue.DmaQueueError!void {
+    return dma_queue_instance.enqueueBytes(src, dest, bytes);
+}
+
+/// Sets the maximum bytes permitted for DMA streaming transfer in a single VBlank.
+pub fn setDmaVblankBudget(bytes: usize) void {
+    dma_queue_instance.setMaxBytesPerVblank(bytes);
 }
 
 /// Registers a high-level sprite to be rendered in the current frame.

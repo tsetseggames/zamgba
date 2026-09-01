@@ -46,13 +46,18 @@ In Game Boy Advance development, rendering and memory access are governed by str
 ```zig
 pub const DmaQueue = struct {
     pub const CAPACITY: usize = 16;
-    pub const MAX_BYTES_PER_VBLANK: usize = 4096; // 4 KB safe VBlank budget
+    pub const DEFAULT_MAX_BYTES_PER_VBLANK: usize = 4096; // 4 KB safe VBlank budget
+    pub const HARDWARE_MAX_SAFE_LIMIT: usize = 16384;      // 16 KB upper physical safety limit (~20% VBlank)
 
     tasks: [CAPACITY]hal.dma.DmaTask = undefined,
     head: usize = 0,
     tail: usize = 0,
     count: usize = 0,
     staged_bytes: usize = 0,
+    max_bytes_per_vblank: usize = DEFAULT_MAX_BYTES_PER_VBLANK,
+
+    /// Dynamically adjust the maximum allowed VBlank transfer budget for the active scene.
+    pub fn setMaxBytesPerVblank(self: *DmaQueue, bytes: usize) void;
 
     /// Enqueues a DMA memory transfer task.
     pub fn enqueue(self: *DmaQueue, task: hal.dma.DmaTask) DmaQueueError!void;
@@ -91,7 +96,13 @@ pub const DmaQueue = struct {
 - **High Animation Concurrency**: 4 KB allows:
   - **128 tiles in 4-bpp**: Simultaneously switching frames for **8 independent 16x16 characters** or **2 large 32x32 characters** in a single frame tick;
   - **64 tiles in 8-bpp**: Completely refreshing a **giant 64x64 8-bpp Boss sprite** in a single frame.
-- **Overload Protection**: If staged transfers exceed `MAX_BYTES_PER_VBLANK`, the queue safely rejects/defers excess transfers, preventing DMA from overrunning into scanline 0 (HDraw) and eliminating screen tearing.
+- **Overload Protection**: If staged transfers exceed `max_bytes_per_vblank`, the queue safely rejects excess transfers with `error.ExceedsVblankBudget`, preventing DMA from overrunning into scanline 0 (HDraw) and eliminating screen tearing.
+
+### C. Dynamic Scene Budget Customization
+Developers can tune the VBlank budget per scene via `setMaxBytesPerVblank()` or `engine.setDmaVblankBudget()`:
+- **Default (4 KB)**: Balanced for standard gameplay with active background scrolling and audio playback.
+- **Heavy Animation (up to 16 KB / `HARDWARE_MAX_SAFE_LIMIT`)**: Suitable for 1v1 fighting games, boss cutscenes, or level transitions where audio and background overhead is minimal.
+- **Heavy Audio / Tile Cycling (1–2 KB)**: Enforces strict limits in scenes with intensive Direct Sound mixing and real-time palette manipulation.
 
 ---
 
