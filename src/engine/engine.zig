@@ -2,6 +2,10 @@ const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
+pub const StaticTile = @import("sprite.zig").StaticTile;
+pub const ColorFillTile = @import("sprite.zig").ColorFillTile;
+pub const StaticSprite = @import("sprite.zig").StaticSprite;
+pub const ColorFillSprite = @import("sprite.zig").ColorFillSprite;
 pub const BppMode = @import("sprite.zig").BppMode;
 pub const AnimationDirection = @import("sprite.zig").AnimationDirection;
 pub const AnimationTag = @import("sprite.zig").AnimationTag;
@@ -73,12 +77,18 @@ pub fn setDmaVblankBudget(bytes: usize) void {
     dma_queue_instance.setMaxBytesPerVblank(bytes);
 }
 
-/// Registers a high-level sprite to be rendered in the current frame.
+/// Registers a sprite to be rendered in the current frame.
 /// Dynamically maps the high-level sprite into the next available OAM slot.
-pub fn drawSprite(spr: *const Sprite) void {
+pub fn drawSprite(spr: anytype) void {
     if (sprite_count >= 128) return; // GBA hardware limit
-    shadow_oam[sprite_count] = spr.toOamAttr();
-    sprite_count += 1;
+    const T = @TypeOf(spr);
+    const PtrInfo = @typeInfo(T);
+    const TargetType = if (PtrInfo == .pointer) PtrInfo.pointer.child else T;
+
+    if (@hasDecl(TargetType, "toOamAttr")) {
+        shadow_oam[sprite_count] = spr.toOamAttr();
+        sprite_count += 1;
+    }
 }
 
 /// Starts the game loop using the global engine singleton.
@@ -123,6 +133,7 @@ pub const input = @import("input.zig");
 pub const physics = @import("physics/physics.zig");
 pub const vram_allocator = @import("vram_allocator.zig");
 pub const dma_queue = @import("dma_queue.zig");
+pub const AnimatedTiles = @import("animated_sprite.zig").AnimatedTiles;
 pub const AnimatedSprite = @import("animated_sprite.zig").AnimatedSprite;
 pub const AnimationMode = @import("animated_sprite.zig").AnimationMode;
 
@@ -143,7 +154,7 @@ test "ENG001: Engine singleton init and drawSprite staging" {
         try std.testing.expectEqual(@as(u16, 160), obj.attr0);
     }
 
-    const test_spr = Sprite.init(10, 20, 8, 8);
+    const test_spr = StaticSprite.init(10, 20, 8, 8, .{});
     drawSprite(&test_spr);
     try std.testing.expectEqual(@as(usize, 1), sprite_count);
     try std.testing.expectEqual(@as(u16, 20), shadow_oam[0].attr0 & 0x00FF);

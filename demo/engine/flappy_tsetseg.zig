@@ -21,8 +21,8 @@ fn isBorderSolid(tx: u16, ty: u16) bool {
 }
 
 const Game = struct {
-    player: engine.Sprite,
-    enemies: [2]engine.Sprite,
+    player: engine.StaticSprite,
+    enemies: [2]engine.ColorFillSprite,
     map: CollisionMap,
     input: engine.input.InputState,
 
@@ -51,32 +51,36 @@ const Game = struct {
     pub fn init() Game {
         var self = Game{
             // Player is 32x32 matching the flying animation bounding box
-            .player = engine.Sprite.init(PLAYER_START_X, PLAYER_START_Y, 32, 32),
-            .enemies = [_]engine.Sprite{
-                engine.Sprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32),
-                engine.Sprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32),
+            .player = engine.StaticSprite.init(PLAYER_START_X, PLAYER_START_Y, 32, 32, .{
+                .tile_index = 0,
+                .palette_bank = 0,
+                .bpp = .bpp8,
+            }),
+            .enemies = [_]engine.ColorFillSprite{
+                engine.ColorFillSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
+                    .tile_index = 256,
+                    .palette_bank = 1,
+                }),
+                engine.ColorFillSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
+                    .tile_index = 256,
+                    .palette_bank = 1,
+                }),
             },
             .map = CollisionMap.init(.size_256x256, isBorderSolid, .solid),
             .input = .{},
         };
 
         // Configure collision layers
-        self.player.layer = Collision.layer(0); // Layer 0: Player
-        self.player.mask = Collision.layer(1); // Mask: Enemy
+        self.player.sprite.layer = Collision.layer(0); // Layer 0: Player
+        self.player.sprite.mask = Collision.layer(1); // Mask: Enemy
 
-        self.enemies[0].layer = Collision.layer(1); // Layer 1: Enemy
-        self.enemies[0].mask = Collision.layer(0); // Mask: Player
-        self.enemies[0].velocity_y = ENEMY_1_SPEED_Y;
+        self.enemies[0].sprite.layer = Collision.layer(1); // Layer 1: Enemy
+        self.enemies[0].sprite.mask = Collision.layer(0); // Mask: Player
+        self.enemies[0].sprite.velocity_y = ENEMY_1_SPEED_Y;
 
-        self.enemies[1].layer = Collision.layer(1);
-        self.enemies[1].mask = Collision.layer(0);
-        self.enemies[1].velocity_y = ENEMY_2_SPEED_Y;
-
-        // Configure visual modes
-        self.player.bpp = .bpp8;
-        self.player.tile_index = 0;
-        self.player.palette_bank = 0;
-        self.player.h_flip = false; // Default: faces right
+        self.enemies[1].sprite.layer = Collision.layer(1);
+        self.enemies[1].sprite.mask = Collision.layer(0);
+        self.enemies[1].sprite.velocity_y = ENEMY_2_SPEED_Y;
 
         // Load 256-color palette to OBJ Palette RAM (0x05000200)
         const obj_pal = hal.MemorySections.PALRAM + 256;
@@ -93,32 +97,27 @@ const Game = struct {
         }
 
         // Enemy visual setup (Red vertical pillars at Tile Index 256 in 4-bpp mode)
-        self.enemies[0].tile_index = 256;
-        self.enemies[0].palette_bank = 1;
         self.enemies[0].fillSolidColor(engine.Color.RED) catch {};
-
-        self.enemies[1].tile_index = 256;
-        self.enemies[1].palette_bank = 1;
 
         return self;
     }
 
     pub fn reset(self: *@This()) void {
-        self.player.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
-        self.player.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
-        self.player.velocity_x = Fixed24_8.zero;
-        self.player.velocity_y = Fixed24_8.zero;
-        self.player.h_flip = false;
+        self.player.sprite.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
+        self.player.sprite.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
+        self.player.sprite.velocity_x = Fixed24_8.zero;
+        self.player.sprite.velocity_y = Fixed24_8.zero;
+        self.player.sprite.h_flip = false;
         self.anim_frame = 0;
         self.anim_timer = 0;
 
-        self.enemies[0].aabb.x = Fixed24_8.fromInt(ENEMY_1_START_X);
-        self.enemies[0].aabb.y = Fixed24_8.fromInt(ENEMY_1_START_Y);
-        self.enemies[0].velocity_y = ENEMY_1_SPEED_Y;
+        self.enemies[0].sprite.aabb.x = Fixed24_8.fromInt(ENEMY_1_START_X);
+        self.enemies[0].sprite.aabb.y = Fixed24_8.fromInt(ENEMY_1_START_Y);
+        self.enemies[0].sprite.velocity_y = ENEMY_1_SPEED_Y;
 
-        self.enemies[1].aabb.x = Fixed24_8.fromInt(ENEMY_2_START_X);
-        self.enemies[1].aabb.y = Fixed24_8.fromInt(ENEMY_2_START_Y);
-        self.enemies[1].velocity_y = ENEMY_2_SPEED_Y;
+        self.enemies[1].sprite.aabb.x = Fixed24_8.fromInt(ENEMY_2_START_X);
+        self.enemies[1].sprite.aabb.y = Fixed24_8.fromInt(ENEMY_2_START_Y);
+        self.enemies[1].sprite.velocity_y = ENEMY_2_SPEED_Y;
     }
 
     pub fn tick(self: *@This()) void {
@@ -130,27 +129,27 @@ const Game = struct {
 
         if (self.input.isPressed(.Left)) {
             vx = vx.sub(PLAYER_SPEED);
-            self.player.h_flip = true; // Face left
+            self.player.sprite.h_flip = true; // Face left
         }
         if (self.input.isPressed(.Right)) {
             vx = vx.add(PLAYER_SPEED);
-            self.player.h_flip = false; // Face right
+            self.player.sprite.h_flip = false; // Face right
         }
         if (self.input.isPressed(.Up)) vy = vy.sub(PLAYER_SPEED);
         if (self.input.isPressed(.Down)) vy = vy.add(PLAYER_SPEED);
 
-        self.player.velocity_x = vx;
-        self.player.velocity_y = vy;
+        self.player.sprite.velocity_x = vx;
+        self.player.sprite.velocity_y = vy;
 
         // 2. Move player and block on screen border
-        _ = self.player.moveAndCollide(self.map);
+        _ = self.player.sprite.moveAndCollide(self.map);
 
         // 3. Move enemies vertically and bounce on screen border
         for (&self.enemies) |*enemy| {
-            const initial_vy = enemy.velocity_y;
-            const res = enemy.moveAndCollide(self.map);
+            const initial_vy = enemy.sprite.velocity_y;
+            const res = enemy.sprite.moveAndCollide(self.map);
             if (res.collided_y) {
-                enemy.velocity_y = initial_vy.neg();
+                enemy.sprite.velocity_y = initial_vy.neg();
             }
         }
 
@@ -160,11 +159,14 @@ const Game = struct {
             self.anim_timer = 0;
             self.anim_frame = (self.anim_frame + 1) % broom.frame_count;
         }
-        self.player.tile_index = self.anim_frame * TILES_PER_FRAME_8BPP;
+        self.player.tile.tile_index = self.anim_frame * TILES_PER_FRAME_8BPP;
 
         // 5. Check player-enemy collision
-        if (engine.physics.checkOverlap(&self.player, &self.enemies) != null) {
-            self.reset();
+        for (&self.enemies) |*enemy| {
+            if (self.player.sprite.canCollideWith(&enemy.sprite) and self.player.sprite.aabb.isColliding(enemy.sprite.aabb)) {
+                self.reset();
+                break;
+            }
         }
 
         // 6. Draw active sprites

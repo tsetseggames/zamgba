@@ -12,29 +12,30 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 
 // File-level globals. Since every Zig file is an implicit struct, these
 // act as our clean Level/Game state fields without polluting other namespaces.
-var spr: engine.Sprite = undefined;
+var spr: engine.ColorFillSprite = undefined;
 var dx: i32 = 1;
 
 /// The primary frame update callback for the active level/game.
 /// This runs automatically on every frame within our engine loop.
 pub fn tick() void {
     // 1. Move the high-level sprite's position
-    const cur_x: i32 = @intCast(spr.aabb.x.toInt());
+    const cur_x: i32 = @intCast(spr.sprite.aabb.x.toInt());
     const next_x = cur_x + dx;
     if (next_x >= 240 - 8 or next_x <= 0) {
         dx = -dx;
     }
-    spr.aabb.x = engine.physics.Fixed24_8.fromInt(@intCast(@max(0, cur_x + dx)));
+    spr.sprite.aabb.x = engine.physics.Fixed24_8.fromInt(@intCast(@max(0, cur_x + dx)));
 
     // 2. Draw the sprite (stages it dynamically in the next available OAM slot)
     engine.drawSprite(&spr);
 }
 
 export fn main() noreturn {
-    // 1. Initialize high-level sprite state (8x8 square sprite)
-    spr = engine.Sprite.init(116, 76, 8, 8);
-    spr.tile_index = 0;
-    spr.palette_bank = 0;
+    // 1. Initialize high-level sprite state (8x8 square sprite with ColorFillTile)
+    spr = engine.ColorFillSprite.init(116, 76, 8, 8, .{
+        .tile_index = 0,
+        .palette_bank = 0,
+    });
 
     // 2. Fill solid white color tile graphics & palette to hardware VRAM/PALRAM
     spr.fillSolidColor(engine.Color.WHITE) catch {};

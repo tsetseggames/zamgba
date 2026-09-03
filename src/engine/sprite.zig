@@ -10,6 +10,7 @@ const Collision = physics.Collision;
 
 pub const SpriteError = error{
     InvalidDimensions,
+    Unimplemented,
 };
 
 pub const BppMode = enum(u1) {
@@ -90,7 +91,64 @@ pub const CollisionResult = struct {
     }
 };
 
-/// High-level Sprite with unified AABB bounding box and velocity physics.
+/// Represents a static GBA tile attribute in VRAM.
+/// Can be used as a Sprite tile source or as a Background Screen Entry.
+pub const StaticTile = struct {
+    tile_index: u16 = 0,
+    palette_bank: u4 = 0,
+    bpp: BppMode = .bpp4,
+
+    /// Converts the static tile into a GBA Background Screen Entry (16-bit text BG map cell).
+    pub inline fn toScreenEntry(self: StaticTile, h_flip: bool, v_flip: bool) u16 {
+        const h_bit: u16 = if (h_flip) (1 << 10) else 0;
+        const v_bit: u16 = if (v_flip) (1 << 11) else 0;
+        return (self.tile_index & 0x03FF) | h_bit | v_bit | (@as(u16, self.palette_bank) << 12);
+    }
+};
+
+/// Represents a tile capable of filling solid colors into OBJ VRAM / PALRAM.
+pub const ColorFillTile = struct {
+    tile_index: u16 = 0,
+    palette_bank: u4 = 0,
+    bpp: BppMode = .bpp4,
+
+    pub inline fn getTile(self: ColorFillTile) StaticTile {
+        return .{
+            .tile_index = self.tile_index,
+            .palette_bank = self.palette_bank,
+            .bpp = self.bpp,
+        };
+    }
+
+    /// Fills custom VRAM and PALRAM memory buffers with solid color tile graphics and palette entry.
+    pub fn fillSolidColorToBuffers(
+        self: ColorFillTile,
+        width: u16,
+        height: u16,
+        vram_obj_base: []volatile u16,
+        palram_obj_base: []volatile u16,
+        color: anytype,
+    ) SpriteError!void {
+        _ = self;
+        _ = width;
+        _ = height;
+        _ = vram_obj_base;
+        _ = palram_obj_base;
+        _ = color;
+        return error.Unimplemented;
+    }
+
+    /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
+    pub fn fillSolidColor(self: ColorFillTile, width: u16, height: u16, color: anytype) SpriteError!void {
+        _ = self;
+        _ = width;
+        _ = height;
+        _ = color;
+        return error.Unimplemented;
+    }
+};
+
+/// High-level orthogonal Sprite: encapsulates AABB, velocity, collision layers, flips, and visibility.
 pub const Sprite = struct {
     aabb: AABB,
     velocity_x: Fixed24_8 = Fixed24_8.zero,
@@ -101,15 +159,6 @@ pub const Sprite = struct {
 
     /// 16-bit collision mask (layers this sprite interacts with)
     mask: CollisionMask = Collision.ALL,
-
-    /// Hardware tile index start
-    tile_index: u16 = 0,
-
-    /// Palette bank (0-15)
-    palette_bank: u8 = 0,
-
-    /// Color mode (4-bpp / 16-color vs 8-bpp / 256-color)
-    bpp: BppMode = .bpp4,
 
     /// Horizontal flip (face left / right)
     h_flip: bool = false,
@@ -178,8 +227,8 @@ pub const Sprite = struct {
         return result;
     }
 
-    /// Compiles the engine-level sprite into a hardware OAM attribute.
-    pub fn toOamAttr(self: *const Sprite) hal.oam.ObjAttr {
+    /// Compiles the engine-level sprite and provided static tile into a hardware OAM attribute.
+    pub fn toOamAttr(self: *const Sprite, tile: StaticTile) hal.oam.ObjAttr {
         if (!self.visible) {
             return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
         }
@@ -195,13 +244,13 @@ pub const Sprite = struct {
         const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
         const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
 
-        const bpp_bit: u16 = if (self.bpp == .bpp8) (1 << 13) else 0;
+        const bpp_bit: u16 = if (tile.bpp == .bpp8) (1 << 13) else 0;
         const h_flip_bit: u16 = if (self.h_flip) (1 << 12) else 0;
         const v_flip_bit: u16 = if (self.v_flip) (1 << 13) else 0;
 
         const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
         const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
-        const attr2: u16 = (self.tile_index & 0x03FF) | (@as(u16, self.palette_bank & 0x0F) << 12);
+        const attr2: u16 = (tile.tile_index & 0x03FF) | (@as(u16, tile.palette_bank & 0x0F) << 12);
 
         return .{
             .attr0 = attr0,
@@ -210,43 +259,43 @@ pub const Sprite = struct {
             .fill = 0,
         };
     }
+};
 
-    /// Fills custom VRAM and PALRAM memory buffers with solid color tile graphics and palette entry.
-    pub fn fillSolidColorToBuffers(
-        self: *const Sprite,
-        vram_obj_base: []volatile u16,
-        palram_obj_base: []volatile u16,
-        color: anytype,
-    ) SpriteError!void {
-        _ = try getShapeAndSize(self.aabb.width, self.aabb.height);
-        const bgr15 = colorToBgr555(color);
+/// Composite structure: Combines a Sprite with a StaticTile.
+pub const StaticSprite = struct {
+    sprite: Sprite,
+    tile: StaticTile = .{},
 
-        const bank_offset = @as(usize, self.palette_bank & 0x0F) * 16;
-        if (bank_offset + 1 < palram_obj_base.len) {
-            palram_obj_base[bank_offset + 1] = bgr15;
-        }
-
-        const tile_word_offset = @as(usize, self.tile_index) * 16;
-        const total_tiles = (@as(usize, self.aabb.width) / 8) * (@as(usize, self.aabb.height) / 8);
-        const total_words = total_tiles * 16;
-
-        if (tile_word_offset + total_words <= vram_obj_base.len) {
-            for (0..total_words) |i| {
-                vram_obj_base[tile_word_offset + i] = 0x1111;
-            }
-        }
+    pub fn init(x: i32, y: i32, width: u16, height: u16, tile: StaticTile) StaticSprite {
+        return .{
+            .sprite = Sprite.init(x, y, width, height),
+            .tile = tile,
+        };
     }
 
-    /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics for this sprite.
-    /// `color` can be an `engine.Color` or a 15-bit BGR555 `u16` (e.g. `hal.Color.RED`).
-    pub fn fillSolidColor(self: *const Sprite, color: anytype) SpriteError!void {
-        const obj_pal = hal.MemorySections.PALRAM + 256;
-        const obj_vram = hal.MemorySections.VRAM + 32768;
+    pub fn toOamAttr(self: *const StaticSprite) hal.oam.ObjAttr {
+        return self.sprite.toOamAttr(self.tile);
+    }
+};
 
-        const pal_slice = obj_pal[0..256];
-        const vram_slice = obj_vram[0..16384];
+/// Composite structure: Combines a Sprite with a ColorFillTile.
+pub const ColorFillSprite = struct {
+    sprite: Sprite,
+    tile: ColorFillTile = .{},
 
-        try self.fillSolidColorToBuffers(vram_slice, pal_slice, color);
+    pub fn init(x: i32, y: i32, width: u16, height: u16, tile: ColorFillTile) ColorFillSprite {
+        return .{
+            .sprite = Sprite.init(x, y, width, height),
+            .tile = tile,
+        };
+    }
+
+    pub fn toOamAttr(self: *const ColorFillSprite) hal.oam.ObjAttr {
+        return self.sprite.toOamAttr(self.tile.getTile());
+    }
+
+    pub fn fillSolidColor(self: *const ColorFillSprite, color: anytype) SpriteError!void {
+        return self.tile.fillSolidColor(self.sprite.aabb.width, self.sprite.aabb.height, color);
     }
 };
 
@@ -284,39 +333,17 @@ test "SPR003: getShapeAndSize invalid dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(128, 128));
 }
 
-test "SPR004: toOamAttr encoding" {
+test "SPR004: toOamAttr encoding with StaticTile" {
     var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
-    spr.tile_index = 4;
-    spr.palette_bank = 2;
+    const tile = StaticTile{ .tile_index = 4, .palette_bank = 2, .bpp = .bpp4 };
 
-    const attr = spr.toOamAttr();
+    const attr = spr.toOamAttr(tile);
     // attr0: Y=20 (0x14), shape=2 -> (2 << 14) | 20 = 0x8014
     try std.testing.expectEqual(@as(u16, 0x8014), attr.attr0);
     // attr1: X=10 (0x0A), size=2 -> (2 << 14) | 10 = 0x800A
     try std.testing.expectEqual(@as(u16, 0x800A), attr.attr1);
     // attr2: tile_index=4, palette_bank=2 -> (2 << 12) | 4 = 0x2004
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
-}
-
-test "SPR010: toOamAttr horizontal and vertical flip encoding" {
-    var spr = Sprite.init(10, 20, 16, 16);
-    spr.h_flip = true;
-    spr.v_flip = true;
-
-    const attr = spr.toOamAttr();
-    // attr1: size=1 (1 << 14), h_flip=1 (1 << 12), v_flip=1 (1 << 13), X=10
-    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
-    try std.testing.expectEqual(expected_attr1, attr.attr1);
-}
-
-test "SPR011: toOamAttr 8-bpp color mode encoding" {
-    var spr = Sprite.init(10, 20, 32, 32);
-    spr.bpp = .bpp8;
-
-    const attr = spr.toOamAttr();
-    // attr0: shape=0 (0 << 14), bpp8=1 (1 << 13), Y=20
-    const expected_attr0: u16 = 20 | (1 << 13);
-    try std.testing.expectEqual(expected_attr0, attr.attr0);
 }
 
 test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" {
@@ -339,15 +366,14 @@ test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" 
     try std.testing.expectEqual(@as(u16, 0x1234), colorToBgr555(custom));
 }
 
-test "SPR006: fillSolidColorToBuffers mock buffer" {
+test "SPR006: ColorFillTile fillSolidColorToBuffers mock buffer" {
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
     var mock_palram: [256]u16 = [_]u16{0} ** 256;
 
-    var spr = Sprite.init(0, 0, 16, 8); // Horizontal (shape 1, size 0): 2 tiles = 32 u16 words
-    spr.tile_index = 2;
-    spr.palette_bank = 1;
+    const fill_tile = ColorFillTile{ .tile_index = 2, .palette_bank = 1 };
 
-    try spr.fillSolidColorToBuffers(&mock_vram, &mock_palram, Color.RED);
+    // Stub returns error.Unimplemented in Red Phase
+    try fill_tile.fillSolidColorToBuffers(16, 8, &mock_vram, &mock_palram, Color.RED);
 
     // Palette bank 1, color index 1 -> offset (1 * 16 + 1) = 17
     try std.testing.expectEqual(hal.Color.RED, mock_palram[17]);
@@ -361,7 +387,6 @@ test "SPR006: fillSolidColorToBuffers mock buffer" {
 }
 
 fn mockWallAtTile3_0(tx: u16, ty: u16) bool {
-    // Tile (3, 0) is at pixel x: [24, 32)
     return tx == 3 and ty == 0;
 }
 
@@ -382,9 +407,7 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     try std.testing.expect(res.collided_x);
     try std.testing.expect(!res.collided_y);
     try std.testing.expect(res.hasCollided());
-    // Position should NOT have advanced into the wall
     try std.testing.expectEqual(@as(i32, 16), spr.aabb.x.toInt());
-    // Velocity on X is stopped (zeroed out)
     try std.testing.expectEqual(Fixed24_8.zero.raw, spr.velocity_x.raw);
 
     // Step 3: Test negative velocity (moving left)
@@ -424,4 +447,74 @@ test "SPR009: Sprite layer and mask filtering" {
     // Player and Item cannot collide (masks do not match)
     try std.testing.expect(!player.canCollideWith(&item));
     try std.testing.expect(!item.canCollideWith(&player));
+}
+
+test "SPR010: toOamAttr horizontal and vertical flip encoding" {
+    var spr = Sprite.init(10, 20, 16, 16);
+    spr.h_flip = true;
+    spr.v_flip = true;
+    const tile = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp4 };
+
+    const attr = spr.toOamAttr(tile);
+    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
+    try std.testing.expectEqual(expected_attr1, attr.attr1);
+}
+
+test "SPR011: toOamAttr 8-bpp color mode encoding" {
+    const spr = Sprite.init(10, 20, 32, 32);
+    const tile = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp8 };
+
+    const attr = spr.toOamAttr(tile);
+    const expected_attr0: u16 = 20 | (1 << 13);
+    try std.testing.expectEqual(expected_attr0, attr.attr0);
+}
+
+test "SPR012: StaticTile toScreenEntry text background encoding" {
+    const tile = StaticTile{
+        .tile_index = 105,
+        .palette_bank = 3,
+        .bpp = .bpp4,
+    };
+
+    // No flip: (3 << 12) | 105 = 0x3069
+    try std.testing.expectEqual(@as(u16, 0x3069), tile.toScreenEntry(false, false));
+
+    // H-flip: bit 10
+    try std.testing.expectEqual(@as(u16, 0x3469), tile.toScreenEntry(true, false));
+
+    // V-flip: bit 11
+    try std.testing.expectEqual(@as(u16, 0x3869), tile.toScreenEntry(false, true));
+
+    // Both flips: bit 10 and 11
+    try std.testing.expectEqual(@as(u16, 0x3C69), tile.toScreenEntry(true, true));
+}
+
+test "SPR013: StaticSprite composition and toOamAttr output" {
+    const static_spr = StaticSprite.init(15, 25, 32, 16, .{
+        .tile_index = 12,
+        .palette_bank = 4,
+        .bpp = .bpp4,
+    });
+
+    const attr = static_spr.toOamAttr();
+    // 32x16 Horizontal: shape=1, size=2 -> attr0 has (1 << 14) | 25, attr1 has (2 << 14) | 15
+    try std.testing.expectEqual(@as(u16, (1 << 14) | 25), attr.attr0);
+    try std.testing.expectEqual(@as(u16, (2 << 14) | 15), attr.attr1);
+    try std.testing.expectEqual(@as(u16, (4 << 12) | 12), attr.attr2);
+}
+
+test "SPR014: ColorFillSprite composition and getTile" {
+    const solid_spr = ColorFillSprite.init(5, 10, 8, 8, .{
+        .tile_index = 1,
+        .palette_bank = 2,
+    });
+
+    const tile = solid_spr.tile.getTile();
+    try std.testing.expectEqual(@as(u16, 1), tile.tile_index);
+    try std.testing.expectEqual(@as(u4, 2), tile.palette_bank);
+
+    const attr = solid_spr.toOamAttr();
+    try std.testing.expectEqual(@as(u16, 10), attr.attr0);
+    try std.testing.expectEqual(@as(u16, 5), attr.attr1);
+    try std.testing.expectEqual(@as(u16, (2 << 12) | 1), attr.attr2);
 }

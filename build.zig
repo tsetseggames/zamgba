@@ -249,10 +249,10 @@ pub fn build(b: *std.Build) void {
         run_kcov_zurag.addFileArg(zurag_unit_tests.getEmittedBin());
         run_kcov_zurag.step.dependOn(&run_kcov_lib.step);
 
-        // Run kcov before installing the binary so kcov --clean does not wipe the installed binary
-        install_unittest_bin.step.dependOn(&run_kcov_zurag.step);
-
+        // Run kcov for coverage step
         const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
+        coverage_step.dependOn(&run_kcov_zurag.step);
+        coverage_step.dependOn(&install_unittest_bin.step);
         coverage_step.dependOn(&run_kcov_zurag.step);
         coverage_step.dependOn(&install_unittest_bin.step);
     } else |_| {}
