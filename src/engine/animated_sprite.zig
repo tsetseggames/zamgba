@@ -22,11 +22,12 @@ pub const AnimatedSprite = struct {
 
     /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
     pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: i32, y: i32) AnimatedSpriteError!AnimatedSprite {
-        _ = sheet;
-        _ = mode;
-        _ = x;
-        _ = y;
-        return error.Unimplemented;
+        const tiles = try AnimatedTiles.init(sheet, mode);
+        const spr = Sprite.init(x, y, sheet.width, sheet.height);
+        return .{
+            .sprite = spr,
+            .tiles = tiles,
+        };
     }
 
     /// Releases any allocated VRAM slot back to the VramAllocator.

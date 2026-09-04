@@ -55,6 +55,8 @@ const PRIMARY_COLOR_INDEX: usize = 1; // Index 0 is transparent in 4-bpp mode
 
 const PIXELS_PER_TILE_AXIS: usize = 8;
 const WORDS_PER_4BPP_TILE: usize = 16; // 8x8 pixels * 4 bits = 32 bytes = 16 words (u16)
+const BYTES_PER_4BPP_TILE: usize = 32;
+const BYTES_PER_8BPP_TILE: usize = 64;
 const SOLID_COLOR_1_PATTERN_4BPP: u16 = 0x1111; // 4 nibbles each selecting palette color index 1
 
 // GBA VRAM OBJ Character Block 4 begins at offset 64KB (32768 words of u16 from VRAM base 0x06000000)
@@ -64,6 +66,10 @@ const OBJ_VRAM_TOTAL_WORDS: usize = 16384; // 32KB OBJ CharBlocks 4 & 5
 // GBA PALRAM OBJ Palette begins at offset 512 bytes (256 words of u16 from PALRAM base 0x05000000)
 const OBJ_PALRAM_OFFSET_WORDS: usize = 256;
 const OBJ_PALRAM_TOTAL_WORDS: usize = 256; // 16 banks * 16 colors = 256 words
+
+// Frame timing constants (60Hz ~ 16.6ms per frame)
+const DEFAULT_FRAME_DURATION_MS: u16 = 100;
+const MS_PER_TICK_APPROX: u16 = 16;
 
 fn colorToBgr555(color: anytype) u16 {
     const T = @TypeOf(color);
@@ -165,27 +171,127 @@ pub const AnimatedTiles = struct {
 
     /// Initializes animation tiles from a SpriteSheet.
     pub fn init(sheet: *const SpriteSheet, mode: AnimationMode) TileError!AnimatedTiles {
-        _ = sheet;
-        _ = mode;
-        return error.Unimplemented;
+        if (sheet.frame_count == 0) return error.EmptySheet;
+
+        var vram_alloc: ?vram_allocator.VramAllocation = null;
+        if (mode == .streaming) {
+            const alloc_res = vram_allocator.alloc(sheet.width, sheet.height, sheet.bpp) catch return error.OutOfVram;
+            vram_alloc = alloc_res;
+        }
+
+        var self = AnimatedTiles{
+            .sheet = sheet,
+            .mode = mode,
+            .vram_alloc = vram_alloc,
+            .current_frame = 0,
+            .current_tag_index = null,
+            .frame_timer = 0,
+            .is_playing = true,
+            .pingpong_reverse = false,
+            .palette_bank = 0,
+        };
+
+        self.stageCurrentFrameWithQueue(null);
+        return self;
     }
 
     /// Releases any allocated VRAM slot back to the VramAllocator.
     pub fn deinit(self: *AnimatedTiles) void {
-        _ = self;
+        if (self.vram_alloc) |alloc_info| {
+            vram_allocator.free(alloc_info) catch {};
+            self.vram_alloc = null;
+        }
     }
 
     /// Selects an animation tag by name (e.g. "fly", "run", "idle").
     pub fn play(self: *AnimatedTiles, tag_name: []const u8) bool {
-        _ = self;
-        _ = tag_name;
+        for (self.sheet.tags, 0..) |tag, i| {
+            if (std.mem.eql(u8, tag.name, tag_name)) {
+                self.current_tag_index = i;
+                self.current_frame = tag.from_frame;
+                self.frame_timer = 0;
+                self.pingpong_reverse = false;
+                self.is_playing = true;
+                self.stageCurrentFrameWithQueue(null);
+                return true;
+            }
+        }
         return false;
     }
 
     /// Directly sets the current frame index.
     pub fn setFrame(self: *AnimatedTiles, frame_index: usize) void {
-        _ = self;
-        _ = frame_index;
+        if (frame_index >= self.sheet.frame_count) return;
+        self.current_frame = frame_index;
+        self.frame_timer = 0;
+        self.stageCurrentFrameWithQueue(null);
+    }
+
+    fn advanceFrame(self: *AnimatedTiles) void {
+        if (self.current_tag_index) |t_idx| {
+            if (t_idx < self.sheet.tags.len) {
+                const tag = self.sheet.tags[t_idx];
+                switch (tag.direction) {
+                    .forward => {
+                        if (self.current_frame >= tag.to_frame) {
+                            self.current_frame = tag.from_frame;
+                        } else {
+                            self.current_frame += 1;
+                        }
+                    },
+                    .reverse => {
+                        if (self.current_frame <= tag.from_frame) {
+                            self.current_frame = tag.to_frame;
+                        } else {
+                            self.current_frame -= 1;
+                        }
+                    },
+                    .pingpong => {
+                        if (!self.pingpong_reverse) {
+                            if (self.current_frame >= tag.to_frame) {
+                                self.pingpong_reverse = true;
+                                if (tag.to_frame > tag.from_frame) {
+                                    self.current_frame = tag.to_frame - 1;
+                                }
+                            } else {
+                                self.current_frame += 1;
+                            }
+                        } else {
+                            if (self.current_frame <= tag.from_frame) {
+                                self.pingpong_reverse = false;
+                                if (tag.to_frame > tag.from_frame) {
+                                    self.current_frame = tag.from_frame + 1;
+                                }
+                            } else {
+                                self.current_frame -= 1;
+                            }
+                        }
+                    },
+                }
+                return;
+            }
+        }
+
+        // Default: loop all frames forward
+        self.current_frame = (self.current_frame + 1) % self.sheet.frame_count;
+    }
+
+    fn stageCurrentFrameWithQueue(self: *AnimatedTiles, custom_queue: ?*dma_queue.DmaQueue) void {
+        if (self.mode == .streaming) {
+            const alloc_res = self.vram_alloc orelse return;
+            const bytes_per_frame = @as(usize, self.sheet.tile_count_per_frame) * (if (self.sheet.bpp == .bpp4) BYTES_PER_4BPP_TILE else BYTES_PER_8BPP_TILE);
+            const start = self.current_frame * bytes_per_frame;
+            if (start + bytes_per_frame <= self.sheet.tiles.len) {
+                const frame_src = self.sheet.tiles.ptr + start;
+                const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.VRAM + OBJ_VRAM_OFFSET_WORDS);
+
+                if (custom_queue) |q| {
+                    _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
+                } else {
+                    _ = engine.enqueueDmaBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
+                }
+            }
+        }
     }
 
     /// Advances the animation frame timer by 1 tick (~16.6ms at 60Hz).
@@ -195,14 +301,41 @@ pub const AnimatedTiles = struct {
 
     /// Advances the animation frame timer with an explicit custom DMA queue (for testing/custom scheduling).
     pub fn updateWithQueue(self: *AnimatedTiles, custom_queue: ?*dma_queue.DmaQueue) void {
-        _ = self;
-        _ = custom_queue;
+        if (!self.is_playing or self.sheet.frame_count <= 1) return;
+
+        self.frame_timer += 1;
+
+        // Calculate ticks from duration_ms (60 FPS -> ~16.6ms per tick)
+        const duration_ms = if (self.current_frame < self.sheet.durations_ms.len)
+            self.sheet.durations_ms[self.current_frame]
+        else
+            DEFAULT_FRAME_DURATION_MS;
+        const ticks: u16 = @max(1, @as(u16, @intCast((duration_ms + (MS_PER_TICK_APPROX / 2)) / MS_PER_TICK_APPROX)));
+
+        if (self.frame_timer >= ticks) {
+            self.frame_timer = 0;
+            self.advanceFrame();
+            self.stageCurrentFrameWithQueue(custom_queue);
+        }
     }
 
     /// Derives the current StaticTile description (tile_index, palette_bank, bpp) for rendering.
     pub fn getTile(self: *const AnimatedTiles) StaticTile {
-        _ = self;
-        return .{};
+        const tile_idx: u16 = if (self.mode == .streaming)
+            if (self.vram_alloc) |a| a.tile_index else 0
+        else blk: {
+            const tile_step = if (self.sheet.bpp == .bpp4)
+                self.sheet.tile_count_per_frame
+            else
+                self.sheet.tile_count_per_frame * 2;
+            break :blk @as(u16, @intCast(self.current_frame)) * tile_step;
+        };
+
+        return .{
+            .tile_index = tile_idx,
+            .palette_bank = self.palette_bank,
+            .bpp = self.sheet.bpp,
+        };
     }
 };
 
@@ -248,13 +381,14 @@ test "SPR006: ColorFillTile fillSolidColorToBuffers mock buffer" {
 test "ANI001: AnimatedTiles init with streaming mode allocates 1-frame VRAM slot" {
     vram_allocator.reset();
 
+    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 3,
-        .tiles = &[_]u8{0} ** (3 * 128),
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 100, 100, 100 },
         .tags = &[_]AnimationTag{
             .{ .name = "run", .from_frame = 0, .to_frame = 2, .direction = .forward },
@@ -271,13 +405,14 @@ test "ANI001: AnimatedTiles init with streaming mode allocates 1-frame VRAM slot
 }
 
 test "ANI002: AnimatedTiles init with static mode uses base tile_index and advances with frame" {
+    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 2,
-        .tiles = &[_]u8{0} ** 256,
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 100, 100 },
         .tags = &[_]AnimationTag{},
     };
@@ -294,13 +429,14 @@ test "ANI002: AnimatedTiles init with static mode uses base tile_index and advan
 }
 
 test "ANI003: AnimatedTiles play selects tag and resets frame" {
+    const dummy_tiles: [512]u8 align(4) = [_]u8{0} ** 512;
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 4,
-        .tiles = &[_]u8{0} ** 512,
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 100, 100, 100, 100 },
         .tags = &[_]AnimationTag{
             .{ .name = "idle", .from_frame = 0, .to_frame = 1, .direction = .forward },
@@ -320,13 +456,14 @@ test "ANI004: AnimatedTiles updateWithQueue advances frame on timer expiration a
     vram_allocator.reset();
     var test_queue = dma_queue.DmaQueue.init();
 
+    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 2,
-        .tiles = &[_]u8{0} ** 256,
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 32, 32 },
         .tags = &[_]AnimationTag{
             .{ .name = "walk", .from_frame = 0, .to_frame = 1, .direction = .forward },
@@ -353,13 +490,14 @@ test "ANI005: AnimatedTiles deinit releases VRAM allocation back to buddy alloca
     vram_allocator.reset();
     const initial_free = vram_allocator.getFreeTileCount();
 
+    const dummy_tiles: [2048]u8 align(4) = [_]u8{0} ** 2048;
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp8,
         .width = 32,
         .height = 32,
         .tile_count_per_frame = 16,
         .frame_count = 2,
-        .tiles = &[_]u8{0} ** 2048,
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 100, 100 },
         .tags = &[_]AnimationTag{},
     };
@@ -372,13 +510,14 @@ test "ANI005: AnimatedTiles deinit releases VRAM allocation back to buddy alloca
 }
 
 test "ANI006: pingpong animation direction reverses correctly" {
+    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 3,
-        .tiles = &[_]u8{0} ** (3 * 128),
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 16, 16, 16 },
         .tags = &[_]AnimationTag{
             .{ .name = "ping", .from_frame = 0, .to_frame = 2, .direction = .pingpong },
