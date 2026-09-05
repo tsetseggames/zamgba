@@ -3,7 +3,6 @@ const hal = @import("zamgba-hal");
 const Color = @import("color.zig").Color;
 const vram_allocator = @import("vram_allocator.zig");
 const dma_queue = @import("dma_queue.zig");
-const engine = @import("../engine.zig");
 
 pub const TileError = error{
     InvalidDimensions,
@@ -13,7 +12,7 @@ pub const TileError = error{
     Unimplemented,
 };
 
-pub const BppMode = hal.specs.BppMode;
+const BppMode = hal.specs.BppMode;
 
 pub const AnimationDirection = enum(u2) {
     forward = 0,
@@ -250,11 +249,8 @@ pub const AnimatedTiles = struct {
                 const frame_src = self.sheet.tiles.ptr + start;
                 const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.OBJ_VRAM);
 
-                if (custom_queue) |q| {
-                    _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
-                } else {
-                    _ = engine.enqueueDmaBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
-                }
+                const q = custom_queue orelse &dma_queue.global_queue;
+                _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
             }
         }
     }

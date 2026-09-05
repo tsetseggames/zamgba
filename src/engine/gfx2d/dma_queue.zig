@@ -7,9 +7,11 @@ pub const DmaQueueError = error{
     InvalidTask,
 };
 
-pub const CAPACITY: usize = 16;
-pub const DEFAULT_MAX_BYTES_PER_VBLANK: usize = 4096; // 4 KB safe VBlank budget
-pub const HARDWARE_MAX_SAFE_LIMIT: usize = 16384; // 16 KB upper physical safety limit (~20% VBlank)
+const CAPACITY: usize = 16;
+const DEFAULT_MAX_BYTES_PER_VBLANK: usize = 4096; // 4 KB safe VBlank budget
+const HARDWARE_MAX_SAFE_LIMIT: usize = 16384; // 16 KB upper physical safety limit (~20% VBlank)
+
+pub var global_queue: DmaQueue = .{};
 
 pub const DmaQueue = struct {
     tasks: [CAPACITY]hal.dma.DmaTask = undefined,

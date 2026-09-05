@@ -1,19 +1,14 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
 const gfx2d = @import("gfx2d/gfx2d.zig");
-const sprite_mod = @import("sprite.zig");
-const Sprite = sprite_mod.Sprite;
-const StaticTile = gfx2d.StaticTile;
+const Sprite = @import("sprite.zig").Sprite;
 const SpriteSheet = gfx2d.SpriteSheet;
-const BppMode = gfx2d.BppMode;
-const AnimationDirection = gfx2d.AnimationDirection;
+const AnimatedTiles = gfx2d.AnimatedTiles;
+const AnimationMode = gfx2d.AnimationMode;
 const AnimationTag = gfx2d.AnimationTag;
 const TileError = gfx2d.TileError;
 
-// Re-export AnimatedTiles and AnimationMode for compatibility
 pub const AnimatedSpriteError = TileError;
-pub const AnimatedTiles = gfx2d.AnimatedTiles;
-pub const AnimationMode = gfx2d.AnimationMode;
 
 /// Composite structure: Combines a spatial Sprite with AnimatedTiles.
 pub const AnimatedSprite = struct {

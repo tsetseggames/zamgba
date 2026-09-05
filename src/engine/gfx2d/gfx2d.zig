@@ -15,7 +15,6 @@ pub const StaticTile = tile.StaticTile;
 pub const ColorFillTile = tile.ColorFillTile;
 pub const AnimatedTiles = tile.AnimatedTiles;
 pub const SpriteSheet = tile.SpriteSheet;
-pub const BppMode = tile.BppMode;
 pub const AnimationDirection = tile.AnimationDirection;
 pub const AnimationTag = tile.AnimationTag;
 pub const AnimationMode = tile.AnimationMode;

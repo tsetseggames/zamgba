@@ -2,14 +2,14 @@ const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
-pub const StaticTile = @import("sprite.zig").StaticTile;
-pub const ColorFillTile = @import("sprite.zig").ColorFillTile;
 pub const StaticSprite = @import("sprite.zig").StaticSprite;
 pub const ColorFillSprite = @import("sprite.zig").ColorFillSprite;
-pub const BppMode = @import("sprite.zig").BppMode;
-pub const AnimationDirection = @import("sprite.zig").AnimationDirection;
-pub const AnimationTag = @import("sprite.zig").AnimationTag;
-pub const SpriteSheet = @import("sprite.zig").SpriteSheet;
+pub const StaticTile = gfx2d.StaticTile;
+pub const ColorFillTile = gfx2d.ColorFillTile;
+pub const BppMode = hal.specs.BppMode;
+pub const AnimationDirection = gfx2d.AnimationDirection;
+pub const AnimationTag = gfx2d.AnimationTag;
+pub const SpriteSheet = gfx2d.SpriteSheet;
 pub const Color = gfx2d.Color;
 
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
@@ -133,9 +133,9 @@ pub const input = @import("input.zig");
 pub const physics = @import("physics/physics.zig");
 pub const vram_allocator = gfx2d.vram_allocator;
 pub const dma_queue = gfx2d.dma_queue;
-pub const AnimatedTiles = @import("animated_sprite.zig").AnimatedTiles;
+pub const AnimatedTiles = gfx2d.AnimatedTiles;
 pub const AnimatedSprite = @import("animated_sprite.zig").AnimatedSprite;
-pub const AnimationMode = @import("animated_sprite.zig").AnimationMode;
+pub const AnimationMode = gfx2d.AnimationMode;
 
 test {
     _ = physics;

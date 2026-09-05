@@ -8,28 +8,21 @@ const CollisionMask = physics.CollisionMask;
 const Collision = physics.Collision;
 
 const gfx2d = @import("gfx2d/gfx2d.zig");
-const Color = gfx2d.Color;
-
-// Re-export graphics tile types from gfx2d/tile.zig for engine integration
-pub const BppMode = gfx2d.BppMode;
-pub const AnimationDirection = gfx2d.AnimationDirection;
-pub const AnimationTag = gfx2d.AnimationTag;
-pub const SpriteSheet = gfx2d.SpriteSheet;
-pub const StaticTile = gfx2d.StaticTile;
-pub const ColorFillTile = gfx2d.ColorFillTile;
+const StaticTile = gfx2d.StaticTile;
+const ColorFillTile = gfx2d.ColorFillTile;
 
 pub const SpriteError = error{
     InvalidDimensions,
     Unimplemented,
 };
 
-pub const ShapeSize = struct {
+const ShapeSize = struct {
     shape: u16,
     size: u16,
 };
 
 /// Validates width and height against GBA hardware OBJ dimensions and returns Shape and Size bits.
-pub fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
+fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
     if (width == 8 and height == 8) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 };
     if (width == 16 and height == 16) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 };
     if (width == 32 and height == 32) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_2 };

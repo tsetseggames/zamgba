@@ -28,8 +28,8 @@ const BlockNode = struct {
     prev: i16 = -1,
 };
 
-pub const TOTAL_TILES: u16 = 1024;
-pub const MAX_ORDER: usize = 10; // 2^10 = 1024
+const TOTAL_TILES: u16 = 1024;
+const MAX_ORDER: usize = 10; // 2^10 = 1024
 
 var nodes: [TOTAL_TILES]BlockNode = undefined;
 var free_lists: [MAX_ORDER + 1]i16 = undefined;
@@ -101,7 +101,7 @@ pub fn reset() void {
 }
 
 /// Calculate the power-of-2 32-byte tile slot units required for a given sprite dimension and bit depth.
-pub fn calculateRequiredUnits(width: u16, height: u16, bpp: BppMode) VramError!u16 {
+fn calculateRequiredUnits(width: u16, height: u16, bpp: BppMode) VramError!u16 {
     if (width == 0 or height == 0 or width % 8 != 0 or height % 8 != 0) {
         return error.InvalidSpriteSize;
     }
@@ -120,7 +120,7 @@ pub fn alloc(width: u16, height: u16, bpp: BppMode) VramError!VramAllocation {
 
 /// Computes the smallest power-of-2 buddy tree order (0..10) capable of holding `units`.
 /// Example: 1 unit -> Order 0 (2^0 = 1), 32 units -> Order 5 (2^5 = 32), 33 units -> Order 6 (2^6 = 64).
-pub fn unitsToOrder(units: u16) usize {
+fn unitsToOrder(units: u16) usize {
     if (units <= 1) return 0;
     const leading_zeros = @as(usize, @clz(units - 1));
     return 16 - leading_zeros;
