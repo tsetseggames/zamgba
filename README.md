@@ -114,7 +114,7 @@ Enjoy!
   - [x] Respond to gamepad input
   - [x] Single color/square sprites
   - [x] Hardcoded collision detection 
-* **Version 0.2.0**: Capable of writing a game with rich sprites graphics. Supported features:
+* **Version 0.2.0** (2026-09-06): Capable of writing a game with rich sprites graphics. Supported features:
   - [x] Mode 0 support
   - [x] PNG-sprite-to-code conversion tool (`zurag`)
   - [x] Color palettes conversion tool (`zurag`)
