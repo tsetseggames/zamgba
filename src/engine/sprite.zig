@@ -1,6 +1,5 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
-const Color = @import("color.zig").Color;
 const physics = @import("physics/physics.zig");
 const AABB = physics.AABB;
 const Fixed24_8 = physics.Fixed24_8;
@@ -9,6 +8,7 @@ const CollisionMask = physics.CollisionMask;
 const Collision = physics.Collision;
 
 const gfx2d = @import("gfx2d/gfx2d.zig");
+const Color = gfx2d.Color;
 
 // Re-export graphics tile types from gfx2d/tile.zig for engine integration
 pub const BppMode = gfx2d.BppMode;

@@ -21,6 +21,7 @@ pub const Screen = specs.Screen;
 pub const Color = specs.Color;
 pub const Palette = specs.Palette;
 pub const Tile = specs.Tile;
+pub const BppMode = specs.BppMode;
 
 pub const display = @import("display.zig");
 pub const joypad = @import("joypad.zig");

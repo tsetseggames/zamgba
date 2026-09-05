@@ -1,5 +1,6 @@
 const std = @import("std");
-const BppMode = @import("sprite.zig").BppMode;
+const hal = @import("zamgba-hal");
+const BppMode = hal.specs.BppMode;
 
 pub const VramError = error{
     OutOfVram,

@@ -1,6 +1,6 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
-const Color = @import("../color.zig").Color;
+const Color = @import("color.zig").Color;
 const vram_allocator = @import("../vram_allocator.zig");
 const dma_queue = @import("../dma_queue.zig");
 const engine = @import("../engine.zig");
@@ -13,10 +13,7 @@ pub const TileError = error{
     Unimplemented,
 };
 
-pub const BppMode = enum(u1) {
-    bpp4 = 0,
-    bpp8 = 1,
-};
+pub const BppMode = hal.specs.BppMode;
 
 pub const AnimationDirection = enum(u2) {
     forward = 0,
@@ -51,19 +48,6 @@ pub const AnimationMode = enum {
 // Software animation timing constants (60Hz ~ 16.6ms per frame)
 const DEFAULT_FRAME_DURATION_MS: u16 = 100;
 const MS_PER_TICK_APPROX: u16 = 16;
-
-fn colorToBgr555(color: anytype) u16 {
-    const T = @TypeOf(color);
-    if (T == u16) {
-        return color;
-    } else if (T == Color or T == *const Color) {
-        return color.toBgr555();
-    } else if (@hasDecl(T, "toBgr555")) {
-        return color.toBgr555();
-    } else {
-        @compileError("Expected u16 (BGR555) or engine.Color type.");
-    }
-}
 
 /// Represents a static GBA tile attribute in VRAM.
 /// Can be used as a Sprite tile source or as a Background Screen Entry.
@@ -102,12 +86,12 @@ pub const ColorFillTile = struct {
         height: u16,
         vram_obj_base: []volatile u16,
         palram_obj_base: []volatile u16,
-        color: anytype,
+        color: Color,
     ) TileError!void {
         if (width == 0 or height == 0 or width % hal.specs.Tile.WIDTH_PIXELS != 0 or height % hal.specs.Tile.HEIGHT_PIXELS != 0) {
             return TileError.InvalidDimensions;
         }
-        const bgr15 = colorToBgr555(color);
+        const bgr15 = color.toBgr555();
 
         const bank_offset = @as(usize, self.palette_bank & hal.specs.Palette.BANK_MASK) * hal.specs.Palette.COLORS_PER_BANK;
         if (bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX < palram_obj_base.len) {
@@ -126,7 +110,7 @@ pub const ColorFillTile = struct {
     }
 
     /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
-    pub fn fillSolidColor(self: ColorFillTile, width: u16, height: u16, color: anytype) TileError!void {
+    pub fn fillSolidColor(self: ColorFillTile, width: u16, height: u16, color: Color) TileError!void {
         const obj_pal = hal.MemorySections.OBJ_PALRAM;
         const obj_vram = hal.MemorySections.OBJ_VRAM;
 

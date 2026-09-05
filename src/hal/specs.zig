@@ -92,6 +92,11 @@ pub const Color = struct {
     pub const WHITE: u16 = 0x7FFF;
 };
 
+pub const BppMode = enum(u1) {
+    bpp4 = 0,
+    bpp8 = 1,
+};
+
 pub const Palette = struct {
     pub const BANK_MASK: u16 = 0x0F;
     pub const COLORS_PER_BANK: usize = 16;

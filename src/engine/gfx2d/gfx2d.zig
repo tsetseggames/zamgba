@@ -4,6 +4,9 @@ pub const Point2 = point.Point2;
 pub const line = @import("line.zig");
 pub const drawLine = line.drawLine;
 
+pub const color = @import("color.zig");
+pub const Color = color.Color;
+
 pub const tile = @import("tile.zig");
 pub const StaticTile = tile.StaticTile;
 pub const ColorFillTile = tile.ColorFillTile;
@@ -17,5 +20,6 @@ pub const TileError = tile.TileError;
 
 test {
     _ = @import("std").testing.refAllDecls(@This());
+    _ = color;
     _ = tile;
 }

@@ -10,7 +10,7 @@ pub const BppMode = @import("sprite.zig").BppMode;
 pub const AnimationDirection = @import("sprite.zig").AnimationDirection;
 pub const AnimationTag = @import("sprite.zig").AnimationTag;
 pub const SpriteSheet = @import("sprite.zig").SpriteSheet;
-pub const Color = @import("color.zig").Color;
+pub const Color = gfx2d.Color;
 
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
 pub var sprite_count: usize = 0;
@@ -140,7 +140,7 @@ pub const AnimationMode = @import("animated_sprite.zig").AnimationMode;
 test {
     _ = physics;
     _ = @import("sprite.zig");
-    _ = @import("color.zig");
+    _ = gfx2d;
 }
 
 test "ENG001: Engine singleton init and drawSprite staging" {
