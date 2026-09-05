@@ -1,4 +1,4 @@
-const GBA = @import("hal.zig");
+const specs = @import("specs.zig");
 
 /// GBA button bitmask
 pub const Key = enum(u16) {
@@ -18,6 +18,6 @@ pub const Key = enum(u16) {
 /// Note: GBA hardware sets pressed as 0 and released as 1.
 /// We invert the bits so that pressed is 1.
 pub fn readRaw() u16 {
-    const raw = GBA.MemorySections.REG_KEYINPUT.*;
-    return (~raw) & GBA.MemorySections.KEY_MASK;
+    const raw = specs.MemorySections.REG_KEYINPUT.*;
+    return (~raw) & specs.MemorySections.KEY_MASK;
 }

@@ -9,8 +9,8 @@ const Fixed24_8 = engine.physics.Fixed24_8;
 
 // The standard ROM header for the GBA BIOS
 export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
-    "FLAPPYTSET",
-    "AFTT",
+    "FLAPPYSTRM",
+    "AFTS",
     "00",
     0,
 );
@@ -21,13 +21,10 @@ fn isBorderSolid(tx: u16, ty: u16) bool {
 }
 
 const Game = struct {
-    player: engine.StaticSprite,
+    player: engine.AnimatedSprite,
     enemies: [2]engine.StaticSprite,
     map: CollisionMap,
     input: engine.input.InputState,
-
-    anim_frame: u16 = 0,
-    anim_timer: u16 = 0,
 
     const PLAYER_START_X: i32 = 8;
     const PLAYER_START_Y: i32 = 64;
@@ -40,17 +37,20 @@ const Game = struct {
     const PLAYER_SPEED = Fixed24_8.fromInt(2);
     const ENEMY_1_SPEED_Y = Fixed24_8.fromInt(1);
     const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(1);
-    const FRAME_DURATION_TICKS: u16 = 6;
-    const TILES_PER_FRAME_8BPP: u16 = 32;
 
     pub fn init() Game {
+        // 1. Initialize Player using AnimatedSprite in streaming mode
+        // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
+        var player_anim = engine.AnimatedSprite.init(&broom.sheet, .streaming, PLAYER_START_X, PLAYER_START_Y) catch unreachable;
+        _ = player_anim.setAnimation("fly");
+
+        // 2. Configure collision layers on the underlying Sprite
+        const spr = player_anim.getSprite();
+        spr.layer = Collision.layer(0); // Layer 0: Player
+        spr.mask = Collision.layer(1); // Mask: Enemy
+
         var self = Game{
-            // Player is 32x32 matching the flying animation bounding box
-            .player = engine.StaticSprite.init(PLAYER_START_X, PLAYER_START_Y, 32, 32, .{
-                .tile_index = 0,
-                .palette_bank = 0,
-                .bpp = .bpp8,
-            }),
+            .player = player_anim,
             .enemies = [_]engine.StaticSprite{
                 engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
                     .tile_index = 256,
@@ -65,10 +65,7 @@ const Game = struct {
             .input = .{},
         };
 
-        // Configure collision layers
-        self.player.sprite.layer = Collision.layer(0); // Layer 0: Player
-        self.player.sprite.mask = Collision.layer(1); // Mask: Enemy
-
+        // Enemy collision configuration
         self.enemies[0].sprite.layer = Collision.layer(1); // Layer 1: Enemy
         self.enemies[0].sprite.mask = Collision.layer(0); // Mask: Player
         self.enemies[0].sprite.velocity_y = ENEMY_1_SPEED_Y;
@@ -83,14 +80,6 @@ const Game = struct {
             obj_pal[i] = col;
         }
 
-        // Load all 8 animation frames (8KB = 4096 words) to OBJ VRAM (0x06010000)
-        const obj_vram = hal.MemorySections.VRAM + 32768;
-        const raw_tile_words = @as([*]const u16, @ptrCast(@alignCast(broom.raw_tiles.ptr)));
-        const total_words = broom.raw_tiles.len / 2;
-        for (0..total_words) |i| {
-            obj_vram[i] = raw_tile_words[i];
-        }
-
         // Enemy visual setup (Red vertical pillars at Tile Index 256 in 4-bpp mode)
         self.enemies[0].fillSolidColor(engine.Color.RED) catch {};
 
@@ -98,13 +87,13 @@ const Game = struct {
     }
 
     pub fn reset(self: *@This()) void {
-        self.player.sprite.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
-        self.player.sprite.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
-        self.player.sprite.velocity_x = Fixed24_8.zero;
-        self.player.sprite.velocity_y = Fixed24_8.zero;
-        self.player.sprite.h_flip = false;
-        self.anim_frame = 0;
-        self.anim_timer = 0;
+        const spr = self.player.getSprite();
+        spr.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
+        spr.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
+        spr.velocity_x = Fixed24_8.zero;
+        spr.velocity_y = Fixed24_8.zero;
+        spr.h_flip = false;
+        self.player.setFrame(0);
 
         self.enemies[0].sprite.aabb.x = Fixed24_8.fromInt(ENEMY_1_START_X);
         self.enemies[0].sprite.aabb.y = Fixed24_8.fromInt(ENEMY_1_START_Y);
@@ -122,22 +111,24 @@ const Game = struct {
         var vx = Fixed24_8.zero;
         var vy = Fixed24_8.zero;
 
+        const player_spr = self.player.getSprite();
+
         if (self.input.isPressed(.Left)) {
             vx = vx.sub(PLAYER_SPEED);
-            self.player.sprite.h_flip = true; // Face left
+            player_spr.h_flip = true; // Face left
         }
         if (self.input.isPressed(.Right)) {
             vx = vx.add(PLAYER_SPEED);
-            self.player.sprite.h_flip = false; // Face right
+            player_spr.h_flip = false; // Face right
         }
         if (self.input.isPressed(.Up)) vy = vy.sub(PLAYER_SPEED);
         if (self.input.isPressed(.Down)) vy = vy.add(PLAYER_SPEED);
 
-        self.player.sprite.velocity_x = vx;
-        self.player.sprite.velocity_y = vy;
+        player_spr.velocity_x = vx;
+        player_spr.velocity_y = vy;
 
         // 2. Move player and block on screen border
-        _ = self.player.sprite.moveAndCollide(self.map);
+        _ = player_spr.moveAndCollide(self.map);
 
         // 3. Move enemies vertically and bounce on screen border
         for (&self.enemies) |*enemy| {
@@ -148,17 +139,12 @@ const Game = struct {
             }
         }
 
-        // 4. Advance animation cycle (8 frames, looping)
-        self.anim_timer += 1;
-        if (self.anim_timer >= FRAME_DURATION_TICKS) {
-            self.anim_timer = 0;
-            self.anim_frame = (self.anim_frame + 1) % broom.frame_count;
-        }
-        self.player.tile.tile_index = self.anim_frame * TILES_PER_FRAME_8BPP;
+        // 4. Update animated sprite (advances timer & stages DMA streaming transfer on frame switch)
+        self.player.update();
 
         // 5. Check player-enemy collision
         for (&self.enemies) |*enemy| {
-            if (self.player.sprite.canCollideWith(&enemy.sprite) and self.player.sprite.aabb.isColliding(enemy.sprite.aabb)) {
+            if (player_spr.canCollideWith(&enemy.sprite) and player_spr.aabb.isColliding(enemy.sprite.aabb)) {
                 self.reset();
                 break;
             }

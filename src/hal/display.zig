@@ -1,4 +1,4 @@
-const MemorySections = @import("hal.zig").MemorySections;
+const MemorySections = @import("specs.zig").MemorySections;
 const REG_DISPCNT = MemorySections.REG_DISPCNT;
 const REG_DISPSTAT = MemorySections.REG_DISPSTAT;
 const REG_IE = MemorySections.REG_IE;
@@ -130,20 +130,44 @@ pub fn unsetBackground3() void {
 pub const DCNT_OBJ: u16 = 0x1000;
 pub const DCNT_OBJ_1D: u16 = 0x0040;
 
-pub fn setObject() void {
+/// Sprite (OBJ) VRAM tile memory addressing mode.
+pub const SpriteMapping = enum(u1) {
+    grid_2d = 0,
+    linear_1d = 1,
+};
+
+/// Enable GBA Sprite (OBJ) rendering layer.
+pub fn enableSprites() void {
     value |= DCNT_OBJ;
 }
 
-pub fn unsetObject() void {
+/// Alias for enableSprites for layer naming consistency.
+pub const enableSpriteLayer = enableSprites;
+
+/// Disable GBA Sprite (OBJ) rendering layer.
+pub fn disableSprites() void {
     value &= ~DCNT_OBJ;
 }
 
-pub fn setObject1D() void {
-    value |= DCNT_OBJ_1D;
+/// Alias for disableSprites for layer naming consistency.
+pub const disableSpriteLayer = disableSprites;
+
+/// Set the Sprite (OBJ) VRAM tile memory addressing mode.
+pub fn setSpriteMapping(mode: SpriteMapping) void {
+    switch (mode) {
+        .linear_1d => value |= DCNT_OBJ_1D,
+        .grid_2d => value &= ~DCNT_OBJ_1D,
+    }
 }
 
-pub fn unsetObject1D() void {
-    value &= ~DCNT_OBJ_1D;
+/// Convenience shortcut to configure 1D linear Sprite tile addressing.
+pub fn setSpriteMapping1D() void {
+    setSpriteMapping(.linear_1d);
+}
+
+/// Convenience shortcut to configure 2D grid Sprite tile addressing.
+pub fn setSpriteMapping2D() void {
+    setSpriteMapping(.grid_2d);
 }
 //
 // REG_DISPSTAT
@@ -163,4 +187,24 @@ test "display.SetModeAndBackground" {
     setMode3();
     setBackground2();
     try std.testing.expect(value == 0x0403);
+}
+
+test "display.SpriteLayerAndMapping" {
+    const std = @import("std");
+    value = 0;
+
+    enableSprites();
+    try std.testing.expectEqual(DCNT_OBJ, value);
+
+    setSpriteMapping1D();
+    try std.testing.expectEqual(DCNT_OBJ | DCNT_OBJ_1D, value);
+
+    setSpriteMapping2D();
+    try std.testing.expectEqual(DCNT_OBJ, value);
+
+    setSpriteMapping(.linear_1d);
+    try std.testing.expectEqual(DCNT_OBJ | DCNT_OBJ_1D, value);
+
+    disableSprites();
+    try std.testing.expectEqual(DCNT_OBJ_1D, value);
 }

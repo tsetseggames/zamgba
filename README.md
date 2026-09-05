@@ -78,11 +78,12 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`sprite_hal`** (`demo/hal/sprite_hal.zig`): Demonstrates direct, register-level sprite setup on the GBA. Manually populates palette memory (PALRAM) and sprite tile memory (VRAM), configures packed `ObjAttr` coordinates, and bounces a single white 8x8 block smoothly left-to-right inside a VBlank-synchronized loop.
 
 ### 2. High-Level Engine Demos
-*   **`sprite_engine`** (`demo/engine/sprite_engine.zig`): Showcases our high-level **Static Namespace / File** engine loop. State is declared cleanly as file-scope `var` variables, and the loop is started via `eng.run(@This())`. The engine automatically manages VBlank timing, OAM hardware uploads, and dynamic slot allocation.
-*   **`sprite_instanced`** (`demo/engine/sprite_instanced.zig`): Showcases our high-level **Pointer-to-Instance** engine loop. Encapsulates the entire game state inside a type-safe structure (`const Game = struct { ... }`) and passes an instance pointer `eng.run(&game)`. This is the recommended structure for larger, multi-sprite/multi-level modular games requiring state serialization (SRAM/Flash cartridge saving).
+*   **`sprite_engine`** (`demo/engine/sprite_engine.zig`): Showcases our high-level **Static Namespace / File** engine loop. State is declared cleanly as file-scope `var` variables, and the loop is started via `engine.run(@This())`. The engine automatically manages VBlank timing, OAM hardware uploads, and dynamic slot allocation.
+*   **`sprite_instanced`** (`demo/engine/sprite_instanced.zig`): Showcases our high-level **Pointer-to-Instance** engine loop. Encapsulates the entire game state inside a type-safe structure (`const Game = struct { ... }`) and passes an instance pointer `engine.run(&game)`. This is the recommended structure for larger, multi-sprite/multi-level modular games requiring state serialization (SRAM/Flash cartridge saving).
 *   **`joypad_instanced`** (`demo/engine/joypad_instanced.zig`): Demonstrates high-level sprite movement via D-pad input using engine-layer APIs. Changes sprite color dynamically upon hitting screen boundaries (Top: Red, Bottom: White, Left: Yellow, Right: Green).
 *   **`collision_demo`** (`demo/engine/collision_demo.zig`): Demonstrates the 2D physics engine, AABB collision detection, and `CollisionMap` streaming. Features a player square responding to D-pad inputs, two bouncing patrol enemies, and game state reset upon collision.
-*   **`flappy_tsetseg`** (`demo/engine/flappy_tsetseg.zig`): Demonstrates animated multi-frame 8-bpp sprite playback with real Aseprite assets converted via `zurag`. Control Tsetseg riding her flying broom with directional flipping (Left/Right) while dodging moving vertical pillars in a bounded 2D map.
+*   **`flappy_tsetseg`** (`demo/engine/flappy_tsetseg.zig`): Demonstrates animated multi-frame 8-bpp sprite playback with static all-frame VRAM preloading.
+*   **`flappy_tsetseg_streaming`** (`demo/engine/flappy_tsetseg_streaming.zig`): Demonstrates high-performance VRAM Streaming sprite animation. Only a single 32x32 frame slot (1 KB) is allocated via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `AnimatedSprite` and `DmaQueue` during VBlank.
 *   **`pong`** (`demo/engine/pong.zig`): A complete, playable classic Pong game built entirely on `zamgba-engine`. Features player paddle D-pad controls, AI paddle tracking, top/bottom wall reflections, AABB paddle-ball collision response, and scoring/resets.
 
 ### Can I reference your library as a dependency?
@@ -113,13 +114,14 @@ Enjoy!
   - [x] Respond to gamepad input
   - [x] Single color/square sprites
   - [x] Hardcoded collision detection 
-* **Version 0.2.0**: Capable of writing a game with rich sprites graphics. Supported features:
+* **Version 0.2.0** (2026-09-06): Capable of writing a game with rich sprites graphics. Supported features:
   - [x] Mode 0 support
   - [x] PNG-sprite-to-code conversion tool (`zurag`)
   - [x] Color palettes conversion tool (`zurag`)
-  - [ ] Engine-level streaming sprite loader & VBlank DMA manager
+  - [x] Engine-level streaming sprite loader & VBlank DMA manager
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
   - [ ] Camera
+  - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry)
   - [x] True color background, via mode 3, 4, 5
 * **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
   - [ ] Chiptune-to-code conversion tool

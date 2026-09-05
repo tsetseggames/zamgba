@@ -171,7 +171,7 @@ pub fn generateZigSource(
     writer.print("pub const height: u16 = {};\n", .{frame0.rect.h}) catch return error.WriteError;
     writer.print("pub const frame_count: u16 = {};\n", .{meta.frames.len}) catch return error.WriteError;
     writer.print("pub const tile_count_per_frame: u16 = {};\n", .{sliced_frames[0].tile_count}) catch return error.WriteError;
-    writer.print("pub const bpp_mode: engine.BppMode = {s};\n", .{bpp_enum_str}) catch return error.WriteError;
+    writer.print("pub const bpp_mode: hal.specs.BppMode = {s};\n", .{bpp_enum_str}) catch return error.WriteError;
     writer.print("pub const shape: u16 = hal.oam.Shape.{s};\n", .{shape_size.shape_name}) catch return error.WriteError;
     writer.print("pub const size: u16 = hal.oam.Size.{s};\n", .{shape_size.size_name}) catch return error.WriteError;
     writer.print("pub const default_palette_bank: u8 = {};\n\n", .{sliced_frames[0].detected_bank}) catch return error.WriteError;

@@ -1,9 +1,9 @@
-const hal = @import("hal.zig");
+const specs = @import("specs.zig");
 
 /// A hardware-backed drawing context for GBA's Mode 3.
 /// Mode 3 is a 240x160 resolution bitmap mode with 16-bit color.
 pub const Mode3Context = struct {
-    vram: [*]volatile u16 = hal.MemorySections.VRAM,
+    vram: [*]volatile u16 = specs.MemorySections.VRAM,
 
     pub fn init() Mode3Context {
         return .{};
@@ -12,8 +12,8 @@ pub const Mode3Context = struct {
     /// Implements the pixel drawing interface required by `zamgba-gfx2d`.
     pub fn drawPixel(ctx: *@This(), x: i32, y: i32, color: u16) void {
         // Bounds checking is essential to prevent writing outside VRAM
-        if (x >= 0 and x < hal.Screen.WIDTH_PIXELS and y >= 0 and y < hal.Screen.HEIGHT_PIXELS) {
-            const index = @as(usize, @intCast(y)) * hal.Screen.WIDTH_PIXELS + @as(usize, @intCast(x));
+        if (x >= 0 and x < specs.Screen.WIDTH_PIXELS and y >= 0 and y < specs.Screen.HEIGHT_PIXELS) {
+            const index = @as(usize, @intCast(y)) * specs.Screen.WIDTH_PIXELS + @as(usize, @intCast(x));
             ctx.vram[index] = color;
         }
     }
@@ -29,14 +29,14 @@ pub const Mode5Context = struct {
         // Since VRAM is a u16 pointer, 0xA000 bytes = 0x5000 u16 elements
         const offset: usize = if (page == 0) 0 else 0x5000;
         return .{
-            .page_base = hal.MemorySections.VRAM + offset,
+            .page_base = specs.MemorySections.VRAM + offset,
         };
     }
 
     /// Implements the pixel drawing interface required by `zamgba-gfx2d`.
     pub fn drawPixel(ctx: *@This(), x: i32, y: i32, color: u16) void {
-        if (x >= 0 and x < hal.Screen.MODE5_WIDTH_PIXELS and y >= 0 and y < hal.Screen.MODE5_HEIGHT_PIXELS) {
-            const index = @as(usize, @intCast(y)) * hal.Screen.MODE5_WIDTH_PIXELS + @as(usize, @intCast(x));
+        if (x >= 0 and x < specs.Screen.MODE5_WIDTH_PIXELS and y >= 0 and y < specs.Screen.MODE5_HEIGHT_PIXELS) {
+            const index = @as(usize, @intCast(y)) * specs.Screen.MODE5_WIDTH_PIXELS + @as(usize, @intCast(x));
             ctx.page_base[index] = color;
         }
     }
