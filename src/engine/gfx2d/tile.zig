@@ -178,47 +178,46 @@ pub const AnimatedTiles = struct {
 
     fn advanceFrame(self: *AnimatedTiles) void {
         if (self.current_tag_index) |t_idx| {
-            if (t_idx < self.sheet.tags.len) {
-                const tag = self.sheet.tags[t_idx];
-                switch (tag.direction) {
-                    .forward => {
+            std.debug.assert(t_idx < self.sheet.tags.len);
+            const tag = self.sheet.tags[t_idx];
+            switch (tag.direction) {
+                .forward => {
+                    if (self.current_frame >= tag.to_frame) {
+                        self.current_frame = tag.from_frame;
+                    } else {
+                        self.current_frame += 1;
+                    }
+                },
+                .reverse => {
+                    if (self.current_frame <= tag.from_frame) {
+                        self.current_frame = tag.to_frame;
+                    } else {
+                        self.current_frame -= 1;
+                    }
+                },
+                .pingpong => {
+                    if (!self.pingpong_reverse) {
                         if (self.current_frame >= tag.to_frame) {
-                            self.current_frame = tag.from_frame;
+                            self.pingpong_reverse = true;
+                            if (tag.to_frame > tag.from_frame) {
+                                self.current_frame = tag.to_frame - 1;
+                            }
                         } else {
                             self.current_frame += 1;
                         }
-                    },
-                    .reverse => {
+                    } else {
                         if (self.current_frame <= tag.from_frame) {
-                            self.current_frame = tag.to_frame;
+                            self.pingpong_reverse = false;
+                            if (tag.to_frame > tag.from_frame) {
+                                self.current_frame = tag.from_frame + 1;
+                            }
                         } else {
                             self.current_frame -= 1;
                         }
-                    },
-                    .pingpong => {
-                        if (!self.pingpong_reverse) {
-                            if (self.current_frame >= tag.to_frame) {
-                                self.pingpong_reverse = true;
-                                if (tag.to_frame > tag.from_frame) {
-                                    self.current_frame = tag.to_frame - 1;
-                                }
-                            } else {
-                                self.current_frame += 1;
-                            }
-                        } else {
-                            if (self.current_frame <= tag.from_frame) {
-                                self.pingpong_reverse = false;
-                                if (tag.to_frame > tag.from_frame) {
-                                    self.current_frame = tag.from_frame + 1;
-                                }
-                            } else {
-                                self.current_frame -= 1;
-                            }
-                        }
-                    },
-                }
-                return;
+                    }
+                },
             }
+            return;
         }
 
         // Default: loop all frames forward
@@ -230,13 +229,16 @@ pub const AnimatedTiles = struct {
             const alloc_res = self.vram_alloc orelse return;
             const bytes_per_frame = @as(usize, self.sheet.tile_count_per_frame) * (if (self.sheet.bpp == .bpp4) hal.specs.Tile.BYTES_4BPP else hal.specs.Tile.BYTES_8BPP);
             const start = self.current_frame * bytes_per_frame;
-            if (start + bytes_per_frame <= self.sheet.tiles.len) {
-                const frame_src = self.sheet.tiles.ptr + start;
-                const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.OBJ_VRAM);
 
-                const q = custom_queue orelse &dma_queue.global_queue;
-                _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
-            }
+            // Invariant: current_frame is guaranteed to be within 0..sheet.frame_count - 1.
+            // Assertion catches malformed sprite sheet mock data during development/testing.
+            std.debug.assert(start + bytes_per_frame <= self.sheet.tiles.len);
+
+            const frame_src = self.sheet.tiles.ptr + start;
+            const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.OBJ_VRAM);
+
+            const q = custom_queue orelse &dma_queue.global_queue;
+            _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};
         }
     }
 
@@ -252,10 +254,10 @@ pub const AnimatedTiles = struct {
         self.frame_timer += 1;
 
         // Calculate ticks from duration_ms (60 FPS -> ~16.6ms per tick)
-        const duration_ms = if (self.current_frame < self.sheet.durations_ms.len)
-            self.sheet.durations_ms[self.current_frame]
-        else
-            DEFAULT_FRAME_DURATION_MS;
+        const duration_ms = if (self.sheet.durations_ms.len > 0) blk: {
+            std.debug.assert(self.current_frame < self.sheet.durations_ms.len);
+            break :blk self.sheet.durations_ms[self.current_frame];
+        } else DEFAULT_FRAME_DURATION_MS;
         const ticks: u16 = @max(1, @as(u16, @intCast((duration_ms + (MS_PER_TICK_APPROX / 2)) / MS_PER_TICK_APPROX)));
 
         if (self.frame_timer >= ticks) {
@@ -267,9 +269,10 @@ pub const AnimatedTiles = struct {
 
     /// Derives the current StaticTile description (tile_index, palette_bank, bpp) for rendering.
     pub fn getTile(self: *const AnimatedTiles) StaticTile {
-        const tile_idx: u16 = if (self.mode == .streaming)
-            if (self.vram_alloc) |a| a.tile_index else 0
-        else blk: {
+        const tile_idx: u16 = if (self.mode == .streaming) blk: {
+            std.debug.assert(self.vram_alloc != null);
+            break :blk self.vram_alloc.?.tile_index;
+        } else blk: {
             const tile_step = if (self.sheet.bpp == .bpp4)
                 self.sheet.tile_count_per_frame
             else
