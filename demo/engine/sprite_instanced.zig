@@ -34,6 +34,8 @@ const Game = struct {
 };
 
 export fn main() noreturn {
+    engine.initHardware();
+
     // 1. Instantiate our game state on the stack
     var game = Game{
         .spr = engine.StaticSprite.init(116, 76, 8, 8, .{

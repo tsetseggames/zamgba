@@ -31,6 +31,8 @@ pub fn tick() void {
 }
 
 export fn main() noreturn {
+    engine.initHardware();
+
     // 1. Initialize high-level sprite state (8x8 square sprite with StaticTile)
     spr = engine.StaticSprite.init(116, 76, 8, 8, .{
         .tile_index = 0,

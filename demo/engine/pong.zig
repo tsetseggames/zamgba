@@ -153,6 +153,7 @@ const Game = struct {
 };
 
 export fn main() noreturn {
+    engine.initHardware();
     var game = Game.init();
     engine.run(&game);
 }

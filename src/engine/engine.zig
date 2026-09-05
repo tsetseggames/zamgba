@@ -11,11 +11,10 @@ pub const Color = gfx2d.Color;
 
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
 pub var sprite_count: usize = 0;
-pub var dma_queue_instance: dma_queue.DmaQueue = .{};
 pub var is_initialized: bool = false;
 
-/// Initializes the global engine state and hardware display registers.
-pub fn init() void {
+/// Initializes the global engine state, resets subsystem allocators and queues, and configures hardware display registers.
+pub fn initHardware() void {
     if (builtin.target.os.tag == .freestanding) {
         hal.display.setMode0();
         hal.display.enableSpriteLayer();
@@ -32,8 +31,8 @@ pub fn init() void {
         };
     }
     sprite_count = 0;
-    dma_queue_instance.reset();
-    vram_allocator.init();
+    vram_allocator.reset();
+    dma_queue.global_queue.reset();
     is_initialized = true;
 }
 
@@ -47,7 +46,7 @@ pub fn nextFrame() void {
     hal.waitForVBlank();
 
     // Flush DMA transfers to VRAM during VBlank
-    dma_queue_instance.flush();
+    dma_queue.global_queue.flush();
 
     // Flush shadow memory to hardware
     const hw_oam = @as([*]volatile hal.oam.ObjAttr, @ptrCast(@alignCast(hal.MemorySections.OAM)));
@@ -61,17 +60,17 @@ pub fn nextFrame() void {
 
 /// Enqueues a DMA memory transfer to be executed during the upcoming VBlank.
 pub fn enqueueDmaTask(task: hal.dma.DmaTask) dma_queue.DmaQueueError!void {
-    return dma_queue_instance.enqueue(task);
+    return dma_queue.global_queue.enqueue(task);
 }
 
 /// Enqueues a raw byte transfer via DMA to be executed during the upcoming VBlank.
 pub fn enqueueDmaBytes(src: [*]const u8, dest: [*]volatile u8, bytes: u16) dma_queue.DmaQueueError!void {
-    return dma_queue_instance.enqueueBytes(src, dest, bytes);
+    return dma_queue.global_queue.enqueueBytes(src, dest, bytes);
 }
 
 /// Sets the maximum bytes permitted for DMA streaming transfer in a single VBlank.
 pub fn setDmaVblankBudget(bytes: usize) void {
-    dma_queue_instance.setMaxBytesPerVblank(bytes);
+    dma_queue.global_queue.setMaxBytesPerVblank(bytes);
 }
 
 /// Registers a sprite to be rendered in the current frame.
@@ -93,9 +92,6 @@ pub fn drawSprite(spr: anytype) void {
 /// 1. A static namespace/type with a public `tick() void` function (e.g. `@This()`).
 /// 2. An instantiated struct pointer with a public `tick(self) void` method (e.g. `&game`).
 pub fn run(context: anytype) noreturn {
-    if (!is_initialized) {
-        init();
-    }
     const T = @TypeOf(context);
     if (T == type) {
         // Static namespace/file context
@@ -140,9 +136,9 @@ test {
     _ = gfx2d;
 }
 
-test "ENG001: Engine singleton init and drawSprite staging" {
+test "ENG001: Engine singleton initHardware and drawSprite staging" {
     const std = @import("std");
-    init();
+    initHardware();
     try std.testing.expect(is_initialized);
     try std.testing.expectEqual(@as(usize, 0), sprite_count);
 

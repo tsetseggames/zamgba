@@ -70,6 +70,8 @@ const Game = struct {
 };
 
 export fn main() noreturn {
+    engine.initHardware();
+
     const spr_width: u16 = 16;
     const spr_height: u16 = 16;
     const start_x: i32 = @intCast((hal.Screen.WIDTH_PIXELS - @as(i32, @intCast(spr_width))) / 2);
