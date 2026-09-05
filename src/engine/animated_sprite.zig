@@ -29,8 +29,13 @@ pub const AnimatedSprite = struct {
     }
 
     /// Selects an animation tag by name (e.g. "fly", "run", "idle").
-    pub fn play(self: *AnimatedSprite, tag_name: []const u8) bool {
-        return self.tiles.play(tag_name);
+    pub fn setAnimation(self: *AnimatedSprite, tag_name: []const u8) bool {
+        return self.tiles.setAnimation(tag_name);
+    }
+
+    /// Selects an animation tag by index without runtime string lookup.
+    pub fn setAnimationByIndex(self: *AnimatedSprite, tag_index: usize) bool {
+        return self.tiles.setAnimationByIndex(tag_index);
     }
 
     /// Directly sets the current frame index.
@@ -41,11 +46,6 @@ pub const AnimatedSprite = struct {
     /// Advances the animation frame timer by 1 tick (~16.6ms at 60Hz).
     pub fn update(self: *AnimatedSprite) void {
         self.tiles.update();
-    }
-
-    /// Advances the animation frame timer with an explicit custom DMA queue.
-    pub fn updateWithQueue(self: *AnimatedSprite, custom_queue: anytype) void {
-        self.tiles.updateWithQueue(custom_queue);
     }
 
     /// Compiles into a GBA hardware OAM attribute.

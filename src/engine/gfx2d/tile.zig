@@ -146,19 +146,26 @@ pub const AnimatedTiles = struct {
     }
 
     /// Selects an animation tag by name (e.g. "fly", "run", "idle").
-    pub fn play(self: *AnimatedTiles, tag_name: []const u8) bool {
+    pub fn setAnimation(self: *AnimatedTiles, tag_name: []const u8) bool {
         for (self.sheet.tags, 0..) |tag, i| {
             if (std.mem.eql(u8, tag.name, tag_name)) {
-                self.current_tag_index = i;
-                self.current_frame = tag.from_frame;
-                self.frame_timer = 0;
-                self.pingpong_reverse = false;
-                self.is_playing = true;
-                self.stageCurrentFrameWithQueue(null);
-                return true;
+                return self.setAnimationByIndex(i);
             }
         }
         return false;
+    }
+
+    /// Selects an animation tag by index without string lookup overhead.
+    pub fn setAnimationByIndex(self: *AnimatedTiles, tag_index: usize) bool {
+        if (tag_index >= self.sheet.tags.len) return false;
+        const tag = self.sheet.tags[tag_index];
+        self.current_tag_index = tag_index;
+        self.current_frame = tag.from_frame;
+        self.frame_timer = 0;
+        self.pingpong_reverse = false;
+        self.is_playing = true;
+        self.stageCurrentFrameWithQueue(null);
+        return true;
     }
 
     /// Directly sets the current frame index.
@@ -238,8 +245,8 @@ pub const AnimatedTiles = struct {
         self.updateWithQueue(null);
     }
 
-    /// Advances the animation frame timer with an explicit custom DMA queue (for testing/custom scheduling).
-    pub fn updateWithQueue(self: *AnimatedTiles, custom_queue: ?*dma_queue.DmaQueue) void {
+    /// Advances the animation frame timer with an explicit custom DMA queue (internal for testing).
+    fn updateWithQueue(self: *AnimatedTiles, custom_queue: ?*dma_queue.DmaQueue) void {
         if (!self.is_playing or self.sheet.frame_count <= 1) return;
 
         self.frame_timer += 1;
@@ -347,7 +354,7 @@ test "ANI002: AnimatedTiles init with static mode uses base tile_index and advan
     try std.testing.expectEqual(@as(u16, 4), anim_tiles.getTile().tile_index);
 }
 
-test "ANI003: AnimatedTiles play selects tag and resets frame" {
+test "ANI003: AnimatedTiles setAnimation and setAnimationByIndex select tag and reset frame" {
     const dummy_tiles: [512]u8 align(4) = [_]u8{0} ** 512;
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
@@ -366,9 +373,13 @@ test "ANI003: AnimatedTiles play selects tag and resets frame" {
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .static);
     defer anim_tiles.deinit();
 
-    try std.testing.expect(anim_tiles.play("attack"));
+    try std.testing.expect(anim_tiles.setAnimation("attack"));
     try std.testing.expectEqual(@as(usize, 2), anim_tiles.current_frame);
-    try std.testing.expect(!anim_tiles.play("non_existent"));
+    try std.testing.expect(!anim_tiles.setAnimation("non_existent"));
+
+    try std.testing.expect(anim_tiles.setAnimationByIndex(0));
+    try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
+    try std.testing.expect(!anim_tiles.setAnimationByIndex(99));
 }
 
 test "ANI004: AnimatedTiles updateWithQueue advances frame on timer expiration and stages DMA" {
@@ -391,7 +402,7 @@ test "ANI004: AnimatedTiles updateWithQueue advances frame on timer expiration a
 
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .streaming);
     defer anim_tiles.deinit();
-    _ = anim_tiles.play("walk");
+    _ = anim_tiles.setAnimation("walk");
 
     test_queue.clear();
 
@@ -445,7 +456,7 @@ test "ANI006: pingpong animation direction reverses correctly" {
 
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .static);
     defer anim_tiles.deinit();
-    _ = anim_tiles.play("ping");
+    _ = anim_tiles.setAnimation("ping");
 
     try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
     anim_tiles.update();
