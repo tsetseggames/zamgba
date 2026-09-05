@@ -75,11 +75,9 @@ fn popFree(order: usize) ?i16 {
     return head;
 }
 
-/// Initializes the global VRAM Buddy Allocator singleton if not already initialized.
+/// Initializes the global VRAM Buddy Allocator singleton.
 pub fn init() void {
-    if (!is_initialized) {
-        reset();
-    }
+    reset();
 }
 
 /// Clears all allocations and resets VRAM state to 1024 contiguous free tiles.
@@ -129,9 +127,7 @@ fn unitsToOrder(units: u16) usize {
 
 /// Allocates a block with exact power-of-2 unit count.
 pub fn allocUnits(units: u16) VramError!VramAllocation {
-    if (!is_initialized) {
-        init();
-    }
+    std.debug.assert(is_initialized);
     if (units == 0 or units > TOTAL_TILES) {
         return error.OutOfVram;
     }
@@ -173,7 +169,7 @@ pub fn allocUnits(units: u16) VramError!VramAllocation {
 
 /// Frees an allocated VRAM block and coalesces adjacent buddies.
 pub fn free(alloc_info: VramAllocation) VramError!void {
-    if (!is_initialized) return error.BlockNotAllocated;
+    std.debug.assert(is_initialized);
 
     const blk_idx = alloc_info.tile_index;
     if (blk_idx >= TOTAL_TILES or nodes[blk_idx].is_free) {
@@ -205,7 +201,7 @@ pub fn free(alloc_info: VramAllocation) VramError!void {
 
 /// Returns the total number of free 32-byte 4-bpp tile units currently available.
 pub fn getFreeTileCount() u16 {
-    if (!is_initialized) return TOTAL_TILES;
+    std.debug.assert(is_initialized);
     return free_tile_count;
 }
 
