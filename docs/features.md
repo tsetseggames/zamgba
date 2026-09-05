@@ -33,8 +33,8 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] Hardcoded collision detection (Early milestone)
 
 7. **Tooling & Asset Conversion**
-   - [ ] PNG-sprite-to-code conversion tool
-   - [ ] Color palettes conversion tool
+   - [x] PNG-sprite-to-code conversion tool (`zurag`)
+   - [x] Color palettes conversion tool (`zurag`)
    - [ ] Chiptune-to-code conversion tool
    - [ ] Wav file to code conversion tool
 
