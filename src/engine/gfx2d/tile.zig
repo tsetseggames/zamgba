@@ -69,19 +69,20 @@ pub const StaticTile = struct {
         }
         const bgr15 = color.toBgr555();
 
+        // On real GBA hardware, palette_bank is bounded by u4 (max 15), so bank_offset + 1 is at most
+        // 241, which is strictly less than OBJ_PALRAM length (256 words). Out-of-bounds is impossible
+        // in hardware. The assert provides explicit invariant validation and catches malformed buffers in unit tests.
         const bank_offset = @as(usize, self.palette_bank & hal.specs.Palette.BANK_MASK) * hal.specs.Palette.COLORS_PER_BANK;
-        if (bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX < palram_obj_base.len) {
-            palram_obj_base[bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX] = bgr15;
-        }
+        std.debug.assert(bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX < palram_obj_base.len);
+        palram_obj_base[bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX] = bgr15;
 
         const tile_word_offset = @as(usize, self.tile_index) * hal.specs.Tile.WORDS_4BPP;
         const total_tiles = (@as(usize, width) / hal.specs.Tile.WIDTH_PIXELS) * (@as(usize, height) / hal.specs.Tile.HEIGHT_PIXELS);
         const total_words = total_tiles * hal.specs.Tile.WORDS_4BPP;
 
-        if (tile_word_offset + total_words <= vram_obj_base.len) {
-            for (0..total_words) |i| {
-                vram_obj_base[tile_word_offset + i] = hal.specs.Tile.SOLID_COLOR_1_PATTERN_4BPP;
-            }
+        std.debug.assert(tile_word_offset + total_words <= vram_obj_base.len);
+        for (0..total_words) |i| {
+            vram_obj_base[tile_word_offset + i] = hal.specs.Tile.SOLID_COLOR_1_PATTERN_4BPP;
         }
     }
 
