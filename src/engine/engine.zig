@@ -131,8 +131,8 @@ pub fn run(context: anytype) noreturn {
 pub const gfx2d = @import("gfx2d/gfx2d.zig");
 pub const input = @import("input.zig");
 pub const physics = @import("physics/physics.zig");
-pub const vram_allocator = @import("vram_allocator.zig");
-pub const dma_queue = @import("dma_queue.zig");
+pub const vram_allocator = gfx2d.vram_allocator;
+pub const dma_queue = gfx2d.dma_queue;
 pub const AnimatedTiles = @import("animated_sprite.zig").AnimatedTiles;
 pub const AnimatedSprite = @import("animated_sprite.zig").AnimatedSprite;
 pub const AnimationMode = @import("animated_sprite.zig").AnimationMode;

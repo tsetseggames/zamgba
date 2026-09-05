@@ -7,6 +7,9 @@ pub const drawLine = line.drawLine;
 pub const color = @import("color.zig");
 pub const Color = color.Color;
 
+pub const vram_allocator = @import("vram_allocator.zig");
+pub const dma_queue = @import("dma_queue.zig");
+
 pub const tile = @import("tile.zig");
 pub const StaticTile = tile.StaticTile;
 pub const ColorFillTile = tile.ColorFillTile;
@@ -22,4 +25,6 @@ test {
     _ = @import("std").testing.refAllDecls(@This());
     _ = color;
     _ = tile;
+    _ = vram_allocator;
+    _ = dma_queue;
 }

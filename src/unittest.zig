@@ -1,8 +1,8 @@
 const std = @import("std");
 
 test {
-    _ = @import("engine/vram_allocator.zig");
-    _ = @import("engine/dma_queue.zig");
+    _ = @import("engine/gfx2d/vram_allocator.zig");
+    _ = @import("engine/gfx2d/dma_queue.zig");
     _ = @import("engine/gfx2d/tile.zig");
     _ = @import("engine/gfx2d/gfx2d.zig");
     _ = @import("engine/animated_sprite.zig");

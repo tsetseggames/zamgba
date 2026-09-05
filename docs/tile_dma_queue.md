@@ -1,6 +1,6 @@
 # VBlank DMA Queue & Streaming Pipeline
 
-This document details the design, hardware constraints, and implementation of the **Fixed Ring-Buffer DMA Queue** (`src/engine/dma_queue.zig`) in Zamgba.
+This document details the design, hardware constraints, and implementation of the **Fixed Ring-Buffer DMA Queue** (`src/engine/gfx2d/dma_queue.zig`) in Zamgba.
 
 ---
 
@@ -41,7 +41,7 @@ In Game Boy Advance development, rendering and memory access are governed by str
 
 ---
 
-## 3. Data Structures (`src/engine/dma_queue.zig`)
+## 3. Data Structures (`src/engine/gfx2d/dma_queue.zig`)
 
 ```zig
 pub const DmaQueue = struct {

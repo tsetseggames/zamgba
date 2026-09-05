@@ -1,6 +1,6 @@
 # VRAM Buddy Allocator & Tile Memory Management
 
-This document details the architecture, mathematical algorithms, data structures, and cross-layer concepts of the **Zero-Heap Bitwise Buddy Allocator** (`src/engine/vram_allocator.zig`) in Zamgba.
+This document details the architecture, mathematical algorithms, data structures, and cross-layer concepts of the **Zero-Heap Bitwise Buddy Allocator** (`src/engine/gfx2d/vram_allocator.zig`) in Zamgba.
 
 ---
 

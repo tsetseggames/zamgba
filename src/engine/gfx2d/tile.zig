@@ -1,8 +1,8 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
 const Color = @import("color.zig").Color;
-const vram_allocator = @import("../vram_allocator.zig");
-const dma_queue = @import("../dma_queue.zig");
+const vram_allocator = @import("vram_allocator.zig");
+const dma_queue = @import("dma_queue.zig");
 const engine = @import("../engine.zig");
 
 pub const TileError = error{
