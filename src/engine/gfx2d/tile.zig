@@ -48,26 +48,7 @@ pub const AnimationMode = enum {
     static, // All frames resident in VRAM; frame switches shift tile_index
 };
 
-// GBA Graphics & Memory constants
-const PALETTE_BANK_MASK: u16 = 0x0F;
-const COLORS_PER_PALETTE_BANK: usize = 16;
-const PRIMARY_COLOR_INDEX: usize = 1; // Index 0 is transparent in 4-bpp mode
-
-const PIXELS_PER_TILE_AXIS: usize = 8;
-const WORDS_PER_4BPP_TILE: usize = 16; // 8x8 pixels * 4 bits = 32 bytes = 16 words (u16)
-const BYTES_PER_4BPP_TILE: usize = 32;
-const BYTES_PER_8BPP_TILE: usize = 64;
-const SOLID_COLOR_1_PATTERN_4BPP: u16 = 0x1111; // 4 nibbles each selecting palette color index 1
-
-// GBA VRAM OBJ Character Block 4 begins at offset 64KB (32768 words of u16 from VRAM base 0x06000000)
-const OBJ_VRAM_OFFSET_WORDS: usize = 32768;
-const OBJ_VRAM_TOTAL_WORDS: usize = 16384; // 32KB OBJ CharBlocks 4 & 5
-
-// GBA PALRAM OBJ Palette begins at offset 512 bytes (256 words of u16 from PALRAM base 0x05000000)
-const OBJ_PALRAM_OFFSET_WORDS: usize = 256;
-const OBJ_PALRAM_TOTAL_WORDS: usize = 256; // 16 banks * 16 colors = 256 words
-
-// Frame timing constants (60Hz ~ 16.6ms per frame)
+// Software animation timing constants (60Hz ~ 16.6ms per frame)
 const DEFAULT_FRAME_DURATION_MS: u16 = 100;
 const MS_PER_TICK_APPROX: u16 = 16;
 
@@ -123,34 +104,34 @@ pub const ColorFillTile = struct {
         palram_obj_base: []volatile u16,
         color: anytype,
     ) TileError!void {
-        if (width == 0 or height == 0 or width % 8 != 0 or height % 8 != 0) {
+        if (width == 0 or height == 0 or width % hal.specs.Tile.WIDTH_PIXELS != 0 or height % hal.specs.Tile.HEIGHT_PIXELS != 0) {
             return TileError.InvalidDimensions;
         }
         const bgr15 = colorToBgr555(color);
 
-        const bank_offset = @as(usize, self.palette_bank & PALETTE_BANK_MASK) * COLORS_PER_PALETTE_BANK;
-        if (bank_offset + PRIMARY_COLOR_INDEX < palram_obj_base.len) {
-            palram_obj_base[bank_offset + PRIMARY_COLOR_INDEX] = bgr15;
+        const bank_offset = @as(usize, self.palette_bank & hal.specs.Palette.BANK_MASK) * hal.specs.Palette.COLORS_PER_BANK;
+        if (bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX < palram_obj_base.len) {
+            palram_obj_base[bank_offset + hal.specs.Palette.PRIMARY_COLOR_INDEX] = bgr15;
         }
 
-        const tile_word_offset = @as(usize, self.tile_index) * WORDS_PER_4BPP_TILE;
-        const total_tiles = (@as(usize, width) / PIXELS_PER_TILE_AXIS) * (@as(usize, height) / PIXELS_PER_TILE_AXIS);
-        const total_words = total_tiles * WORDS_PER_4BPP_TILE;
+        const tile_word_offset = @as(usize, self.tile_index) * hal.specs.Tile.WORDS_4BPP;
+        const total_tiles = (@as(usize, width) / hal.specs.Tile.WIDTH_PIXELS) * (@as(usize, height) / hal.specs.Tile.HEIGHT_PIXELS);
+        const total_words = total_tiles * hal.specs.Tile.WORDS_4BPP;
 
         if (tile_word_offset + total_words <= vram_obj_base.len) {
             for (0..total_words) |i| {
-                vram_obj_base[tile_word_offset + i] = SOLID_COLOR_1_PATTERN_4BPP;
+                vram_obj_base[tile_word_offset + i] = hal.specs.Tile.SOLID_COLOR_1_PATTERN_4BPP;
             }
         }
     }
 
     /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
     pub fn fillSolidColor(self: ColorFillTile, width: u16, height: u16, color: anytype) TileError!void {
-        const obj_pal = hal.MemorySections.PALRAM + OBJ_PALRAM_OFFSET_WORDS;
-        const obj_vram = hal.MemorySections.VRAM + OBJ_VRAM_OFFSET_WORDS;
+        const obj_pal = hal.MemorySections.OBJ_PALRAM;
+        const obj_vram = hal.MemorySections.OBJ_VRAM;
 
-        const pal_slice = obj_pal[0..OBJ_PALRAM_TOTAL_WORDS];
-        const vram_slice = obj_vram[0..OBJ_VRAM_TOTAL_WORDS];
+        const pal_slice = obj_pal[0..hal.MemorySections.OBJ_PALRAM_SIZE_WORDS];
+        const vram_slice = obj_vram[0..hal.MemorySections.OBJ_VRAM_SIZE_WORDS];
 
         try self.fillSolidColorToBuffers(width, height, vram_slice, pal_slice, color);
     }
@@ -279,11 +260,11 @@ pub const AnimatedTiles = struct {
     fn stageCurrentFrameWithQueue(self: *AnimatedTiles, custom_queue: ?*dma_queue.DmaQueue) void {
         if (self.mode == .streaming) {
             const alloc_res = self.vram_alloc orelse return;
-            const bytes_per_frame = @as(usize, self.sheet.tile_count_per_frame) * (if (self.sheet.bpp == .bpp4) BYTES_PER_4BPP_TILE else BYTES_PER_8BPP_TILE);
+            const bytes_per_frame = @as(usize, self.sheet.tile_count_per_frame) * (if (self.sheet.bpp == .bpp4) hal.specs.Tile.BYTES_4BPP else hal.specs.Tile.BYTES_8BPP);
             const start = self.current_frame * bytes_per_frame;
             if (start + bytes_per_frame <= self.sheet.tiles.len) {
                 const frame_src = self.sheet.tiles.ptr + start;
-                const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.VRAM + OBJ_VRAM_OFFSET_WORDS);
+                const dest_ptr = alloc_res.toVramPointer(hal.specs.MemorySections.OBJ_VRAM);
 
                 if (custom_queue) |q| {
                     _ = q.enqueueBytes(frame_src, @ptrCast(dest_ptr), @as(u16, @intCast(bytes_per_frame))) catch {};

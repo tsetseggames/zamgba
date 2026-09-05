@@ -19,6 +19,8 @@ pub const specs = @import("specs.zig");
 pub const MemorySections = specs.MemorySections;
 pub const Screen = specs.Screen;
 pub const Color = specs.Color;
+pub const Palette = specs.Palette;
+pub const Tile = specs.Tile;
 
 pub const display = @import("display.zig");
 pub const joypad = @import("joypad.zig");

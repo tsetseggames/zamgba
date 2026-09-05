@@ -41,6 +41,10 @@ pub const MemorySections = struct {
     pub const PAKROM = @as([*]u32, @ptrFromInt(0x08000000));
     pub const CARTROM = @as([*]volatile u32, @ptrFromInt(0x0E000000));
 
+    // Direct pointers to OBJ sub-regions
+    pub const OBJ_PALRAM = @as([*]volatile u16, @ptrFromInt(0x05000200));
+    pub const OBJ_VRAM = @as([*]volatile u16, @ptrFromInt(0x06010000));
+
     pub const SYSROM_SIZE_BYTES = 16 * 1024;
     pub const EWROM_SIZE_BYTES = 256 * 1024;
     pub const IWROM_SIZE_BYTES = 32 * 1024;
@@ -50,6 +54,18 @@ pub const MemorySections = struct {
     pub const OARAM_SIZE_BYTES = 1024;
     pub const PAKROM_SIZE_BYTES = 32 * 1024 * 1024;
     pub const CARTROM_SIZE_BYTES = 64 * 1024;
+
+    // OBJ VRAM Character Block 4 & 5 (0x06010000)
+    pub const OBJ_VRAM_OFFSET_BYTES: usize = 64 * 1024;
+    pub const OBJ_VRAM_OFFSET_WORDS: usize = OBJ_VRAM_OFFSET_BYTES / 2; // 32768
+    pub const OBJ_VRAM_SIZE_BYTES: usize = 32 * 1024;
+    pub const OBJ_VRAM_SIZE_WORDS: usize = OBJ_VRAM_SIZE_BYTES / 2; // 16384
+
+    // OBJ Palette RAM (0x05000200)
+    pub const OBJ_PALRAM_OFFSET_BYTES: usize = 512;
+    pub const OBJ_PALRAM_OFFSET_WORDS: usize = OBJ_PALRAM_OFFSET_BYTES / 2; // 256
+    pub const OBJ_PALRAM_SIZE_BYTES: usize = 512;
+    pub const OBJ_PALRAM_SIZE_WORDS: usize = OBJ_PALRAM_SIZE_BYTES / 2; // 256
 
     // BIOS interrupt flag for SWI IntrWait
     pub const BIOS_IF = @as(*volatile u16, @ptrFromInt(0x03007FF8));
@@ -74,4 +90,24 @@ pub const Color = struct {
     pub const MAG: u16 = 0x7C1F;
     pub const CYAN: u16 = 0x7FE0;
     pub const WHITE: u16 = 0x7FFF;
+};
+
+pub const Palette = struct {
+    pub const BANK_MASK: u16 = 0x0F;
+    pub const COLORS_PER_BANK: usize = 16;
+    pub const TOTAL_BANKS: usize = 16;
+    pub const TOTAL_COLORS: usize = 256;
+    pub const TRANSPARENT_COLOR_INDEX: usize = 0;
+    pub const PRIMARY_COLOR_INDEX: usize = 1;
+};
+
+pub const Tile = struct {
+    pub const WIDTH_PIXELS: usize = 8;
+    pub const HEIGHT_PIXELS: usize = 8;
+    pub const PIXEL_COUNT: usize = WIDTH_PIXELS * HEIGHT_PIXELS;
+    pub const BYTES_4BPP: usize = PIXEL_COUNT / 2; // 32 bytes
+    pub const WORDS_4BPP: usize = BYTES_4BPP / 2; // 16 words (u16)
+    pub const BYTES_8BPP: usize = PIXEL_COUNT; // 64 bytes
+    pub const WORDS_8BPP: usize = BYTES_8BPP / 2; // 32 words (u16)
+    pub const SOLID_COLOR_1_PATTERN_4BPP: u16 = 0x1111;
 };
