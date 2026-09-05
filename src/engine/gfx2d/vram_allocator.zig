@@ -75,11 +75,6 @@ fn popFree(order: usize) ?i16 {
     return head;
 }
 
-/// Initializes the global VRAM Buddy Allocator singleton.
-pub fn init() void {
-    reset();
-}
-
 /// Clears all allocations and resets VRAM state to 1024 contiguous free tiles.
 pub fn reset() void {
     for (&nodes) |*n| {
