@@ -2,27 +2,27 @@ const std = @import("std");
 const hal = @import("zamgba-hal");
 const png = @import("png.zig");
 const types = @import("metadata/types.zig");
+const Rect = types.Rect;
 const BppMode = @import("main.zig").BppMode;
 
-// Re-export Rect from metadata/types.zig
-pub const Rect = types.Rect;
-
 // Internal GBA OBJ Tile constants directly referencing HAL hardware definition
-const TILE_WIDTH: usize = hal.oam.Tile.WIDTH_PIXELS;
-const TILE_HEIGHT: usize = hal.oam.Tile.HEIGHT_PIXELS;
-const TILE_PIXEL_COUNT: usize = hal.oam.Tile.PIXEL_COUNT;
+const TILE_WIDTH: usize = hal.specs.Tile.WIDTH_PIXELS;
+const TILE_HEIGHT: usize = hal.specs.Tile.HEIGHT_PIXELS;
+const TILE_PIXEL_COUNT: usize = hal.specs.Tile.PIXEL_COUNT;
 
 // Bitwise packing constants (internal)
 const BITS_PER_PIXEL_4BPP: u3 = 4;
 const PIXELS_PER_BYTE_4BPP: usize = 2;
 const PIXEL_4BPP_MASK: u8 = 0x0F;
 const COLORS_PER_BANK: usize = png.COLORS_PER_BANK;
+const NIBBLE_MASK: u8 = 0x0F;
+const SHIFT_UPPER_NIBBLE: u3 = 4;
 
 // 4-bpp (16-color) Tile: 64 pixels packed at 4 bits/pixel = 32 bytes
-pub const Tile4bpp = [hal.oam.Tile.BYTES_4BPP]u8;
+pub const Tile4bpp = [hal.specs.Tile.BYTES_4BPP]u8;
 
 // 8-bpp (256-color) Tile: 64 pixels at 8 bits/pixel = 64 bytes
-pub const Tile8bpp = [hal.oam.Tile.BYTES_8BPP]u8;
+pub const Tile8bpp = [hal.specs.Tile.BYTES_8BPP]u8;
 
 // Sliced frame packaging result
 pub const SlicedFrame = struct {
@@ -98,7 +98,7 @@ pub fn sliceSpriteFrame(
     const tile_count = tiles_x * tiles_y;
 
     const is_8bpp = (mode == .bpp8);
-    const bytes_per_tile = if (is_8bpp) hal.oam.Tile.BYTES_8BPP else hal.oam.Tile.BYTES_4BPP;
+    const bytes_per_tile = if (is_8bpp) hal.specs.Tile.BYTES_8BPP else hal.specs.Tile.BYTES_4BPP;
     const total_bytes = tile_count * bytes_per_tile;
 
     // 3. Multi-bank conflict detection (for 4-bpp modes)
@@ -156,10 +156,10 @@ pub fn sliceSpriteFrame(
             const tile_idx = ty * tiles_x + tx;
             if (is_8bpp) {
                 const packed_tile = try packTile8bpp(&block_8x8);
-                @memcpy(bytes[tile_idx * hal.oam.Tile.BYTES_8BPP .. (tile_idx + 1) * hal.oam.Tile.BYTES_8BPP], &packed_tile);
+                @memcpy(bytes[tile_idx * hal.specs.Tile.BYTES_8BPP .. (tile_idx + 1) * hal.specs.Tile.BYTES_8BPP], &packed_tile);
             } else {
                 const packed_tile = try packTile4bpp(&block_8x8);
-                @memcpy(bytes[tile_idx * hal.oam.Tile.BYTES_4BPP .. (tile_idx + 1) * hal.oam.Tile.BYTES_4BPP], &packed_tile);
+                @memcpy(bytes[tile_idx * hal.specs.Tile.BYTES_4BPP .. (tile_idx + 1) * hal.specs.Tile.BYTES_4BPP], &packed_tile);
             }
         }
     }
@@ -200,7 +200,7 @@ test "TIL002: packTile8bpp: 64-byte linear packing" {
     sample[TILE_HEIGHT - 1][TILE_WIDTH - 1] = 99;
 
     const tile = try packTile8bpp(&sample);
-    try std.testing.expectEqual(hal.oam.Tile.BYTES_8BPP, tile.len);
+    try std.testing.expectEqual(hal.specs.Tile.BYTES_8BPP, tile.len);
     try std.testing.expectEqual(@as(u8, 42), tile[0]);
     try std.testing.expectEqual(@as(u8, 99), tile[TILE_PIXEL_COUNT - 1]);
 }
@@ -216,7 +216,7 @@ test "TIL003: sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp
     var frame_4bpp = try sliceSpriteFrame(std.testing.allocator, &img_16, frame0_rect, .bpp4);
     defer frame_4bpp.deinit();
     try std.testing.expectEqual(expected_tiles_32x32, frame_4bpp.tile_count);
-    try std.testing.expectEqual(expected_tiles_32x32 * hal.oam.Tile.BYTES_4BPP, frame_4bpp.bytes.len); // 512 bytes
+    try std.testing.expectEqual(expected_tiles_32x32 * hal.specs.Tile.BYTES_4BPP, frame_4bpp.bytes.len); // 512 bytes
 
     // 2. Slicing rich broom asset under 8-bpp mode
     var img_broom = try png.decompressIndexedPixels(std.testing.allocator, test_assets.png_broom);
@@ -224,7 +224,7 @@ test "TIL003: sliceSpriteFrame: real asset frame 0 slicing 32x32 (4-bpp vs 8-bpp
     var frame_8bpp = try sliceSpriteFrame(std.testing.allocator, &img_broom, frame0_rect, .bpp8);
     defer frame_8bpp.deinit();
     try std.testing.expectEqual(expected_tiles_32x32, frame_8bpp.tile_count);
-    try std.testing.expectEqual(expected_tiles_32x32 * hal.oam.Tile.BYTES_8BPP, frame_8bpp.bytes.len); // 1024 bytes
+    try std.testing.expectEqual(expected_tiles_32x32 * hal.specs.Tile.BYTES_8BPP, frame_8bpp.bytes.len); // 1024 bytes
 }
 
 test "TIL004: sliceSpriteFrame: reject invalid dimensions and out of bounds" {

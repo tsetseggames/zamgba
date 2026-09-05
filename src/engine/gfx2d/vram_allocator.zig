@@ -1,6 +1,5 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
-const BppMode = hal.specs.BppMode;
 
 pub const VramError = error{
     OutOfVram,
@@ -101,7 +100,7 @@ pub fn reset() void {
 }
 
 /// Calculate the power-of-2 32-byte tile slot units required for a given sprite dimension and bit depth.
-fn calculateRequiredUnits(width: u16, height: u16, bpp: BppMode) VramError!u16 {
+fn calculateRequiredUnits(width: u16, height: u16, bpp: hal.specs.BppMode) VramError!u16 {
     if (width == 0 or height == 0 or width % 8 != 0 or height % 8 != 0) {
         return error.InvalidSpriteSize;
     }
@@ -113,7 +112,7 @@ fn calculateRequiredUnits(width: u16, height: u16, bpp: BppMode) VramError!u16 {
 }
 
 /// Allocates a contiguous VRAM block suitable for a sprite with given dimensions and bit depth.
-pub fn alloc(width: u16, height: u16, bpp: BppMode) VramError!VramAllocation {
+pub fn alloc(width: u16, height: u16, bpp: hal.specs.BppMode) VramError!VramAllocation {
     const units = try calculateRequiredUnits(width, height, bpp);
     return allocUnits(units);
 }

@@ -12,8 +12,6 @@ pub const TileError = error{
     Unimplemented,
 };
 
-const BppMode = hal.specs.BppMode;
-
 pub const AnimationDirection = enum(u2) {
     forward = 0,
     reverse = 1,
@@ -28,7 +26,7 @@ pub const AnimationTag = struct {
 };
 
 pub const SpriteSheet = struct {
-    bpp: BppMode,
+    bpp: hal.specs.BppMode,
     width: u16,
     height: u16,
     tile_count_per_frame: u16,
@@ -53,7 +51,7 @@ const MS_PER_TICK_APPROX: u16 = 16;
 pub const StaticTile = struct {
     tile_index: u16 = 0,
     palette_bank: u4 = 0,
-    bpp: BppMode = .bpp4,
+    bpp: hal.specs.BppMode = .bpp4,
 
     /// Converts the static tile into a GBA Background Screen Entry (16-bit text BG map cell).
     pub inline fn toScreenEntry(self: StaticTile, h_flip: bool, v_flip: bool) u16 {
@@ -67,7 +65,7 @@ pub const StaticTile = struct {
 pub const ColorFillTile = struct {
     tile_index: u16 = 0,
     palette_bank: u4 = 0,
-    bpp: BppMode = .bpp4,
+    bpp: hal.specs.BppMode = .bpp4,
 
     pub inline fn getTile(self: ColorFillTile) StaticTile {
         return .{

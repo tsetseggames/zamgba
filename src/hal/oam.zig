@@ -25,6 +25,3 @@ pub const Size = struct {
     pub const SIZE_2: u16 = 2; // Square: 32x32, Horizontal: 32x16, Vertical: 16x32
     pub const SIZE_3: u16 = 3; // Square: 64x64, Horizontal: 64x32, Vertical: 32x64
 };
-
-/// GBA OBJ Atomic Tile Dimensions & Byte Sizes (defined in specs.zig)
-pub const Tile = specs.Tile;

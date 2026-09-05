@@ -8,15 +8,13 @@ const AnimationMode = gfx2d.AnimationMode;
 const AnimationTag = gfx2d.AnimationTag;
 const TileError = gfx2d.TileError;
 
-pub const AnimatedSpriteError = TileError;
-
 /// Composite structure: Combines a spatial Sprite with AnimatedTiles.
 pub const AnimatedSprite = struct {
     sprite: Sprite,
     tiles: AnimatedTiles,
 
     /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
-    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: i32, y: i32) AnimatedSpriteError!AnimatedSprite {
+    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: i32, y: i32) TileError!AnimatedSprite {
         const tiles = try AnimatedTiles.init(sheet, mode);
         const spr = Sprite.init(x, y, sheet.width, sheet.height);
         return .{
