@@ -118,9 +118,10 @@ Enjoy!
   - [x] Mode 0 support
   - [x] PNG-sprite-to-code conversion tool (`zurag`)
   - [x] Color palettes conversion tool (`zurag`)
-  - [ ] Engine-level streaming sprite loader & VBlank DMA manager
+  - [x] Engine-level streaming sprite loader & VBlank DMA manager
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
   - [ ] Camera
+  - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry)
   - [x] True color background, via mode 3, 4, 5
 * **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
   - [ ] Chiptune-to-code conversion tool

@@ -47,18 +47,12 @@ const DEFAULT_FRAME_DURATION_MS: u16 = 100;
 const MS_PER_TICK_APPROX: u16 = 16;
 
 /// Represents a static GBA tile attribute in VRAM.
-/// Can be used as a Sprite tile source or as a Background Screen Entry.
+/// Represents a lightweight GBA hardware visual tile descriptor.
+/// Holds tile index, palette bank, and bit depth.
 pub const StaticTile = struct {
     tile_index: u16 = 0,
     palette_bank: u4 = 0,
     bpp: hal.specs.BppMode = .bpp4,
-
-    /// Converts the static tile into a GBA Background Screen Entry (16-bit text BG map cell).
-    pub inline fn toScreenEntry(self: StaticTile, h_flip: bool, v_flip: bool) u16 {
-        const h_bit: u16 = if (h_flip) (1 << 10) else 0;
-        const v_bit: u16 = if (v_flip) (1 << 11) else 0;
-        return (self.tile_index & 0x03FF) | h_bit | v_bit | (@as(u16, self.palette_bank) << 12);
-    }
 
     /// Internal helper: fills custom VRAM and PALRAM memory buffers with solid color tile graphics and palette entry.
     /// Used by `fillSolidColor` and test mocks.
@@ -282,26 +276,6 @@ pub const AnimatedTiles = struct {
         };
     }
 };
-
-test "SPR012: StaticTile toScreenEntry text background encoding" {
-    const tile = StaticTile{
-        .tile_index = 105,
-        .palette_bank = 3,
-        .bpp = .bpp4,
-    };
-
-    // No flip: (3 << 12) | 105 = 0x3069
-    try std.testing.expectEqual(@as(u16, 0x3069), tile.toScreenEntry(false, false));
-
-    // H-flip: bit 10
-    try std.testing.expectEqual(@as(u16, 0x3469), tile.toScreenEntry(true, false));
-
-    // V-flip: bit 11
-    try std.testing.expectEqual(@as(u16, 0x3869), tile.toScreenEntry(false, true));
-
-    // Both flips: bit 10 and 11
-    try std.testing.expectEqual(@as(u16, 0x3C69), tile.toScreenEntry(true, true));
-}
 
 test "SPR006: StaticTile fillSolidColorToBuffers mock buffer" {
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;

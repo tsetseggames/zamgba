@@ -10,7 +10,8 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] Architecture Planning (Tiered approach)
    - [x] High-level abstractions for palettes and object attributes (OAM)
    - [x] Single color/square sprites
-   - [ ] Camera support for scrolling backgrounds
+   - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry) - *(v0.3.0)*
+   - [ ] Camera support for scrolling backgrounds - *(v0.3.0)*
 
 2. **Architecture Layers (New)**
    - **Tier 1 (HAL):** `zamgba.hal` - Hardware limits, memory, registers.
