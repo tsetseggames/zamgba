@@ -27,22 +27,22 @@ const BALL_SPEED_X = Fixed24_8.fromFloat(2.25); // 2.25 pixels/frame
 const BALL_SPEED_Y = Fixed24_8.fromFloat(1.5); // 1.5 pixels/frame
 
 const Game = struct {
-    player: engine.ColorFillSprite,
-    ai: engine.ColorFillSprite,
-    ball: engine.ColorFillSprite,
+    player: engine.StaticSprite,
+    ai: engine.StaticSprite,
+    ball: engine.StaticSprite,
     input: engine.input.InputState,
 
     pub fn init() Game {
         var self = Game{
-            .player = engine.ColorFillSprite.init(PLAYER_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
+            .player = engine.StaticSprite.init(PLAYER_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
                 .tile_index = 0,
                 .palette_bank = 0,
             }),
-            .ai = engine.ColorFillSprite.init(AI_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
+            .ai = engine.StaticSprite.init(AI_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
                 .tile_index = 4,
                 .palette_bank = 1,
             }),
-            .ball = engine.ColorFillSprite.init((SCREEN_W - BALL_SIZE) / 2, (SCREEN_H - BALL_SIZE) / 2, BALL_SIZE, BALL_SIZE, .{
+            .ball = engine.StaticSprite.init((SCREEN_W - BALL_SIZE) / 2, (SCREEN_H - BALL_SIZE) / 2, BALL_SIZE, BALL_SIZE, .{
                 .tile_index = 8,
                 .palette_bank = 2,
             }),

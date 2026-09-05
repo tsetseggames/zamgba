@@ -12,7 +12,7 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 
 // File-level globals. Since every Zig file is an implicit struct, these
 // act as our clean Level/Game state fields without polluting other namespaces.
-var spr: engine.ColorFillSprite = undefined;
+var spr: engine.StaticSprite = undefined;
 var dx: i32 = 1;
 
 /// The primary frame update callback for the active level/game.
@@ -31,8 +31,8 @@ pub fn tick() void {
 }
 
 export fn main() noreturn {
-    // 1. Initialize high-level sprite state (8x8 square sprite with ColorFillTile)
-    spr = engine.ColorFillSprite.init(116, 76, 8, 8, .{
+    // 1. Initialize high-level sprite state (8x8 square sprite with StaticTile)
+    spr = engine.StaticSprite.init(116, 76, 8, 8, .{
         .tile_index = 0,
         .palette_bank = 0,
     });

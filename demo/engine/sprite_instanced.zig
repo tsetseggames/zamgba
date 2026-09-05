@@ -14,7 +14,7 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 // This struct completely encapsulates our state, making it highly modular
 // and easy to serialize for SRAM/Flash save files.
 const Game = struct {
-    spr: engine.ColorFillSprite,
+    spr: engine.StaticSprite,
     dx: i32,
 
     /// Frame-by-frame tick method. Since we are passing an instance pointer,
@@ -36,7 +36,7 @@ const Game = struct {
 export fn main() noreturn {
     // 1. Instantiate our game state on the stack
     var game = Game{
-        .spr = engine.ColorFillSprite.init(116, 76, 8, 8, .{
+        .spr = engine.StaticSprite.init(116, 76, 8, 8, .{
             .tile_index = 0,
             .palette_bank = 0,
         }),

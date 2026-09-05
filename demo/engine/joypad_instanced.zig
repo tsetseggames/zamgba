@@ -11,7 +11,7 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 );
 
 const Game = struct {
-    spr: engine.ColorFillSprite,
+    spr: engine.StaticSprite,
     input: engine.input.InputState,
     current_color: engine.Color,
 
@@ -76,7 +76,7 @@ export fn main() noreturn {
     const start_y: i32 = @intCast((hal.Screen.HEIGHT_PIXELS - @as(i32, @intCast(spr_height))) / 2);
 
     var game = Game{
-        .spr = engine.ColorFillSprite.init(start_x, start_y, spr_width, spr_height, .{
+        .spr = engine.StaticSprite.init(start_x, start_y, spr_width, spr_height, .{
             .tile_index = 0,
             .palette_bank = 0,
         }),

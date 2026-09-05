@@ -3,9 +3,7 @@ const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
 pub const StaticSprite = @import("sprite.zig").StaticSprite;
-pub const ColorFillSprite = @import("sprite.zig").ColorFillSprite;
 pub const StaticTile = gfx2d.StaticTile;
-pub const ColorFillTile = gfx2d.ColorFillTile;
 pub const AnimationDirection = gfx2d.AnimationDirection;
 pub const AnimationTag = gfx2d.AnimationTag;
 pub const SpriteSheet = gfx2d.SpriteSheet;

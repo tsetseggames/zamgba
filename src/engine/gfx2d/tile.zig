@@ -59,26 +59,11 @@ pub const StaticTile = struct {
         const v_bit: u16 = if (v_flip) (1 << 11) else 0;
         return (self.tile_index & 0x03FF) | h_bit | v_bit | (@as(u16, self.palette_bank) << 12);
     }
-};
-
-/// Represents a tile capable of filling solid colors into OBJ VRAM / PALRAM.
-pub const ColorFillTile = struct {
-    tile_index: u16 = 0,
-    palette_bank: u4 = 0,
-    bpp: hal.specs.BppMode = .bpp4,
-
-    pub inline fn getTile(self: ColorFillTile) StaticTile {
-        return .{
-            .tile_index = self.tile_index,
-            .palette_bank = self.palette_bank,
-            .bpp = self.bpp,
-        };
-    }
 
     /// Internal helper: fills custom VRAM and PALRAM memory buffers with solid color tile graphics and palette entry.
     /// Used by `fillSolidColor` and test mocks.
     fn fillSolidColorToBuffers(
-        self: ColorFillTile,
+        self: StaticTile,
         width: u16,
         height: u16,
         vram_obj_base: []volatile u16,
@@ -107,7 +92,7 @@ pub const ColorFillTile = struct {
     }
 
     /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
-    pub fn fillSolidColor(self: ColorFillTile, width: u16, height: u16, color: Color) TileError!void {
+    pub fn fillSolidColor(self: StaticTile, width: u16, height: u16, color: Color) TileError!void {
         const obj_pal = hal.MemorySections.OBJ_PALRAM;
         const obj_vram = hal.MemorySections.OBJ_VRAM;
 
@@ -318,11 +303,11 @@ test "SPR012: StaticTile toScreenEntry text background encoding" {
     try std.testing.expectEqual(@as(u16, 0x3C69), tile.toScreenEntry(true, true));
 }
 
-test "SPR006: ColorFillTile fillSolidColorToBuffers mock buffer" {
+test "SPR006: StaticTile fillSolidColorToBuffers mock buffer" {
     var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
     var mock_palram: [256]u16 = [_]u16{0} ** 256;
 
-    const fill_tile = ColorFillTile{ .tile_index = 2, .palette_bank = 1 };
+    const fill_tile = StaticTile{ .tile_index = 2, .palette_bank = 1 };
 
     try fill_tile.fillSolidColorToBuffers(16, 8, &mock_vram, &mock_palram, Color.RED);
 

@@ -12,7 +12,6 @@ pub const dma_queue = @import("dma_queue.zig");
 
 pub const tile = @import("tile.zig");
 pub const StaticTile = tile.StaticTile;
-pub const ColorFillTile = tile.ColorFillTile;
 pub const AnimatedTiles = tile.AnimatedTiles;
 pub const SpriteSheet = tile.SpriteSheet;
 pub const AnimationDirection = tile.AnimationDirection;

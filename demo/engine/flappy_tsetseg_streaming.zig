@@ -22,7 +22,7 @@ fn isBorderSolid(tx: u16, ty: u16) bool {
 
 const Game = struct {
     player: engine.AnimatedSprite,
-    enemies: [2]engine.ColorFillSprite,
+    enemies: [2]engine.StaticSprite,
     map: CollisionMap,
     input: engine.input.InputState,
 
@@ -31,15 +31,12 @@ const Game = struct {
 
     const ENEMY_1_START_X: i32 = 90;
     const ENEMY_1_START_Y: i32 = 8;
-    // 1.25 pixels/frame vertical patrol velocity
-    const ENEMY_1_SPEED_Y = Fixed24_8.fromFloat(1.25);
+    const ENEMY_2_START_X: i32 = 180;
+    const ENEMY_2_START_Y: i32 = 100;
 
-    const ENEMY_2_START_X: i32 = 170;
-    const ENEMY_2_START_Y: i32 = 120;
-    const ENEMY_2_SPEED_Y = Fixed24_8.fromFloat(-1.25);
-
-    // 2.0 pixels/frame horizontal & vertical movement speed
     const PLAYER_SPEED = Fixed24_8.fromInt(2);
+    const ENEMY_1_SPEED_Y = Fixed24_8.fromInt(1);
+    const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(1);
 
     pub fn init() Game {
         // 1. Initialize Player using AnimatedSprite in streaming mode
@@ -54,12 +51,12 @@ const Game = struct {
 
         var self = Game{
             .player = player_anim,
-            .enemies = [_]engine.ColorFillSprite{
-                engine.ColorFillSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
+            .enemies = [_]engine.StaticSprite{
+                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
                 }),
-                engine.ColorFillSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
+                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
                 }),

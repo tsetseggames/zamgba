@@ -9,7 +9,6 @@ const Collision = physics.Collision;
 
 const gfx2d = @import("gfx2d/gfx2d.zig");
 const StaticTile = gfx2d.StaticTile;
-const ColorFillTile = gfx2d.ColorFillTile;
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -179,25 +178,9 @@ pub const StaticSprite = struct {
     pub fn toOamAttr(self: *const StaticSprite) hal.oam.ObjAttr {
         return self.sprite.toOamAttr(self.tile);
     }
-};
 
-/// Composite structure: Combines a Sprite with a ColorFillTile.
-pub const ColorFillSprite = struct {
-    sprite: Sprite,
-    tile: ColorFillTile = .{},
-
-    pub fn init(x: i32, y: i32, width: u16, height: u16, tile_attr: ColorFillTile) ColorFillSprite {
-        return .{
-            .sprite = Sprite.init(x, y, width, height),
-            .tile = tile_attr,
-        };
-    }
-
-    pub fn toOamAttr(self: *const ColorFillSprite) hal.oam.ObjAttr {
-        return self.sprite.toOamAttr(self.tile.getTile());
-    }
-
-    pub fn fillSolidColor(self: *const ColorFillSprite, color: anytype) !void {
+    /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
+    pub fn fillSolidColor(self: *const StaticSprite, color: gfx2d.Color) gfx2d.TileError!void {
         return self.tile.fillSolidColor(self.sprite.aabb.width, self.sprite.aabb.height, color);
     }
 };
@@ -346,15 +329,14 @@ test "SPR013: StaticSprite composition and toOamAttr output" {
     try std.testing.expectEqual(@as(u16, (4 << 12) | 12), attr.attr2);
 }
 
-test "SPR014: ColorFillSprite composition and getTile" {
-    const solid_spr = ColorFillSprite.init(5, 10, 8, 8, .{
+test "SPR014: StaticSprite composition and toOamAttr with custom palette bank" {
+    const solid_spr = StaticSprite.init(5, 10, 8, 8, .{
         .tile_index = 1,
         .palette_bank = 2,
     });
 
-    const tile_attr = solid_spr.tile.getTile();
-    try std.testing.expectEqual(@as(u16, 1), tile_attr.tile_index);
-    try std.testing.expectEqual(@as(u4, 2), tile_attr.palette_bank);
+    try std.testing.expectEqual(@as(u16, 1), solid_spr.tile.tile_index);
+    try std.testing.expectEqual(@as(u4, 2), solid_spr.tile.palette_bank);
 
     const attr = solid_spr.toOamAttr();
     try std.testing.expectEqual(@as(u16, 10), attr.attr0);

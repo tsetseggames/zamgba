@@ -22,7 +22,7 @@ fn isBorderSolid(tx: u16, ty: u16) bool {
 
 const Game = struct {
     player: engine.StaticSprite,
-    enemies: [2]engine.ColorFillSprite,
+    enemies: [2]engine.StaticSprite,
     map: CollisionMap,
     input: engine.input.InputState,
 
@@ -34,18 +34,13 @@ const Game = struct {
 
     const ENEMY_1_START_X: i32 = 90;
     const ENEMY_1_START_Y: i32 = 8;
-    // 1.25 pixels/frame vertical patrol velocity
-    const ENEMY_1_SPEED_Y = Fixed24_8.fromFloat(1.25);
+    const ENEMY_2_START_X: i32 = 180;
+    const ENEMY_2_START_Y: i32 = 100;
 
-    const ENEMY_2_START_X: i32 = 170;
-    const ENEMY_2_START_Y: i32 = 120;
-    const ENEMY_2_SPEED_Y = Fixed24_8.fromFloat(-1.25);
-
-    // 2.0 pixels/frame horizontal & vertical movement speed
     const PLAYER_SPEED = Fixed24_8.fromInt(2);
-    const FRAME_DURATION_TICKS: u16 = 6; // 6 frames at 60Hz ~= 100ms per animation frame
-
-    // In GBA 1D 8-bpp mapping, a 32x32 sprite (1024 bytes) advances by 32 tile index units per frame
+    const ENEMY_1_SPEED_Y = Fixed24_8.fromInt(1);
+    const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(1);
+    const FRAME_DURATION_TICKS: u16 = 6;
     const TILES_PER_FRAME_8BPP: u16 = 32;
 
     pub fn init() Game {
@@ -56,12 +51,12 @@ const Game = struct {
                 .palette_bank = 0,
                 .bpp = .bpp8,
             }),
-            .enemies = [_]engine.ColorFillSprite{
-                engine.ColorFillSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
+            .enemies = [_]engine.StaticSprite{
+                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
                 }),
-                engine.ColorFillSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
+                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
                 }),

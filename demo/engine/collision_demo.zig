@@ -19,8 +19,8 @@ fn isBorderSolid(tx: u16, ty: u16) bool {
 }
 
 const Game = struct {
-    player: engine.ColorFillSprite,
-    enemies: [2]engine.ColorFillSprite,
+    player: engine.StaticSprite,
+    enemies: [2]engine.StaticSprite,
     map: CollisionMap,
     input: engine.input.InputState,
 
@@ -29,26 +29,25 @@ const Game = struct {
 
     const ENEMY_1_START_X: i32 = 80; // 1/3 of screen width (240 / 3)
     const ENEMY_1_START_Y: i32 = 8;
-    const ENEMY_1_SPEED_Y = Fixed24_8.fromFloat(1.5); // 1.5 pixels/frame
-
     const ENEMY_2_START_X: i32 = 160; // 2/3 of screen width (240 * 2 / 3)
-    const ENEMY_2_START_Y: i32 = 144;
-    const ENEMY_2_SPEED_Y = Fixed24_8.fromFloat(-1.5); // -1.5 pixels/frame
+    const ENEMY_2_START_Y: i32 = 8;
 
-    const PLAYER_SPEED = Fixed24_8.fromInt(2); // 2.0 pixels/frame
+    const PLAYER_SPEED = Fixed24_8.fromInt(1);
+    const ENEMY_1_SPEED_Y = Fixed24_8.fromInt(1);
+    const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(2);
 
     pub fn init() Game {
         var self = Game{
-            .player = engine.ColorFillSprite.init(PLAYER_START_X, PLAYER_START_Y, 8, 8, .{
+            .player = engine.StaticSprite.init(PLAYER_START_X, PLAYER_START_Y, 8, 8, .{
                 .tile_index = 0,
                 .palette_bank = 0,
             }),
-            .enemies = [_]engine.ColorFillSprite{
-                engine.ColorFillSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 8, 8, .{
+            .enemies = [_]engine.StaticSprite{
+                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 8, 8, .{
                     .tile_index = 1,
                     .palette_bank = 1,
                 }),
-                engine.ColorFillSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 8, 8, .{
+                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 8, 8, .{
                     .tile_index = 1,
                     .palette_bank = 1,
                 }),
