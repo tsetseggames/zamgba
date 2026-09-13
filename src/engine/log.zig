@@ -5,22 +5,25 @@ const hal = @import("zamgba-hal");
 pub const LogLevel = hal.mgba.log.LogLevel;
 pub const BUFFER_SIZE: usize = 256;
 
-/// Mock function hook for host-side unit testing verification.
-pub var mock_write_override: ?*const fn (level: LogLevel, message: []const u8) void = null;
+/// Mock function hook available strictly during host-side unit testing.
+pub var mock_write_override: if (builtin.is_test) ?*const fn (level: LogLevel, message: []const u8) void else void =
+    if (builtin.is_test) null else {};
 
 /// Low-level static message writer.
 /// On GBA hardware target, directly invokes mGBA hardware debug registers with zero runtime overhead.
-/// On host machine, redirects to mock hook or host debug console.
+/// On host machine, redirects to mock hook (during test) or host debug console.
 pub fn write(level: LogLevel, message: []const u8) void {
-    if (mock_write_override) |mock_fn| {
-        mock_fn(level, message);
+    if (comptime builtin.is_test) {
+        if (mock_write_override) |mock_fn| {
+            mock_fn(level, message);
+        }
         return;
     }
 
     if (comptime hal.specs.is_gba_target) {
         hal.mgba.log.write(level, message);
     } else {
-        if (comptime builtin.mode == .Debug and !builtin.is_test) {
+        if (comptime builtin.mode == .Debug) {
             std.debug.print("[{s}] {s}\n", .{ @tagName(level), message });
         }
     }
@@ -74,48 +77,50 @@ pub inline fn print(comptime fmt: []const u8, args: anytype) void {
 // Unit Tests (Strict TDD format)
 // ==================================================================
 
-var test_last_msg: [BUFFER_SIZE]u8 = [_]u8{0} ** BUFFER_SIZE;
-var test_last_len: usize = 0;
-var test_last_level: ?LogLevel = null;
+const TestContext = struct {
+    var last_msg: [BUFFER_SIZE]u8 = [_]u8{0} ** BUFFER_SIZE;
+    var last_len: usize = 0;
+    var last_level: ?LogLevel = null;
 
-fn mockWriteCollector(level: LogLevel, message: []const u8) void {
-    const len = @min(message.len, BUFFER_SIZE);
-    @memcpy(test_last_msg[0..len], message[0..len]);
-    test_last_len = len;
-    test_last_level = level;
-}
+    fn mockWriteCollector(level: LogLevel, message: []const u8) void {
+        const len = @min(message.len, BUFFER_SIZE);
+        @memcpy(last_msg[0..len], message[0..len]);
+        last_len = len;
+        last_level = level;
+    }
 
-fn resetTestState() void {
-    @memset(&test_last_msg, 0);
-    test_last_len = 0;
-    test_last_level = null;
-    mock_write_override = null;
-}
+    fn reset() void {
+        @memset(&last_msg, 0);
+        last_len = 0;
+        last_level = null;
+        mock_write_override = null;
+    }
+};
 
 test "LOG001: Static logging dispatch across all levels" {
-    resetTestState();
-    mock_write_override = mockWriteCollector;
-    defer resetTestState();
+    TestContext.reset();
+    mock_write_override = TestContext.mockWriteCollector;
+    defer TestContext.reset();
 
     debug("Debug trace: {s}", .{"vram"});
-    try std.testing.expectEqualStrings("Debug trace: vram", test_last_msg[0..test_last_len]);
-    try std.testing.expectEqual(LogLevel.debug, test_last_level.?);
+    try std.testing.expectEqualStrings("Debug trace: vram", TestContext.last_msg[0..TestContext.last_len]);
+    try std.testing.expectEqual(LogLevel.debug, TestContext.last_level.?);
 
     info("Info msg: count={d}", .{42});
-    try std.testing.expectEqualStrings("Info msg: count=42", test_last_msg[0..test_last_len]);
-    try std.testing.expectEqual(LogLevel.info, test_last_level.?);
+    try std.testing.expectEqualStrings("Info msg: count=42", TestContext.last_msg[0..TestContext.last_len]);
+    try std.testing.expectEqual(LogLevel.info, TestContext.last_level.?);
 
     warn("Warning alert: {d} fps", .{30});
-    try std.testing.expectEqualStrings("Warning alert: 30 fps", test_last_msg[0..test_last_len]);
-    try std.testing.expectEqual(LogLevel.warn, test_last_level.?);
+    try std.testing.expectEqualStrings("Warning alert: 30 fps", TestContext.last_msg[0..TestContext.last_len]);
+    try std.testing.expectEqual(LogLevel.warn, TestContext.last_level.?);
 
     err("Critical error: 0x{X}", .{0xDEAD});
-    try std.testing.expectEqualStrings("Critical error: 0xDEAD", test_last_msg[0..test_last_len]);
-    try std.testing.expectEqual(LogLevel.err, test_last_level.?);
+    try std.testing.expectEqualStrings("Critical error: 0xDEAD", TestContext.last_msg[0..TestContext.last_len]);
+    try std.testing.expectEqual(LogLevel.err, TestContext.last_level.?);
 
     fatal("System halting: {s}", .{"OOM"});
-    try std.testing.expectEqualStrings("System halting: OOM", test_last_msg[0..test_last_len]);
-    try std.testing.expectEqual(LogLevel.fatal, test_last_level.?);
+    try std.testing.expectEqualStrings("System halting: OOM", TestContext.last_msg[0..TestContext.last_len]);
+    try std.testing.expectEqual(LogLevel.fatal, TestContext.last_level.?);
 }
 
 test "LOG002: formatToBuf bounds checking and null termination" {
@@ -131,7 +136,7 @@ test "LOG002: formatToBuf bounds checking and null termination" {
 }
 
 test "LOG003: Default host logging without mock hook is safe" {
-    resetTestState();
+    TestContext.reset();
     // In test environment without mock_write_override, should safely execute as a silent no-op
     info("Safe host logging test", .{});
     warn("Safe warning test", .{});

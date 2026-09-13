@@ -26,7 +26,7 @@ pub const Regs = struct {
     pub const enable = @as(*volatile u16, @ptrFromInt(REG_DEBUG_ENABLE_ADDR));
 };
 
-pub const MockMgbaDebug = struct {
+const MockMgbaDebug = struct {
     enable_reg: u16 = 0,
     flags_reg: u16 = 0,
     string_buffer: [BUFFER_SIZE]u8 = [_]u8{0} ** BUFFER_SIZE,
@@ -34,7 +34,7 @@ pub const MockMgbaDebug = struct {
     last_level: ?LogLevel = null,
     send_count: usize = 0,
 
-    pub fn reset(self: *MockMgbaDebug) void {
+    fn reset(self: *MockMgbaDebug) void {
         self.enable_reg = 0;
         self.flags_reg = 0;
         @memset(&self.string_buffer, 0);
@@ -43,12 +43,12 @@ pub const MockMgbaDebug = struct {
         self.send_count = 0;
     }
 
-    pub fn getSentString(self: *const MockMgbaDebug) []const u8 {
+    fn getSentString(self: *const MockMgbaDebug) []const u8 {
         return self.string_buffer[0..self.string_len];
     }
 };
 
-pub var mock_debug_override: ?*MockMgbaDebug = null;
+var mock_debug_override: ?*MockMgbaDebug = null;
 
 /// Duck-typed Logger implementation for mGBA hardware debug port.
 /// Zero-Sized Type (ZST) with 0 bytes of RAM footprint.

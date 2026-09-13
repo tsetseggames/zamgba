@@ -19,6 +19,7 @@ pub fn initHardware() void {
         hal.display.enableSpriteLayer();
         hal.display.setSpriteMapping(.linear_1d);
         hal.display.writeRegister();
+        _ = hal.mgba.log.init();
     }
 
     for (&shadow_oam) |*obj| {
@@ -32,11 +33,6 @@ pub fn initHardware() void {
     sprite_count = 0;
     vram_allocator.reset();
     dma_queue.global_queue.reset();
-
-    if (hal.specs.is_gba_target) {
-        _ = hal.mgba.log.init();
-    }
-
     is_initialized = true;
 }
 
