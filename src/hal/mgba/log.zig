@@ -9,28 +9,36 @@ pub const LogLevel = enum(u3) {
     debug = 4,
 };
 
+pub const BUFFER_SIZE: usize = 128;
+
+/// Module-level static buffer for string formatting in log and panic handlers.
+/// Sharing a single static buffer in HAL eliminates stack allocations during panic
+/// and avoids IWRAM stack exhaustion.
+pub var format_buf: [BUFFER_SIZE]u8 = undefined;
+
 const REG_DEBUG_STRING = @as([*]volatile u8, @ptrFromInt(0x04FFF600));
 const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));
 
 const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
-const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
+const MGBA_RESPONSE_MAGIC: u16 = 0x1DEA;
 const MGBA_SEND_FLAG: u16 = 0x0100;
 
-/// Attempts to handshake with mGBA debug registers.
-pub fn init() bool {
-    if (comptime !specs.is_gba_target) return false;
+/// Attempts to handshake with mGBA debug registers by writing the enable magic word (0xC0DE "CODE").
+pub fn init() void {
+    if (comptime !specs.is_gba_target) return;
     REG_DEBUG_ENABLE.* = MGBA_ENABLE_MAGIC;
-    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
 }
 
-/// Checks if mGBA debug interface is supported.
-pub fn isSupported() bool {
+/// Checks if the ROM is actively running inside the mGBA emulator by verifying
+/// the handshake response magic word (0x1DEA "IDEA").
+pub fn isRunOnMgba() bool {
     if (comptime !specs.is_gba_target) return false;
     return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
 }
 
 /// Writes raw message slice directly to mGBA hardware registers.
+/// On GBA hardware and other emulators, writing to unmapped MMIO space is a safe hardware no-op.
 pub fn write(level: LogLevel, message: []const u8) void {
     if (comptime !specs.is_gba_target) return;
 
@@ -57,7 +65,7 @@ test "MGB001: LogLevel enum values and bit encoding" {
 
 test "MGB002: Host safety checks for unmapped GBA hardware operations" {
     // On host test targets, all hardware register operations must safely compile-time no-op
-    try std.testing.expect(!init());
-    try std.testing.expect(!isSupported());
+    init();
+    try std.testing.expect(!isRunOnMgba());
     write(.info, "Safe host no-op");
 }

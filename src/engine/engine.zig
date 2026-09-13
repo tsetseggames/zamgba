@@ -15,11 +15,11 @@ pub var is_initialized: bool = false;
 /// Initializes the global engine state, resets subsystem allocators and queues, and configures hardware display registers.
 pub fn initHardware() void {
     if (hal.specs.is_gba_target) {
+        _ = hal.mgba.log.init();
         hal.display.setMode0();
         hal.display.enableSpriteLayer();
         hal.display.setSpriteMapping(.linear_1d);
         hal.display.writeRegister();
-        _ = hal.mgba.log.init();
     }
 
     for (&shadow_oam) |*obj| {

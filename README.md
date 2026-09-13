@@ -76,6 +76,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 ### 1. Hardware Abstraction Layer (HAL) Demos
 *   **`mode3_lines`** (`demo/hal/mode3_lines.zig`): Demonstrates basic Mode 3 bitmap graphics. Renders three intersecting colored lines on a bitmap background using low-level, context-agnostic line-drawing algorithms.
 *   **`sprite_hal`** (`demo/hal/sprite_hal.zig`): Demonstrates direct, register-level sprite setup on the GBA. Manually populates palette memory (PALRAM) and sprite tile memory (VRAM), configures packed `ObjAttr` coordinates, and bounces a single white 8x8 block smoothly left-to-right inside a VBlank-synchronized loop.
+*   **`panic_demo`** (`demo/hal/panic_demo.zig`): Demonstrates bare-metal panic handling. Triggers `@panic`, disables interrupts, outputs formatted fatal diagnostic logs to mGBA's debug port, and sets a red backdrop visual indicator.
 
 ### 2. High-Level Engine Demos
 *   **`sprite_engine`** (`demo/engine/sprite_engine.zig`): Showcases our high-level **Static Namespace / File** engine loop. State is declared cleanly as file-scope `var` variables, and the loop is started via `engine.run(@This())`. The engine automatically manages VBlank timing, OAM hardware uploads, and dynamic slot allocation.
@@ -124,7 +125,7 @@ Enjoy!
   - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
-  - [ ] Panic handler
+  - [x] Panic handler
 * **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
   - [ ] Chiptune-to-code conversion tool
   - [ ] Support chiptune playing music

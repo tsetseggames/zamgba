@@ -40,35 +40,44 @@ GBA has no operating system console, but we can divide debug requirements into t
 ### A. How It Works (The MMIO Emulator Loophole)
 Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges.
 - **mGBA Debug Protocol**:
-  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the emulator responds with `0x1EA0`.
+  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` ("CODE") enables debugging; the emulator responds with `0x1DEA` ("IDEA").
   - `REG_DEBUG_FLAGS` (`0x04FFF700`): Writing `0x0100 | LogLevel` flushes the buffered message to the console.
   - `REG_DEBUG_STRING` (`0x04FFF600`): Null-terminated ASCII character buffer (up to 255 characters).
 - Writing ASCII characters to these registers routes the text directly to the PC host terminal.
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
+#### Handshake Verification (`0xC0DE` -> `0x1DEA` "CODE" / "IDEA")
+The mGBA debug interface uses the Hexspeak magic pair `0xC0DE` / `0x1DEA`:
+- Handshake activation: `REG_DEBUG_ENABLE.* = 0xC0DE`
+- Response verification: `REG_DEBUG_ENABLE.* == 0x1DEA`
+- In Zamgba:
+  - `hal.mgba.log.init()` performs the handshake write.
+  - `hal.mgba.log.isRunOnMgba() bool` checks if the response magic matches `0x1DEA`.
+  - `hal.mgba.log.write()` performs direct MMIO writes without per-message handshake polling, ensuring maximum logging throughput.
+
 ### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
-To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 80-byte Buffer** and enforces **Compile-time Elimination**:
+To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 128-byte Buffer** in the HAL layer (`hal.mgba.log.format_buf`), shared between `engine.log` and the bare-metal `panic` handler, while enforcing **Compile-time Elimination**:
 
 ```zig
-const BUFFER_SIZE: usize = 80;
+// Defined in src/hal/mgba/log.zig
+pub const BUFFER_SIZE: usize = 128;
+pub var format_buf: [BUFFER_SIZE]u8 = undefined;
 
-var format_buf: if (builtin.mode == .Debug) [BUFFER_SIZE]u8 else void =
-    if (builtin.mode == .Debug) undefined else {};
-
+// In src/engine/log.zig:
 pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     if (comptime builtin.mode != .Debug) return; // Completely stripped by compiler in non-Debug builds
-    const formatted = formatToBuf(&format_buf, fmt, args);
+    const formatted = formatToBuf(&hal.mgba.log.format_buf, fmt, args);
     write(level, formatted);
 }
 ```
 
 > [!IMPORTANT]
-> **80-Character Buffer Restriction & IWRAM Stack Protection**:
-> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic risks silent stack overflows. Zamgba uses a single, module-level static buffer conditionally compiled strictly in Debug mode (0 bytes in Release).
-> - **80-Character Max Length**: Single log messages are bounded to 80 characters (standard terminal width). Longer strings will be safely truncated at the 79th character with trailing null termination.
+> **128-Character Buffer Restriction & IWRAM Stack Protection**:
+> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic or during a critical stack-overflow panic risks silent faults. Zamgba uses a single, module-level static buffer in the HAL layer (`hal.mgba.log.format_buf`), shared safely across single-threaded execution and panic recovery.
+> - **128-Character Max Length**: Single log/panic messages are bounded to 128 characters. Longer strings will be safely truncated at the 127th character with trailing null termination.
 
-In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting, log statements, and static buffers are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM/RAM** and **0 cycles of CPU overhead** in production.
+In `ReleaseFast` or `ReleaseSmall` builds, all debug logging calls and format parsing in `engine.log` are completely eliminated at compile time from the output binary (0 CPU cycles, 0 log text in ROM), while the shared static buffer remains accessible to the low-level `panic` handler if an assertion failure occurs.
 
 In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
@@ -94,11 +103,11 @@ When a log message traverses from `engine.log` to the hardware MMIO registers, i
 
 1. **Stage 1: Serialization (`formatToBuf`)**:
    - Copies string literals and serialized values into `format_buf`.
-   - Overhead: ~200–400 cycles for an 80-character string (including integer software division).
+   - Overhead: ~200–400 cycles for a standard string (including integer software division).
 2. **Stage 2: MMIO Hardware Transfer (`hal.mgba.log.write`)**:
    - Copies bytes sequentially from `format_buf` to `0x04FFF600` via loop (`REG_DEBUG_STRING[i] = message[i]`).
    - Overhead: Memory bus wait states on MMIO space take ~4–7 cycles per byte transfer iteration.
-   - For an 80-byte buffer: $80 \times 7 \approx 560$ cycles.
+   - For an 80-byte message: $80 \times 7 \approx 560$ cycles.
 3. **Total Frame Budget Impact**:
    - Total runtime overhead per 80-character log invocation: **~800–1000 CPU cycles**.
    - With the GBA 16.78 MHz CPU delivering **~280,896 cycles per frame** (at 60 FPS), a full log message consumes **~0.3% of a frame budget**.
@@ -115,6 +124,35 @@ mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
 > [!NOTE]
 > - **Decimal Integer Parameter**: mGBA's CLI argument parser strictly requires **decimal** integer values for `-l` / `--log-level` (e.g. `31`). Hexadecimal formats (such as `0x1F`) are not parsed properly and will silently result in zero log output.
 > - **Emulator Internal Diagnostics**: When log level mask `31` is enabled, mGBA will also output its own internal hardware trace logs (e.g., `GBA DMA: Starting DMA 3 ...`) alongside Zamgba application logs.
+
+### F. Bare-Metal Panic Handler Lifecycle (`src/hal/panic.zig`)
+
+When a runtime assertion fails, an index goes out of bounds in Debug mode, or `catch unreachable` is tripped, the low-level `hal.panic` handler takes control. On bare-metal targets without an operating system, the handler executes a 5-step deterministic lifecycle:
+
+```
+[Panic Triggered]
+       │
+       ▼
+ 1. Disable Interrupts (REG_IME = 0)
+       │
+       ▼
+ 2. Format Message & PC into Shared Static Buffer (`format_buf`)
+       │
+       ▼
+ 3. Set Backdrop Palette to RED (`PALRAM[0] = 0x001F`)
+       │
+       ▼
+ 4. Flush FATAL Log to mGBA Port (`mgba.init()` & `mgba.write(.fatal, ...)`)
+       │
+       ▼
+ 5. Infinite Loop (`while (true) {}`)
+```
+
+1. **Interrupt Suppression (`REG_IME = 0`)**: Immediately disables master interrupt enable register (`REG_IME`) to prevent interrupts/ISRs from preempting or corrupting the panic state.
+2. **Zero-Stack String Formatting**: Uses `std.fmt.bufPrint` against the preallocated static buffer `hal.mgba.log.format_buf` (128 bytes in IWRAM/EWRAM), consuming 0 bytes of stack frame to avoid stack overflow hazards. Both the panic message and Program Counter (`ret_addr`) are formatted.
+3. **Visual Hardware Indicator (Red Screen)**: Sets backdrop palette `PALRAM[0]` to RED (`0x001F`). Even if running on physical GBA hardware with no debug cable or if emulator logging flags are omitted, developers instantly recognize a panic occurred rather than a silent freeze or black screen.
+4. **Emulator Fatal Log Dispatch**: Calls `mgba.init()` to ensure MMIO registers are enabled, then flushes the formatted panic message with `LogLevel.fatal`. In mGBA, receiving a FATAL log halts the emulator execution and displays the error clearly on the host terminal.
+5. **Deterministic Lockup**: Enters `while (true) {}` preventing undefined CPU execution on hardware.
 
 ---
 
@@ -191,3 +229,18 @@ When a developer triggers a dump (e.g. by pressing `Select`), the mGBA Terminal 
   Order 5  (32 tiles)  : [32]  (Allocated to Player)
 ==============================================
 ```
+
+---
+
+## 7. Testing Best Practices & Target Environment Assumptions
+
+### A. Debug Mode Target Assumption (mGBA)
+- **Debug Builds**: When Zamgba is compiled in `Debug` optimization mode, the logging subsystem assumes execution under **mGBA** (with CLI `-l` / `--log-level` flags enabled).
+- **Execution on Non-mGBA Targets in Debug Mode**:
+  - If a `Debug` mode ROM is executed on physical GBA hardware (via flashcarts) or non-mGBA emulators (e.g. VBA, No$GBA), `hal.mgba.log.write()` will write to unmapped MMIO space (`0x04FFF600`–`0x04FFF780`).
+  - While physical GBA bus controllers typically ignore unmapped MMIO writes as no-ops, certain flashcarts or legacy emulators may exhibit undefined behavior or unexpected bus locks.
+  - If dynamic environment detection is needed before logging, developers can query `hal.mgba.log.isRunOnMgba()`.
+
+### B. Zero-Cost Guarantee in Release Modes
+- In release modes (`ReleaseFast`, `ReleaseSmall`), all `engine.log.*` statements and formatting routines are **completely eliminated at compile time** (`comptime builtin.mode != .Debug`).
+- Release builds produce 0 byte MMIO writes, 0 CPU cycles spent on logging, and 0 log strings in ROM. They run identically and safely across all physical GBA consoles, flashcarts, and hardware emulators without any MMIO side effects.

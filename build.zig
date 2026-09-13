@@ -111,6 +111,22 @@ pub fn build(b: *std.Build) void {
 
     eighth.root_module.addImport(LibName, m);
 
+    var panic_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "panic_demo",
+        .root_source_file = b.path("demo/hal/panic_demo.zig"),
+    });
+
+    panic_rom.root_module.addImport(LibName, m);
+
+    var mgba_init_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "mgba_init",
+        .root_source_file = b.path("demo/hal/mgba_init.zig"),
+    });
+
+    mgba_init_rom.root_module.addImport(LibName, m);
+
     // ====================================================================
     // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
     // ====================================================================

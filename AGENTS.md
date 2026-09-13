@@ -66,6 +66,7 @@ To successfully use Zamgba in an external/client project:
 
 ## Agent Behavior & Communication Rules
 
+- **Language Requirement**: All committed code, commit messages, code comments, design docs (`docs/`), READMEs, and test descriptions must strictly be written in English.
 - **Documentation**: All code comments, READMEs, and guides must be written in English.
 - **Design Documents**: Architectural guidelines are listed in the `docs/` folder. Always consult `compile.md` and `features.md` before making modifications to compiling/linking rules or features planning.
 - **Communication Style**: Direct and to the point. No conversational filler, pleasantries, or emojis.
