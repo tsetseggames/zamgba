@@ -32,6 +32,11 @@ pub fn initHardware() void {
     sprite_count = 0;
     vram_allocator.reset();
     dma_queue.global_queue.reset();
+
+    if (hal.specs.is_gba_target) {
+        _ = hal.mgba.log.init();
+    }
+
     is_initialized = true;
 }
 
@@ -125,6 +130,7 @@ pub fn run(context: anytype) noreturn {
 pub const gfx2d = @import("gfx2d/gfx2d.zig");
 pub const input = @import("input.zig");
 pub const physics = @import("physics/physics.zig");
+pub const log = @import("log.zig");
 pub const vram_allocator = gfx2d.vram_allocator;
 pub const dma_queue = gfx2d.dma_queue;
 pub const AnimatedTiles = gfx2d.AnimatedTiles;
@@ -135,6 +141,7 @@ test {
     _ = physics;
     _ = @import("sprite.zig");
     _ = gfx2d;
+    _ = log;
 }
 
 test "ENG001: Engine singleton initHardware and drawSprite staging" {
