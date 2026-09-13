@@ -72,7 +72,20 @@ In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting, log statements,
 
 In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
-### C. Running mGBA with Log Output Enabled
+### C. Performance Profile & Formatting Overhead (`std.fmt.bufPrint`)
+Using `std.fmt.bufPrint` on bare-metal GBA introduces specific trade-offs compared to traditional C-style `vsnprintf`:
+
+1. **Compile-Time Format Parsing (Zero Runtime String Parsing)**:
+   - Traditional C libraries (`libgba` / devkitPro) use `vsnprintf`, which parses format strings (`%d`, `%s`, etc.) character-by-character at runtime.
+   - Zig's `std.fmt` parses format strings (`{d}`, `{s}`, `{X}`) entirely at **comptime**. Format strings are converted directly into static type-specialized serialization calls, eliminating runtime parser overhead.
+2. **Zero Heap Allocation**:
+   - `std.fmt.bufPrint` writes directly to the bounded static buffer `format_buf` without any dynamic heap allocation.
+3. **ARM7TDMI Software Division Consideration**:
+   - The GBA's ARM7TDMI processor lacks a hardware division unit. Formatting decimal integers (`{d}`) requires software division subroutines (`__aeabi_uidivmod`), consuming several dozen CPU cycles per digit.
+   - Formatting hexadecimal numbers (`{X}`) or strings (`{s}`) relies on simple bitshifts, masks, and memory copies, incurring minimal CPU overhead.
+   - **Best Practice**: In performance-sensitive game loops, avoid continuous high-frequency logging of decimal integers per frame; use discrete or event-driven logging instead.
+
+### D. Running mGBA with Log Output Enabled
 By default, mGBA filters out non-critical console logs. To capture engine logs on stdout, run mGBA with the `-l` (`--log-level`) option:
 
 ```bash
@@ -86,7 +99,7 @@ mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
 
 ---
 
-## 3. Channel 2: On-Screen Text Display & Pixel Font Design
+## 4. Channel 2: On-Screen Text Display & Pixel Font Design
 
 If a game needs to display debugging information directly on target GBA hardware, a pixel font is required to draw alphanumeric characters on the screen.
 
