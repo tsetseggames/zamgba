@@ -123,6 +123,8 @@ Enjoy!
   - [ ] Camera
   - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry)
   - [x] True color background, via mode 3, 4, 5
+  - [x] mGBA compatible logging
+  - [ ] Panic handler
 * **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
   - [ ] Chiptune-to-code conversion tool
   - [ ] Support chiptune playing music
