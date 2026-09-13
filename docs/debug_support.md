@@ -40,19 +40,21 @@ GBA has no operating system console, but we can divide debug requirements into t
 ### A. How It Works (The MMIO Emulator Loophole)
 Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges.
 - **mGBA Debug Protocol**:
-  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the specification notes the emulator responds with `0x1EA0`.
+  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` ("CODE") enables debugging; the emulator responds with `0x1DEA` ("IDEA").
   - `REG_DEBUG_FLAGS` (`0x04FFF700`): Writing `0x0100 | LogLevel` flushes the buffered message to the console.
   - `REG_DEBUG_STRING` (`0x04FFF600`): Null-terminated ASCII character buffer (up to 255 characters).
 - Writing ASCII characters to these registers routes the text directly to the PC host terminal.
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
-#### Practical Handshake Observation (`REG_DEBUG_ENABLE` Readback on mGBA 0.10.5)
-In the theoretical specification, reading `0x04FFF780` after writing `0xC0DE` is expected to return `0x1EA0` (`MGBA_RESPONSE_MAGIC`).
-However, in empirical testing under **Manjaro Linux x86_64 with mGBA 0.10.5**:
-- Reading `REG_DEBUG_ENABLE.*` after `REG_DEBUG_ENABLE.* = 0xC0DE` returns `0x0000` (open bus floating value) rather than `0x1EA0`.
-- Despite reading `0x0000`, writing strings and flags to `0x04FFF600` and `0x04FFF700` succeeds and logs output correctly to the terminal console when mGBA is invoked with `-l` (e.g. `mgba -l 31`).
-- Consequently, `hal.mgba.log.init()` returns `void`, and `hal.mgba.log.write()` does not gate output on a response check. Writes to unmapped MMIO space on physical GBA hardware or non-mGBA emulators are safe hardware no-ops.
+#### Handshake Verification (`0xC0DE` -> `0x1DEA` "CODE" / "IDEA")
+The mGBA debug interface uses the Hexspeak magic pair `0xC0DE` / `0x1DEA`:
+- Handshake activation: `REG_DEBUG_ENABLE.* = 0xC0DE`
+- Response verification: `REG_DEBUG_ENABLE.* == 0x1DEA`
+- In Zamgba:
+  - `hal.mgba.log.init()` performs the handshake write.
+  - `hal.mgba.log.isRunOnMgba() bool` checks if the response magic matches `0x1DEA`.
+  - `hal.mgba.log.write()` performs direct MMIO writes without per-message handshake polling, ensuring maximum logging throughput.
 
 ### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
 To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 128-byte Buffer** in the HAL layer (`hal.mgba.log.format_buf`), shared between `engine.log` and the bare-metal `panic` handler, while enforcing **Compile-time Elimination**:
@@ -227,3 +229,18 @@ When a developer triggers a dump (e.g. by pressing `Select`), the mGBA Terminal 
   Order 5  (32 tiles)  : [32]  (Allocated to Player)
 ==============================================
 ```
+
+---
+
+## 7. Testing Best Practices & Target Environment Assumptions (测试最佳实践)
+
+### A. Debug Mode Target Assumption (mGBA)
+- **Debug Builds**: When Zamgba is compiled in `Debug` optimization mode, the logging subsystem assumes execution under **mGBA** (with CLI `-l` / `--log-level` flags enabled).
+- **Execution on Non-mGBA Targets in Debug Mode**:
+  - If a `Debug` mode ROM is executed on physical GBA hardware (via flashcarts) or non-mGBA emulators (e.g. VBA, No$GBA), `hal.mgba.log.write()` will write to unmapped MMIO space (`0x04FFF600`–`0x04FFF780`).
+  - While physical GBA bus controllers typically ignore unmapped MMIO writes as no-ops, certain flashcarts or legacy emulators may exhibit undefined behavior or unexpected bus locks.
+  - If dynamic environment detection is needed before logging, developers can query `hal.mgba.log.isRunOnMgba()`.
+
+### B. Zero-Cost Guarantee in Release Modes
+- In release modes (`ReleaseFast`, `ReleaseSmall`), all `engine.log.*` statements and formatting routines are **completely eliminated at compile time** (`comptime builtin.mode != .Debug`).
+- Release builds produce 0 byte MMIO writes, 0 CPU cycles spent on logging, and 0 log strings in ROM. They run identically and safely across all physical GBA consoles, flashcarts, and hardware emulators without any MMIO side effects.

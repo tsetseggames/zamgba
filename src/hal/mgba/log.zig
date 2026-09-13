@@ -21,13 +21,20 @@ const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));
 
 const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
-const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
+const MGBA_RESPONSE_MAGIC: u16 = 0x1DEA;
 const MGBA_SEND_FLAG: u16 = 0x0100;
 
-/// Attempts to handshake with mGBA debug registers by writing the enable magic word (0xC0DE).
+/// Attempts to handshake with mGBA debug registers by writing the enable magic word (0xC0DE "CODE").
 pub fn init() void {
     if (comptime !specs.is_gba_target) return;
     REG_DEBUG_ENABLE.* = MGBA_ENABLE_MAGIC;
+}
+
+/// Checks if the ROM is actively running inside the mGBA emulator by verifying
+/// the handshake response magic word (0x1DEA "IDEA").
+pub fn isRunOnMgba() bool {
+    if (comptime !specs.is_gba_target) return false;
+    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
 }
 
 /// Writes raw message slice directly to mGBA hardware registers.
@@ -59,5 +66,6 @@ test "MGB001: LogLevel enum values and bit encoding" {
 test "MGB002: Host safety checks for unmapped GBA hardware operations" {
     // On host test targets, all hardware register operations must safely compile-time no-op
     init();
+    try std.testing.expect(!isRunOnMgba());
     write(.info, "Safe host no-op");
 }
