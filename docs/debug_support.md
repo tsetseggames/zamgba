@@ -40,12 +40,19 @@ GBA has no operating system console, but we can divide debug requirements into t
 ### A. How It Works (The MMIO Emulator Loophole)
 Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges.
 - **mGBA Debug Protocol**:
-  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the emulator responds with `0x1EA0`.
+  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the specification notes the emulator responds with `0x1EA0`.
   - `REG_DEBUG_FLAGS` (`0x04FFF700`): Writing `0x0100 | LogLevel` flushes the buffered message to the console.
   - `REG_DEBUG_STRING` (`0x04FFF600`): Null-terminated ASCII character buffer (up to 255 characters).
 - Writing ASCII characters to these registers routes the text directly to the PC host terminal.
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
+
+#### Practical Handshake Observation (`REG_DEBUG_ENABLE` Readback on mGBA 0.10.5)
+In the theoretical specification, reading `0x04FFF780` after writing `0xC0DE` is expected to return `0x1EA0` (`MGBA_RESPONSE_MAGIC`).
+However, in empirical testing under **Manjaro Linux x86_64 with mGBA 0.10.5**:
+- Reading `REG_DEBUG_ENABLE.*` after `REG_DEBUG_ENABLE.* = 0xC0DE` returns `0x0000` (open bus floating value) rather than `0x1EA0`.
+- Despite reading `0x0000`, writing strings and flags to `0x04FFF600` and `0x04FFF700` succeeds and logs output correctly to the terminal console when mGBA is invoked with `-l` (e.g. `mgba -l 31`).
+- Consequently, `hal.mgba.log.init()` returns `void`, and `hal.mgba.log.write()` does not gate output on a response check. Writes to unmapped MMIO space on physical GBA hardware or non-mGBA emulators are safe hardware no-ops.
 
 ### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
 To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 128-byte Buffer** in the HAL layer (`hal.mgba.log.format_buf`), shared between `engine.log` and the bare-metal `panic` handler, while enforcing **Compile-time Elimination**:
@@ -115,6 +122,35 @@ mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
 > [!NOTE]
 > - **Decimal Integer Parameter**: mGBA's CLI argument parser strictly requires **decimal** integer values for `-l` / `--log-level` (e.g. `31`). Hexadecimal formats (such as `0x1F`) are not parsed properly and will silently result in zero log output.
 > - **Emulator Internal Diagnostics**: When log level mask `31` is enabled, mGBA will also output its own internal hardware trace logs (e.g., `GBA DMA: Starting DMA 3 ...`) alongside Zamgba application logs.
+
+### F. Bare-Metal Panic Handler Lifecycle (`src/hal/panic.zig`)
+
+When a runtime assertion fails, an index goes out of bounds in Debug mode, or `catch unreachable` is tripped, the low-level `hal.panic` handler takes control. On bare-metal targets without an operating system, the handler executes a 5-step deterministic lifecycle:
+
+```
+[Panic Triggered]
+       │
+       ▼
+ 1. Disable Interrupts (REG_IME = 0)
+       │
+       ▼
+ 2. Format Message & PC into Shared Static Buffer (`format_buf`)
+       │
+       ▼
+ 3. Set Backdrop Palette to RED (`PALRAM[0] = 0x001F`)
+       │
+       ▼
+ 4. Flush FATAL Log to mGBA Port (`mgba.init()` & `mgba.write(.fatal, ...)`)
+       │
+       ▼
+ 5. Infinite Loop (`while (true) {}`)
+```
+
+1. **Interrupt Suppression (`REG_IME = 0`)**: Immediately disables master interrupt enable register (`REG_IME`) to prevent interrupts/ISRs from preempting or corrupting the panic state.
+2. **Zero-Stack String Formatting**: Uses `std.fmt.bufPrint` against the preallocated static buffer `hal.mgba.log.format_buf` (128 bytes in IWRAM/EWRAM), consuming 0 bytes of stack frame to avoid stack overflow hazards. Both the panic message and Program Counter (`ret_addr`) are formatted.
+3. **Visual Hardware Indicator (Red Screen)**: Sets backdrop palette `PALRAM[0]` to RED (`0x001F`). Even if running on physical GBA hardware with no debug cable or if emulator logging flags are omitted, developers instantly recognize a panic occurred rather than a silent freeze or black screen.
+4. **Emulator Fatal Log Dispatch**: Calls `mgba.init()` to ensure MMIO registers are enabled, then flushes the formatted panic message with `LogLevel.fatal`. In mGBA, receiving a FATAL log halts the emulator execution and displays the error clearly on the host terminal.
+5. **Deterministic Lockup**: Enters `while (true) {}` preventing undefined CPU execution on hardware.
 
 ---
 

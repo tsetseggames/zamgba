@@ -16,9 +16,6 @@ pub const BUFFER_SIZE: usize = 128;
 /// and avoids IWRAM stack exhaustion.
 pub var format_buf: [BUFFER_SIZE]u8 = undefined;
 
-/// Internal flag tracking whether the mGBA debug interface handshake succeeded.
-pub var is_enabled: bool = false;
-
 const REG_DEBUG_STRING = @as([*]volatile u8, @ptrFromInt(0x04FFF600));
 const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));
@@ -27,24 +24,16 @@ const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
 const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
 const MGBA_SEND_FLAG: u16 = 0x0100;
 
-/// Attempts to handshake with mGBA debug registers and updates is_enabled state.
-pub fn init() bool {
-    if (comptime !specs.is_gba_target) return false;
+/// Attempts to handshake with mGBA debug registers by writing the enable magic word (0xC0DE).
+pub fn init() void {
+    if (comptime !specs.is_gba_target) return;
     REG_DEBUG_ENABLE.* = MGBA_ENABLE_MAGIC;
-    is_enabled = (REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC);
-    return is_enabled;
 }
 
-/// Checks if mGBA debug interface has been successfully initialized and supported.
-pub fn isSupported() bool {
-    if (comptime !specs.is_gba_target) return false;
-    return is_enabled;
-}
-
-/// Writes raw message slice directly to mGBA hardware registers if handshake was established.
+/// Writes raw message slice directly to mGBA hardware registers.
+/// On GBA hardware and other emulators, writing to unmapped MMIO space is a safe hardware no-op.
 pub fn write(level: LogLevel, message: []const u8) void {
     if (comptime !specs.is_gba_target) return;
-    if (!is_enabled) return;
 
     const max_len = 255;
     const copy_len = @min(message.len, max_len);
@@ -69,7 +58,6 @@ test "MGB001: LogLevel enum values and bit encoding" {
 
 test "MGB002: Host safety checks for unmapped GBA hardware operations" {
     // On host test targets, all hardware register operations must safely compile-time no-op
-    try std.testing.expect(!init());
-    try std.testing.expect(!isSupported());
+    init();
     write(.info, "Safe host no-op");
 }
