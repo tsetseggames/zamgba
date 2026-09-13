@@ -1,6 +1,6 @@
 # GBA Debug & Diagnostic Support Design (Target: v0.3.0)
 
-This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.debug` and `hal.debug`). It also analyzes the font rendering requirements, copyright-free assets, industry-standard practices from Tonc and Butano, and incorporates learnings from bare-metal optimization pitfalls (see [Case Study: Undefined Behavior & Release Mode Divergence](zig_unreachable_case_study.md)).
+This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.log` and `hal.mgba.log`). It also analyzes the font rendering requirements, copyright-free assets, industry-standard practices from Tonc and Butano, and incorporates learnings from bare-metal optimization pitfalls (see [Case Study: Undefined Behavior & Release Mode Divergence](zig_unreachable_case_study.md)).
 
 ---
 
@@ -38,20 +38,28 @@ GBA has no operating system console, but we can divide debug requirements into t
 ## 3. Channel 1: Host Simulator Console Logging (v0.3.0 Primary Target)
 
 ### A. How It Works (The MMIO Emulator Loophole)
-Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges. 
-- Writing ASCII characters to a specific register (mGBA: `0x04FFF780`, No$GBA: `0x04FFFEF0`) routes the text directly to the PC host terminal.
+Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges.
+- **mGBA Debug Protocol**:
+  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the emulator responds with `0x1EA0`.
+  - `REG_DEBUG_FLAGS` (`0x04FFF700`): Writing `0x0100 | LogLevel` flushes the buffered message to the console.
+  - `REG_DEBUG_STRING` (`0x04FFF600`): Null-terminated ASCII character buffer (up to 255 characters).
+- Writing ASCII characters to these registers routes the text directly to the PC host terminal.
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
 ### B. Performance and Footprint Guard (The Zero-Cost Guarantee)
-To ensure formatted print strings do not drag down GBA CPU frame rates, the subsystem enforces the **Release-Mode Erasure** rule:
+To ensure formatted print strings do not drag down GBA CPU frame rates or inflate binary sizes, the subsystem enforces the **Release-Mode Erasure** and **Compile-time Elimination** rules:
 ```zig
-pub fn print(comptime fmt: []const u8, args: anytype) void {
-    if (builtin.mode != .Debug) return; // Completely stripped by compiler in Release
-    // Runtime comptime formatting to stack buffer...
+pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+    if (comptime builtin.mode != .Debug) return; // Completely stripped by compiler in non-Debug builds
+    var buf: [BUFFER_SIZE]u8 = undefined;
+    const formatted = formatToBuf(&buf, fmt, args);
+    write(level, formatted);
 }
 ```
-In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting and log statements are completely eliminated from the output binary, ensuring **0 bytes of ROM** and **0 cycles of CPU overhead** in production.
+In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting and log statements are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM** and **0 cycles of CPU overhead** in production.
+
+In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
 ---
 
@@ -85,11 +93,17 @@ To eliminate any legal, licensing, or design hurdles, developers can choose one 
 
 We will implement the debugging subsystem in two tightly scoped phases:
 
-### Phase 1: Emulator Debug Port Driver & Panic Handler (`src/hal/debug.zig`)
-* Atomic, unsafe-free write routines to mGBA registers (`0x04FFF780`).
-* Support for logging levels: `debug`, `info`, `warn`, `err`.
+### Phase 1: Emulator Debug Port Driver & Logging (`src/hal/mgba/log.zig` and `src/engine/log.zig`)
+* **HAL Layer (`src/hal/mgba/log.zig`)**:
+  - Handshake (`init() bool`, `isSupported() bool`) via `0x04FFF780`.
+  - Atomic write routines to mGBA registers (`0x04FFF600`, `0x04FFF700`).
+  - Supported log levels: `fatal`, `err`, `warn`, `info`, `debug`.
+  - Compile-time target guard (`comptime !specs.is_gba_target`) ensuring host test safety and 0-overhead on GBA.
+* **Engine Layer (`src/engine/log.zig`)**:
+  - Ergonomic high-level API: `debug()`, `info()`, `warn()`, `err()`, `fatal()`, `print()`, `log()`.
+  - Stack-only, fixed-size buffering (`[256]u8`) utilizing `std.fmt.bufPrint` with safe null termination and truncation.
+  - Compile-time stripping in non-Debug builds (`builtin.mode != .Debug`).
 * **Visual Panic Hook**: In case of unhandled initialization error, flush the error message to mGBA log and turn backdrop color red (`RGB555(31, 0, 0)`), preventing silent black-screen hangs.
-* Stack-only, fixed-size buffering (`[256]u8`) utilizing `std.fmt.format` to avoid heap allocations.
 
 ### Phase 2: Engine Diagnostics Dispatcher (`src/engine/debug.zig`)
 * **`engine.debug.dumpVramMap()`**:
