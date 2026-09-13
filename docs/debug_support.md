@@ -85,7 +85,26 @@ Using `std.fmt.bufPrint` on bare-metal GBA introduces specific trade-offs compar
    - Formatting hexadecimal numbers (`{X}`) or strings (`{s}`) relies on simple bitshifts, masks, and memory copies, incurring minimal CPU overhead.
    - **Best Practice**: In performance-sensitive game loops, avoid continuous high-frequency logging of decimal integers per frame; use discrete or event-driven logging instead.
 
-### D. Running mGBA with Log Output Enabled
+### D. Two-Stage Memory Copy & CPU Cycle Breakdown
+When a log message traverses from `engine.log` to the hardware MMIO registers, it goes through a two-stage pipeline:
+
+```
+[Format Arguments] ──(Stage 1)──> [Static Buffer: format_buf] ──(Stage 2)──> [mGBA MMIO: 0x04FFF600]
+```
+
+1. **Stage 1: Serialization (`formatToBuf`)**:
+   - Copies string literals and serialized values into `format_buf`.
+   - Overhead: ~200–400 cycles for an 80-character string (including integer software division).
+2. **Stage 2: MMIO Hardware Transfer (`hal.mgba.log.write`)**:
+   - Copies bytes sequentially from `format_buf` to `0x04FFF600` via loop (`REG_DEBUG_STRING[i] = message[i]`).
+   - Overhead: Memory bus wait states on MMIO space take ~4–7 cycles per byte transfer iteration.
+   - For an 80-byte buffer: $80 \times 7 \approx 560$ cycles.
+3. **Total Frame Budget Impact**:
+   - Total runtime overhead per 80-character log invocation: **~800–1000 CPU cycles**.
+   - With the GBA 16.78 MHz CPU delivering **~280,896 cycles per frame** (at 60 FPS), a full log message consumes **~0.3% of a frame budget**.
+   - **Future Optimization Opportunity (Direct-to-MMIO)**: If tighter latency is desired in Debug builds, `std.fmt.bufPrint` can serialize directly into the `0x04FFF600` pointer slice on GBA hardware targets, eliminating Stage 1's intermediate static buffer copy.
+
+### E. Running mGBA with Log Output Enabled
 By default, mGBA filters out non-critical console logs. To capture engine logs on stdout, run mGBA with the `-l` (`--log-level`) option:
 
 ```bash
