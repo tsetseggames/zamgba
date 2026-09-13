@@ -3,7 +3,13 @@ const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const LogLevel = hal.mgba.log.LogLevel;
-const BUFFER_SIZE: usize = 256;
+const BUFFER_SIZE: usize = 80;
+
+/// Module-level static buffer for string formatting in Debug builds.
+/// Avoids putting an 80-byte buffer on the IWRAM stack per function call.
+/// In non-Debug builds, this is completely stripped (0 bytes RAM footprint).
+var format_buf: if (builtin.mode == .Debug) [BUFFER_SIZE]u8 else void =
+    if (builtin.mode == .Debug) undefined else {};
 
 /// Mock function hook available strictly during host-side unit testing.
 var mock_write_override: if (builtin.is_test) ?*const fn (level: LogLevel, message: []const u8) void else void =
@@ -41,11 +47,10 @@ fn formatToBuf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
 }
 
 /// Core logging dispatcher with compile-time zero-cost optimization in Release builds.
-/// In non-Debug builds, log statements are completely eliminated with 0 bytes ROM footprint.
+/// In non-Debug builds, log statements and static buffers are completely eliminated with 0 bytes ROM/RAM footprint.
 pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     if (comptime builtin.mode != .Debug) return;
-    var buf: [BUFFER_SIZE]u8 = undefined;
-    const formatted = formatToBuf(&buf, fmt, args);
+    const formatted = formatToBuf(&format_buf, fmt, args);
     write(level, formatted);
 }
 

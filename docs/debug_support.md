@@ -47,17 +47,28 @@ Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and 
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
-### B. Performance and Footprint Guard (The Zero-Cost Guarantee)
-To ensure formatted print strings do not drag down GBA CPU frame rates or inflate binary sizes, the subsystem enforces the **Release-Mode Erasure** and **Compile-time Elimination** rules:
+### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
+To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 80-byte Buffer** and enforces **Compile-time Elimination**:
+
 ```zig
+const BUFFER_SIZE: usize = 80;
+
+var format_buf: if (builtin.mode == .Debug) [BUFFER_SIZE]u8 else void =
+    if (builtin.mode == .Debug) undefined else {};
+
 pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     if (comptime builtin.mode != .Debug) return; // Completely stripped by compiler in non-Debug builds
-    var buf: [BUFFER_SIZE]u8 = undefined;
-    const formatted = formatToBuf(&buf, fmt, args);
+    const formatted = formatToBuf(&format_buf, fmt, args);
     write(level, formatted);
 }
 ```
-In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting and log statements are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM** and **0 cycles of CPU overhead** in production.
+
+> [!IMPORTANT]
+> **80-Character Buffer Restriction & IWRAM Stack Protection**:
+> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic risks silent stack overflows. Zamgba uses a single, module-level static buffer conditionally compiled strictly in Debug mode (0 bytes in Release).
+> - **80-Character Max Length**: Single log messages are bounded to 80 characters (standard terminal width). Longer strings will be safely truncated at the 79th character with trailing null termination.
+
+In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting, log statements, and static buffers are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM/RAM** and **0 cycles of CPU overhead** in production.
 
 In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
@@ -113,7 +124,7 @@ We will implement the debugging subsystem in two tightly scoped phases:
   - Compile-time target guard (`comptime !specs.is_gba_target`) ensuring host test safety and 0-overhead on GBA.
 * **Engine Layer (`src/engine/log.zig`)**:
   - Ergonomic high-level API: `debug()`, `info()`, `warn()`, `err()`, `fatal()`, `print()`, `log()`.
-  - Stack-only, fixed-size buffering (`[256]u8`) utilizing `std.fmt.bufPrint` with safe null termination and truncation.
+  - Static 80-byte formatting buffer (preventing IWRAM stack bloat) utilizing `std.fmt.bufPrint` with safe null termination and truncation.
   - Compile-time stripping in non-Debug builds (`builtin.mode != .Debug`).
 * **Visual Panic Hook**: In case of unhandled initialization error, flush the error message to mGBA log and turn backdrop color red (`RGB555(31, 0, 0)`), preventing silent black-screen hangs.
 
