@@ -3,10 +3,10 @@ const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const LogLevel = hal.mgba.log.LogLevel;
-pub const BUFFER_SIZE: usize = 256;
+const BUFFER_SIZE: usize = 256;
 
 /// Mock function hook available strictly during host-side unit testing.
-pub var mock_write_override: if (builtin.is_test) ?*const fn (level: LogLevel, message: []const u8) void else void =
+var mock_write_override: if (builtin.is_test) ?*const fn (level: LogLevel, message: []const u8) void else void =
     if (builtin.is_test) null else {};
 
 /// Low-level static message writer.
@@ -30,7 +30,7 @@ pub fn write(level: LogLevel, message: []const u8) void {
 }
 
 /// Helper function to format strings to buffer with null-termination safely.
-pub fn formatToBuf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+fn formatToBuf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
     if (buf.len == 0) return "";
     const max_chars = buf.len - 1;
     const formatted = std.fmt.bufPrint(buf[0..max_chars], fmt, args) catch |e| switch (e) {
