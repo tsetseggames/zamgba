@@ -20,29 +20,26 @@ const REG_DEBUG_STRING = @as([*]volatile u8, @ptrFromInt(0x04FFF600));
 const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));
 
-pub const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
-pub const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
-pub const MGBA_SEND_FLAG: u16 = 0x0100;
+const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
+const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
+const MGBA_SEND_FLAG: u16 = 0x0100;
 
-var is_supported: bool = false;
-
-/// Attempts to handshake with mGBA debug registers and records availability.
+/// Attempts to handshake with mGBA debug registers.
 pub fn init() bool {
     if (comptime !specs.is_gba_target) return false;
     REG_DEBUG_ENABLE.* = MGBA_ENABLE_MAGIC;
-    is_supported = (REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC);
-    return is_supported;
+    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
 }
 
-/// Checks if mGBA debug interface was successfully initialized.
+/// Checks if mGBA debug interface is supported.
 pub fn isSupported() bool {
     if (comptime !specs.is_gba_target) return false;
-    return is_supported;
+    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
 }
 
-/// Writes raw message slice directly to mGBA hardware registers if interface is supported.
+/// Writes raw message slice directly to mGBA hardware registers.
 pub fn write(level: LogLevel, message: []const u8) void {
-    if (!isSupported()) return;
+    if (comptime !specs.is_gba_target) return;
 
     const max_len = 255;
     const copy_len = @min(message.len, max_len);

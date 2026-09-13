@@ -32,10 +32,9 @@ pub fn panic(
         // Step 3: Turn background color red as visual indicator on hardware
         specs.MemorySections.PALRAM[0] = specs.Color.RED;
 
-        // Step 4: Flush message to mGBA fatal log port if mGBA debug interface is available
-        if (mgba.init()) {
-            mgba.write(.fatal, formatted);
-        }
+        // Step 4: Flush message to mGBA fatal log port (mGBA exits on fatal level)
+        _ = mgba.init();
+        mgba.write(.fatal, formatted);
 
         // Step 5: Hang execution
         while (true) {}
