@@ -39,7 +39,6 @@ pub fn isSupported() bool {
 
 /// Writes raw message slice directly to mGBA hardware registers if interface is supported.
 pub fn write(level: LogLevel, message: []const u8) void {
-    if (comptime !specs.is_gba_target) return;
     if (!isSupported()) return;
 
     const max_len = 255;
