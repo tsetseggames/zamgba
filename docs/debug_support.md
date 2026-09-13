@@ -61,6 +61,18 @@ In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting and log statemen
 
 In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
+### C. Running mGBA with Log Output Enabled
+By default, mGBA filters out non-critical console logs. To capture engine logs on stdout, run mGBA with the `-l` (`--log-level`) option:
+
+```bash
+# Enable all log levels (Mask 31 = FATAL(1) | ERROR(2) | WARN(4) | INFO(8) | DEBUG(16))
+mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
+```
+
+> [!NOTE]
+> - **Decimal Integer Parameter**: mGBA's CLI argument parser strictly requires **decimal** integer values for `-l` / `--log-level` (e.g. `31`). Hexadecimal formats (such as `0x1F`) are not parsed properly and will silently result in zero log output.
+> - **Emulator Internal Diagnostics**: When log level mask `31` is enabled, mGBA will also output its own internal hardware trace logs (e.g., `GBA DMA: Starting DMA 3 ...`) alongside Zamgba application logs.
+
 ---
 
 ## 3. Channel 2: On-Screen Text Display & Pixel Font Design
