@@ -18,7 +18,7 @@ var mock_write_override: if (builtin.is_test) ?*const fn (level: LogLevel, messa
 /// Low-level static message writer.
 /// On GBA hardware target, directly invokes mGBA hardware debug registers with zero runtime overhead.
 /// On host machine, redirects to mock hook (during test) or host debug console.
-pub fn write(level: LogLevel, message: []const u8) void {
+fn write(level: LogLevel, message: []const u8) void {
     if (comptime builtin.is_test) {
         if (mock_write_override) |mock_fn| {
             mock_fn(level, message);
