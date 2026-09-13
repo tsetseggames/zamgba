@@ -9,6 +9,13 @@ pub const LogLevel = enum(u3) {
     debug = 4,
 };
 
+pub const BUFFER_SIZE: usize = 128;
+
+/// Module-level static buffer for string formatting in log and panic handlers.
+/// Sharing a single static buffer in HAL eliminates stack allocations during panic
+/// and avoids IWRAM stack exhaustion.
+pub var format_buf: [BUFFER_SIZE]u8 = undefined;
+
 const REG_DEBUG_STRING = @as([*]volatile u8, @ptrFromInt(0x04FFF600));
 const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));

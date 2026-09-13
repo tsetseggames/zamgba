@@ -48,27 +48,27 @@ Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and 
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
 ### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
-To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 80-byte Buffer** and enforces **Compile-time Elimination**:
+To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 128-byte Buffer** in the HAL layer (`hal.mgba.log.format_buf`), shared between `engine.log` and the bare-metal `panic` handler, while enforcing **Compile-time Elimination**:
 
 ```zig
-const BUFFER_SIZE: usize = 80;
+// Defined in src/hal/mgba/log.zig
+pub const BUFFER_SIZE: usize = 128;
+pub var format_buf: [BUFFER_SIZE]u8 = undefined;
 
-var format_buf: if (builtin.mode == .Debug) [BUFFER_SIZE]u8 else void =
-    if (builtin.mode == .Debug) undefined else {};
-
+// In src/engine/log.zig:
 pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     if (comptime builtin.mode != .Debug) return; // Completely stripped by compiler in non-Debug builds
-    const formatted = formatToBuf(&format_buf, fmt, args);
+    const formatted = formatToBuf(&hal.mgba.log.format_buf, fmt, args);
     write(level, formatted);
 }
 ```
 
 > [!IMPORTANT]
-> **80-Character Buffer Restriction & IWRAM Stack Protection**:
-> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic risks silent stack overflows. Zamgba uses a single, module-level static buffer conditionally compiled strictly in Debug mode (0 bytes in Release).
-> - **80-Character Max Length**: Single log messages are bounded to 80 characters (standard terminal width). Longer strings will be safely truncated at the 79th character with trailing null termination.
+> **128-Character Buffer Restriction & IWRAM Stack Protection**:
+> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic or during a critical stack-overflow panic risks silent faults. Zamgba uses a single, module-level static buffer in the HAL layer (`hal.mgba.log.format_buf`), shared safely across single-threaded execution and panic recovery.
+> - **128-Character Max Length**: Single log/panic messages are bounded to 128 characters. Longer strings will be safely truncated at the 127th character with trailing null termination.
 
-In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting, log statements, and static buffers are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM/RAM** and **0 cycles of CPU overhead** in production.
+In `ReleaseFast` or `ReleaseSmall` builds, all debug logging calls and format parsing in `engine.log` are completely eliminated at compile time from the output binary (0 CPU cycles, 0 log text in ROM), while the shared static buffer remains accessible to the low-level `panic` handler if an assertion failure occurs.
 
 In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
 
@@ -94,11 +94,11 @@ When a log message traverses from `engine.log` to the hardware MMIO registers, i
 
 1. **Stage 1: Serialization (`formatToBuf`)**:
    - Copies string literals and serialized values into `format_buf`.
-   - Overhead: ~200–400 cycles for an 80-character string (including integer software division).
+   - Overhead: ~200–400 cycles for a standard string (including integer software division).
 2. **Stage 2: MMIO Hardware Transfer (`hal.mgba.log.write`)**:
    - Copies bytes sequentially from `format_buf` to `0x04FFF600` via loop (`REG_DEBUG_STRING[i] = message[i]`).
    - Overhead: Memory bus wait states on MMIO space take ~4–7 cycles per byte transfer iteration.
-   - For an 80-byte buffer: $80 \times 7 \approx 560$ cycles.
+   - For an 80-byte message: $80 \times 7 \approx 560$ cycles.
 3. **Total Frame Budget Impact**:
    - Total runtime overhead per 80-character log invocation: **~800–1000 CPU cycles**.
    - With the GBA 16.78 MHz CPU delivering **~280,896 cycles per frame** (at 60 FPS), a full log message consumes **~0.3% of a frame budget**.
