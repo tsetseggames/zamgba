@@ -16,6 +16,9 @@ pub const BUFFER_SIZE: usize = 128;
 /// and avoids IWRAM stack exhaustion.
 pub var format_buf: [BUFFER_SIZE]u8 = undefined;
 
+/// Internal flag tracking whether the mGBA debug interface handshake succeeded.
+pub var is_enabled: bool = false;
+
 const REG_DEBUG_STRING = @as([*]volatile u8, @ptrFromInt(0x04FFF600));
 const REG_DEBUG_FLAGS = @as(*volatile u16, @ptrFromInt(0x04FFF700));
 const REG_DEBUG_ENABLE = @as(*volatile u16, @ptrFromInt(0x04FFF780));
@@ -24,22 +27,24 @@ const MGBA_ENABLE_MAGIC: u16 = 0xC0DE;
 const MGBA_RESPONSE_MAGIC: u16 = 0x1EA0;
 const MGBA_SEND_FLAG: u16 = 0x0100;
 
-/// Attempts to handshake with mGBA debug registers.
+/// Attempts to handshake with mGBA debug registers and updates is_enabled state.
 pub fn init() bool {
     if (comptime !specs.is_gba_target) return false;
     REG_DEBUG_ENABLE.* = MGBA_ENABLE_MAGIC;
-    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
+    is_enabled = (REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC);
+    return is_enabled;
 }
 
-/// Checks if mGBA debug interface is supported.
+/// Checks if mGBA debug interface has been successfully initialized and supported.
 pub fn isSupported() bool {
     if (comptime !specs.is_gba_target) return false;
-    return REG_DEBUG_ENABLE.* == MGBA_RESPONSE_MAGIC;
+    return is_enabled;
 }
 
-/// Writes raw message slice directly to mGBA hardware registers.
+/// Writes raw message slice directly to mGBA hardware registers if handshake was established.
 pub fn write(level: LogLevel, message: []const u8) void {
     if (comptime !specs.is_gba_target) return;
+    if (!is_enabled) return;
 
     const max_len = 255;
     const copy_len = @min(message.len, max_len);
