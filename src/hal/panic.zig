@@ -1,0 +1,47 @@
+const std = @import("std");
+const specs = @import("specs.zig");
+const mgba = @import("mgba/log.zig");
+
+const BUFFER_SIZE: usize = 128;
+
+/// Low-level bare-metal panic handler for GBA and freestanding environments.
+///
+/// Lifecycle:
+/// 1. Immediately disables hardware interrupts (REG_IME = 0) to avoid ISR interference.
+/// 2. Formats the panic message and return address (PC) into a fixed 128-byte stack buffer.
+/// 3. Emits a FATAL message to the mGBA emulator debug port.
+/// 4. Sets the hardware backdrop color to RED (0x001F) for visual identification.
+/// 5. Hangs in an infinite loop.
+pub fn panic(
+    msg: []const u8,
+    _: ?*std.builtin.StackTrace,
+    ret_addr: ?usize,
+) noreturn {
+    if (specs.is_gba_target) {
+        // Step 1: Disable all hardware interrupts immediately
+        specs.MemorySections.REG_IME.* = 0;
+
+        // Step 2: Format panic message and program counter safely on stack
+        var buf: [BUFFER_SIZE]u8 = undefined;
+        const formatted = if (ret_addr) |addr|
+            std.fmt.bufPrint(&buf, "PANIC: {s} (pc: 0x{X:0>8})", .{ msg, addr }) catch |err| switch (err) {
+                error.NoSpaceLeft => buf[0..],
+            }
+        else
+            std.fmt.bufPrint(&buf, "PANIC: {s}", .{msg}) catch |err| switch (err) {
+                error.NoSpaceLeft => buf[0..],
+            };
+
+        // Step 3: Flush message to mGBA fatal log port
+        _ = mgba.init();
+        mgba.write(.fatal, formatted);
+
+        // Step 4: Turn background color red as visual fallback
+        specs.MemorySections.PALRAM[0] = specs.Color.RED;
+
+        // Step 5: Hang execution
+        while (true) {}
+    } else {
+        while (true) {}
+    }
+}

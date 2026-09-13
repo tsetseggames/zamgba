@@ -25,6 +25,7 @@ pub const BppMode = specs.BppMode;
 pub const display = @import("display.zig");
 pub const joypad = @import("joypad.zig");
 pub const dma = @import("dma.zig");
+pub const panic = @import("panic.zig").panic;
 pub const mgba = struct {
     pub const log = @import("mgba/log.zig");
 };
