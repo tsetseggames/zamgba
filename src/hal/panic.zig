@@ -9,9 +9,9 @@ const BUFFER_SIZE: usize = 128;
 /// Lifecycle:
 /// 1. Immediately disables hardware interrupts (REG_IME = 0) to avoid ISR interference.
 /// 2. Formats the panic message and return address (PC) into a fixed 128-byte stack buffer.
-/// 3. Emits a FATAL message to the mGBA emulator debug port.
-/// 4. Sets the hardware backdrop color to RED (0x001F) for visual identification.
-/// 5. Hangs in an infinite loop.
+/// 3. Sets the hardware backdrop color to RED (0x001F) for visual identification on hardware.
+/// 4. Emits a FATAL message to the mGBA emulator debug port (terminates emulator VM).
+/// 5. Hangs in an infinite loop (bare-metal hardware fallback).
 pub fn panic(
     msg: []const u8,
     _: ?*std.builtin.StackTrace,
@@ -32,12 +32,12 @@ pub fn panic(
                 error.NoSpaceLeft => buf[0..],
             };
 
-        // Step 3: Flush message to mGBA fatal log port
+        // Step 3: Turn background color red as visual indicator on hardware
+        specs.MemorySections.PALRAM[0] = specs.Color.RED;
+
+        // Step 4: Flush message to mGBA fatal log port (mGBA exits on fatal level)
         _ = mgba.init();
         mgba.write(.fatal, formatted);
-
-        // Step 4: Turn background color red as visual fallback
-        specs.MemorySections.PALRAM[0] = specs.Color.RED;
 
         // Step 5: Hang execution
         while (true) {}

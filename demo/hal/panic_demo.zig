@@ -16,8 +16,8 @@ export fn main() noreturn {
     // This executes:
     // 1. REG_IME = 0 (disable interrupts)
     // 2. Format 128-byte panic message with PC
-    // 3. hal.mgba.log.write(.fatal, ...)
-    // 4. PALRAM[0] = Color.RED
+    // 3. PALRAM[0] = Color.RED
+    // 4. hal.mgba.log.write(.fatal, ...)
     // 5. Hang in infinite loop
     @panic("Explicit panic triggered in panic_demo");
 }
