@@ -232,7 +232,7 @@ When a developer triggers a dump (e.g. by pressing `Select`), the mGBA Terminal 
 
 ---
 
-## 7. Testing Best Practices & Target Environment Assumptions (测试最佳实践)
+## 7. Testing Best Practices & Target Environment Assumptions
 
 ### A. Debug Mode Target Assumption (mGBA)
 - **Debug Builds**: When Zamgba is compiled in `Debug` optimization mode, the logging subsystem assumes execution under **mGBA** (with CLI `-l` / `--log-level` flags enabled).
