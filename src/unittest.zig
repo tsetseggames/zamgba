@@ -8,6 +8,7 @@ test {
     _ = @import("engine/gfx2d/gfx2d.zig");
     _ = @import("engine/sprite.zig");
     _ = @import("engine/engine.zig");
+    _ = @import("engine/log.zig");
     _ = @import("engine/physics/math.zig");
     _ = @import("engine/physics/aabb.zig");
     _ = @import("engine/physics/map.zig");

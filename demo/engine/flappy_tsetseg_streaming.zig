@@ -1,3 +1,6 @@
+// Running with mGBA debug logging enabled (note: -l requires a decimal integer mask):
+//   mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
+
 const gba = @import("zamgba");
 const hal = gba.hal;
 const engine = gba.engine;
@@ -39,10 +42,13 @@ const Game = struct {
     const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(1);
 
     pub fn init() !Game {
+        engine.log.info("Initializing Flappy Tsetseg Streaming Demo...", .{});
+
         // 1. Initialize Player using AnimatedSprite in streaming mode
         // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
         var player_anim = try engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y));
         try player_anim.setAnimation("flying");
+        engine.log.debug("Player streaming sprite initialized (frames: {d})", .{broom.sheet.frame_count});
 
         // 2. Configure collision layers on the underlying Sprite
         const spr = player_anim.getSprite();
@@ -83,10 +89,16 @@ const Game = struct {
         // Enemy visual setup (Red vertical pillars at Tile Index 256 in 4-bpp mode)
         self.enemies[0].fillSolidColor(engine.Color.RED) catch {};
 
+        engine.log.info("Game initialization complete. Starting game loop...", .{});
         return self;
     }
 
     pub fn reset(self: *@This()) void {
+        engine.log.warn("Collision triggered! Resetting player to ({d}, {d})", .{
+            PLAYER_START_X,
+            PLAYER_START_Y,
+        });
+
         const spr = self.player.getSprite();
         spr.aabb.x = Fixed24_8.fromInt(PLAYER_START_X);
         spr.aabb.y = Fixed24_8.fromInt(PLAYER_START_Y);
@@ -160,11 +172,9 @@ const Game = struct {
 export fn main() noreturn {
     engine.initHardware();
 
-    // TODO
-    // Using unreachable is not a good practice.
-    // See docs/zig_unreachable_case_study.md for more details.
-    //
-    // The plan in 0.3.0 is to add proper diagnose support.
-    var game = Game.init() catch unreachable;
+    var game = Game.init() catch |err| {
+        engine.log.fatal("Failed to initialize game: {s}", .{@errorName(err)});
+        while (true) {}
+    };
     engine.run(&game);
 }

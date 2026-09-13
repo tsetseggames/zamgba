@@ -39,6 +39,10 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [ ] Chiptune-to-code conversion tool
    - [ ] Wav file to code conversion tool
 
-8. **Advanced Game Capabilities (v1.0.0 & v2.0.0)**
+8. **Debugging & Diagnostics (v0.3.0)**
+   - [x] mGBA compatible logging (`zamgba.hal.mgba.log` / `zamgba.engine.log`)
+   - [ ] Custom panic handler
+
+9. **Advanced Game Capabilities (v1.0.0 & v2.0.0)**
    - [ ] 2D platformer game framework capabilities
    - [ ] Pseudo-3D game rendering support

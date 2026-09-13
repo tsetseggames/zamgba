@@ -1,6 +1,6 @@
 # GBA Debug & Diagnostic Support Design (Target: v0.3.0)
 
-This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.debug` and `hal.debug`). It also analyzes the font rendering requirements, copyright-free assets, industry-standard practices from Tonc and Butano, and incorporates learnings from bare-metal optimization pitfalls (see [Case Study: Undefined Behavior & Release Mode Divergence](zig_unreachable_case_study.md)).
+This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.log` and `hal.mgba.log`). It also analyzes the font rendering requirements, copyright-free assets, industry-standard practices from Tonc and Butano, and incorporates learnings from bare-metal optimization pitfalls (see [Case Study: Undefined Behavior & Release Mode Divergence](zig_unreachable_case_study.md)).
 
 ---
 
@@ -38,24 +38,87 @@ GBA has no operating system console, but we can divide debug requirements into t
 ## 3. Channel 1: Host Simulator Console Logging (v0.3.0 Primary Target)
 
 ### A. How It Works (The MMIO Emulator Loophole)
-Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges. 
-- Writing ASCII characters to a specific register (mGBA: `0x04FFF780`, No$GBA: `0x04FFFEF0`) routes the text directly to the PC host terminal.
+Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges.
+- **mGBA Debug Protocol**:
+  - `REG_DEBUG_ENABLE` (`0x04FFF780`): Handshake register. Writing `0xC0DE` enables debugging; the emulator responds with `0x1EA0`.
+  - `REG_DEBUG_FLAGS` (`0x04FFF700`): Writing `0x0100 | LogLevel` flushes the buffered message to the console.
+  - `REG_DEBUG_STRING` (`0x04FFF600`): Null-terminated ASCII character buffer (up to 255 characters).
+- Writing ASCII characters to these registers routes the text directly to the PC host terminal.
 - It consumes **zero GBA VRAM** and uses the PC host operating system's native console fonts, eliminating any GBA font asset or licensing requirements.
 - On real hardware, these writes are ignored by the memory controller, incurring practically zero overhead.
 
-### B. Performance and Footprint Guard (The Zero-Cost Guarantee)
-To ensure formatted print strings do not drag down GBA CPU frame rates, the subsystem enforces the **Release-Mode Erasure** rule:
+### B. Performance, Memory Safety, and Footprint Guard (The Zero-Cost Guarantee)
+To protect GBA IWRAM stack space and ensure formatted print strings do not drag down CPU frame rates or inflate binary sizes, the subsystem adopts a **Module-level Static 80-byte Buffer** and enforces **Compile-time Elimination**:
+
 ```zig
-pub fn print(comptime fmt: []const u8, args: anytype) void {
-    if (builtin.mode != .Debug) return; // Completely stripped by compiler in Release
-    // Runtime comptime formatting to stack buffer...
+const BUFFER_SIZE: usize = 80;
+
+var format_buf: if (builtin.mode == .Debug) [BUFFER_SIZE]u8 else void =
+    if (builtin.mode == .Debug) undefined else {};
+
+pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+    if (comptime builtin.mode != .Debug) return; // Completely stripped by compiler in non-Debug builds
+    const formatted = formatToBuf(&format_buf, fmt, args);
+    write(level, formatted);
 }
 ```
-In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting and log statements are completely eliminated from the output binary, ensuring **0 bytes of ROM** and **0 cycles of CPU overhead** in production.
+
+> [!IMPORTANT]
+> **80-Character Buffer Restriction & IWRAM Stack Protection**:
+> - **Zero Stack Overhead**: GBA IWRAM stack space is extremely limited (~32 KB total). Allocating formatting buffers on the call stack inside deeply nested game logic risks silent stack overflows. Zamgba uses a single, module-level static buffer conditionally compiled strictly in Debug mode (0 bytes in Release).
+> - **80-Character Max Length**: Single log messages are bounded to 80 characters (standard terminal width). Longer strings will be safely truncated at the 79th character with trailing null termination.
+
+In `ReleaseFast` or `ReleaseSmall` builds, all debug formatting, log statements, and static buffers are completely eliminated at compile time from the output binary, ensuring **0 bytes of ROM/RAM** and **0 cycles of CPU overhead** in production.
+
+In addition, during unit tests (`builtin.is_test`), hardware MMIO access is disabled at compile time (`comptime !specs.is_gba_target`), ensuring host-side test runner safety and silent execution by default.
+
+### C. Performance Profile & Formatting Overhead (`std.fmt.bufPrint`)
+Using `std.fmt.bufPrint` on bare-metal GBA introduces specific trade-offs compared to traditional C-style `vsnprintf`:
+
+1. **Compile-Time Format Parsing (Zero Runtime String Parsing)**:
+   - Traditional C libraries (`libgba` / devkitPro) use `vsnprintf`, which parses format strings (`%d`, `%s`, etc.) character-by-character at runtime.
+   - Zig's `std.fmt` parses format strings (`{d}`, `{s}`, `{X}`) entirely at **comptime**. Format strings are converted directly into static type-specialized serialization calls, eliminating runtime parser overhead.
+2. **Zero Heap Allocation**:
+   - `std.fmt.bufPrint` writes directly to the bounded static buffer `format_buf` without any dynamic heap allocation.
+3. **ARM7TDMI Software Division Consideration**:
+   - The GBA's ARM7TDMI processor lacks a hardware division unit. Formatting decimal integers (`{d}`) requires software division subroutines (`__aeabi_uidivmod`), consuming several dozen CPU cycles per digit.
+   - Formatting hexadecimal numbers (`{X}`) or strings (`{s}`) relies on simple bitshifts, masks, and memory copies, incurring minimal CPU overhead.
+   - **Best Practice**: In performance-sensitive game loops, avoid continuous high-frequency logging of decimal integers per frame; use discrete or event-driven logging instead.
+
+### D. Two-Stage Memory Copy & CPU Cycle Breakdown
+When a log message traverses from `engine.log` to the hardware MMIO registers, it goes through a two-stage pipeline:
+
+```
+[Format Arguments] ──(Stage 1)──> [Static Buffer: format_buf] ──(Stage 2)──> [mGBA MMIO: 0x04FFF600]
+```
+
+1. **Stage 1: Serialization (`formatToBuf`)**:
+   - Copies string literals and serialized values into `format_buf`.
+   - Overhead: ~200–400 cycles for an 80-character string (including integer software division).
+2. **Stage 2: MMIO Hardware Transfer (`hal.mgba.log.write`)**:
+   - Copies bytes sequentially from `format_buf` to `0x04FFF600` via loop (`REG_DEBUG_STRING[i] = message[i]`).
+   - Overhead: Memory bus wait states on MMIO space take ~4–7 cycles per byte transfer iteration.
+   - For an 80-byte buffer: $80 \times 7 \approx 560$ cycles.
+3. **Total Frame Budget Impact**:
+   - Total runtime overhead per 80-character log invocation: **~800–1000 CPU cycles**.
+   - With the GBA 16.78 MHz CPU delivering **~280,896 cycles per frame** (at 60 FPS), a full log message consumes **~0.3% of a frame budget**.
+   - **Future Optimization Opportunity (Direct-to-MMIO)**: If tighter latency is desired in Debug builds, `std.fmt.bufPrint` can serialize directly into the `0x04FFF600` pointer slice on GBA hardware targets, eliminating Stage 1's intermediate static buffer copy.
+
+### E. Running mGBA with Log Output Enabled
+By default, mGBA filters out non-critical console logs. To capture engine logs on stdout, run mGBA with the `-l` (`--log-level`) option:
+
+```bash
+# Enable all log levels (Mask 31 = FATAL(1) | ERROR(2) | WARN(4) | INFO(8) | DEBUG(16))
+mgba -l 31 --scale 4 ./zig-out/bin/flappy_tsetseg_streaming.gba
+```
+
+> [!NOTE]
+> - **Decimal Integer Parameter**: mGBA's CLI argument parser strictly requires **decimal** integer values for `-l` / `--log-level` (e.g. `31`). Hexadecimal formats (such as `0x1F`) are not parsed properly and will silently result in zero log output.
+> - **Emulator Internal Diagnostics**: When log level mask `31` is enabled, mGBA will also output its own internal hardware trace logs (e.g., `GBA DMA: Starting DMA 3 ...`) alongside Zamgba application logs.
 
 ---
 
-## 3. Channel 2: On-Screen Text Display & Pixel Font Design
+## 4. Channel 2: On-Screen Text Display & Pixel Font Design
 
 If a game needs to display debugging information directly on target GBA hardware, a pixel font is required to draw alphanumeric characters on the screen.
 
@@ -85,11 +148,17 @@ To eliminate any legal, licensing, or design hurdles, developers can choose one 
 
 We will implement the debugging subsystem in two tightly scoped phases:
 
-### Phase 1: Emulator Debug Port Driver & Panic Handler (`src/hal/debug.zig`)
-* Atomic, unsafe-free write routines to mGBA registers (`0x04FFF780`).
-* Support for logging levels: `debug`, `info`, `warn`, `err`.
+### Phase 1: Emulator Debug Port Driver & Logging (`src/hal/mgba/log.zig` and `src/engine/log.zig`)
+* **HAL Layer (`src/hal/mgba/log.zig`)**:
+  - Handshake (`init() bool`, `isSupported() bool`) via `0x04FFF780`.
+  - Atomic write routines to mGBA registers (`0x04FFF600`, `0x04FFF700`).
+  - Supported log levels: `fatal`, `err`, `warn`, `info`, `debug`.
+  - Compile-time target guard (`comptime !specs.is_gba_target`) ensuring host test safety and 0-overhead on GBA.
+* **Engine Layer (`src/engine/log.zig`)**:
+  - Ergonomic high-level API: `debug()`, `info()`, `warn()`, `err()`, `fatal()`, `print()`, `log()`.
+  - Static 80-byte formatting buffer (preventing IWRAM stack bloat) utilizing `std.fmt.bufPrint` with safe null termination and truncation.
+  - Compile-time stripping in non-Debug builds (`builtin.mode != .Debug`).
 * **Visual Panic Hook**: In case of unhandled initialization error, flush the error message to mGBA log and turn backdrop color red (`RGB555(31, 0, 0)`), preventing silent black-screen hangs.
-* Stack-only, fixed-size buffering (`[256]u8`) utilizing `std.fmt.format` to avoid heap allocations.
 
 ### Phase 2: Engine Diagnostics Dispatcher (`src/engine/debug.zig`)
 * **`engine.debug.dumpVramMap()`**:
