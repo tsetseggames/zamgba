@@ -137,6 +137,9 @@ comptime {
                 zeroBss();
                 copyDataToEWRAM();
 
+                // Initialize mGBA debug logging if running in mGBA
+                _ = mgba.log.init();
+
                 // Set up default IRQ handler for BIOS IntrWait functions (e.g. SWI 0x05)
                 MemorySections.USER_IRQ_HANDLER.* = irqHandler;
 
