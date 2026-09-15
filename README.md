@@ -121,8 +121,12 @@ Enjoy!
   - [x] Color palettes conversion tool (`zurag`)
   - [x] Engine-level streaming sprite loader & VBlank DMA manager
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
-  - [ ] Camera
-  - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit ScreenEntry)
+  - [ ] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
+  - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
+  - [ ] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
+  - [ ] Integration of `TileMapLayer` with `CollisionMap` physics system
+  - [ ] Camera support for scrolling backgrounds and viewport tracking
+  - [ ] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
   - [x] Panic handler
