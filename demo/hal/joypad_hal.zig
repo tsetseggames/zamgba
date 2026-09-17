@@ -14,7 +14,7 @@ export fn main() noreturn {
     // 1. Initialize Display
     // Set Mode 3 (Bitmap mode) and enable BG2 to draw directly to VRAM.
     hal.display.setMode3();
-    hal.display.setBackground2();
+    hal.display.enableBgLayer(.bg2);
     hal.display.writeRegister();
 
     // 2. Initialize Input

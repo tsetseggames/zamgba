@@ -127,6 +127,14 @@ pub fn build(b: *std.Build) void {
 
     mgba_init_rom.root_module.addImport(LibName, m);
 
+    var background_hal_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "background_hal",
+        .root_source_file = b.path("demo/hal/background_hal.zig"),
+    });
+
+    background_hal_rom.root_module.addImport(LibName, m);
+
     // ====================================================================
     // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
     // ====================================================================
