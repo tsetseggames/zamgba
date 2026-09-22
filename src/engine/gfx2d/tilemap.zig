@@ -3,7 +3,10 @@ const hal = @import("zamgba-hal");
 const physics = @import("../physics/physics.zig");
 const color = @import("color.zig");
 
-/// Re-export GBA hardware 15-bit Bgr555 representation.
+pub const CollisionMask = physics.CollisionMask;
+pub const Collision = physics.Collision;
+
+/// Hardware 15-bit BGR555 color format.
 pub const Bgr555 = color.Bgr555;
 
 /// Hardware-aligned 16-bit packed Screen Entry for GBA Text Backgrounds.
@@ -68,7 +71,7 @@ pub const TileData = union(enum) {
 pub const TileSet = struct {
     tiles: TileData,
     palette: []const Bgr555,
-    collision_flags: []const u8,
+    collision_masks: []const CollisionMask = &.{},
 };
 
 /// ROM-baked static map layer asset referencing a TileSet and cell entries.
@@ -77,7 +80,7 @@ pub const MapLayerData = struct {
     height: u16, // Height in tiles (e.g. 32, 64)
     tileset: *const TileSet,
     entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
-    collision: ?[]const u8 = null, // Optional direct per-cell collision override grid
+    collision: ?[]const CollisionMask = null, // Optional direct per-cell collision override grid
 };
 
 /// Converts hal.display.BgSize to physics.MapSize.
@@ -100,6 +103,7 @@ pub const TileMapLayer = struct {
     scroll_x: i32 = 0,
     scroll_y: i32 = 0,
     priority: u2 = 1,
+    collision_mask: CollisionMask = Collision.ALL,
 
     /// Configures hardware registers and stages initial tiles/entries to VRAM.
     pub fn initHardware(self: *TileMapLayer) void {
@@ -157,28 +161,28 @@ pub const TileMapLayer = struct {
         }
     }
 
-    /// Constant-time collision lookup for world coordinates (in pixels).
-    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) u8 {
-        if (world_x < 0 or world_y < 0) return 0;
+    /// Constant-time collision lookup for world coordinates (in pixels), returning the 16-bit CollisionMask.
+    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) CollisionMask {
+        if (world_x < 0 or world_y < 0) return Collision.NONE;
         const tx = @as(usize, @intCast(world_x >> 3));
         const ty = @as(usize, @intCast(world_y >> 3));
-        if (tx >= self.data.width or ty >= self.data.height) return 0;
+        if (tx >= self.data.width or ty >= self.data.height) return Collision.NONE;
 
         const cell_idx = ty * @as(usize, self.data.width) + tx;
         if (self.data.collision) |coll| {
             if (cell_idx < coll.len) {
                 return coll[cell_idx];
             }
-            return 0;
+            return Collision.NONE;
         }
 
         if (cell_idx < self.data.entries.len) {
             const entry = self.data.entries[cell_idx];
-            if (entry.tile_index < self.data.tileset.collision_flags.len) {
-                return self.data.tileset.collision_flags[entry.tile_index];
+            if (entry.tile_index < self.data.tileset.collision_masks.len) {
+                return self.data.tileset.collision_masks[entry.tile_index];
             }
         }
-        return 0;
+        return Collision.NONE;
     }
 
     /// Adapts TileMapLayer to CollisionMap without dynamic memory allocations.
@@ -188,7 +192,7 @@ pub const TileMapLayer = struct {
                 const layer: *const TileMapLayer = @ptrCast(@alignCast(ctx.?));
                 const wx = @as(i32, tx) << 3;
                 const wy = @as(i32, ty) << 3;
-                return layer.getCollisionAt(wx, wy) != 0;
+                return (layer.getCollisionAt(wx, wy) & layer.collision_mask) != 0;
             }
         };
 
@@ -245,11 +249,11 @@ test "TLM001: ScreenEntry packed encoding and decoding" {
 test "TLM002: MapLayerData cell entry resolution and dimensions" {
     const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
     const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
-    const dummy_coll = [_]u8{ 0, 1, 2, 0 };
+    const dummy_coll = [_]CollisionMask{ 0, Collision.layer(0), Collision.layer(1), 0 };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
-        .collision_flags = &dummy_coll,
+        .collision_masks = &dummy_coll,
     };
 
     const entries = [_]ScreenEntry{
@@ -277,12 +281,12 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
 test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundary safety" {
     const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
     const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
-    // Tile 0: Passable (0), Tile 1: Solid (1), Tile 2: Hazard/Water (2)
-    const dummy_coll = [_]u8{ 0, 1, 2 };
+    // Tile 0: Passable (NONE), Tile 1: Solid (Layer 0), Tile 2: Hazard/Water (Layer 1)
+    const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(1) };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
-        .collision_flags = &dummy_coll,
+        .collision_masks = &dummy_coll,
     };
 
     // 4x4 Map:
@@ -317,35 +321,35 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
     try std.testing.expectEqual(@as(i32, 20), layer.scroll_y);
 
     // Coordinate tests (8px per tile):
-    // (0, 0) -> Tile (0, 0) -> Tile 0 -> collision 0
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(0, 0));
-    // (8, 0) -> Tile (1, 0) -> Tile 1 -> collision 1
-    try std.testing.expectEqual(@as(u8, 1), layer.getCollisionAt(8, 0));
-    // (12, 4) -> Tile (1, 0) -> Tile 1 -> collision 1 (sub-tile coordinate)
-    try std.testing.expectEqual(@as(u8, 1), layer.getCollisionAt(12, 4));
-    // (24, 0) -> Tile (3, 0) -> Tile 2 -> collision 2
-    try std.testing.expectEqual(@as(u8, 2), layer.getCollisionAt(24, 0));
-    // (0, 8) -> Tile (0, 1) -> Tile 1 -> collision 1
-    try std.testing.expectEqual(@as(u8, 1), layer.getCollisionAt(0, 8));
-    // (16, 16) -> Tile (2, 2) -> Tile 1 -> collision 1
-    try std.testing.expectEqual(@as(u8, 1), layer.getCollisionAt(16, 16));
+    // (0, 0) -> Tile (0, 0) -> Tile 0 -> NONE
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 0));
+    // (8, 0) -> Tile (1, 0) -> Tile 1 -> Layer 0
+    try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(8, 0));
+    // (12, 4) -> Tile (1, 0) -> Tile 1 -> Layer 0 (sub-tile coordinate)
+    try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(12, 4));
+    // (24, 0) -> Tile (3, 0) -> Tile 2 -> Layer 1
+    try std.testing.expectEqual(Collision.layer(1), layer.getCollisionAt(24, 0));
+    // (0, 8) -> Tile (0, 1) -> Tile 1 -> Layer 0
+    try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(0, 8));
+    // (16, 16) -> Tile (2, 2) -> Tile 1 -> Layer 0
+    try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(16, 16));
 
     // Out of bounds checks
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(-1, 0));
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(0, -1));
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(32, 0)); // 4 * 8 = 32 (out of bounds)
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(0, 32));
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(-1, 0));
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, -1));
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(32, 0)); // 4 * 8 = 32 (out of bounds)
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 32));
 }
 
 test "TLM004: TileMapLayer collision override grid takes precedence over TileSet flags" {
     const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
     const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
-    // TileSet says Tile 0 is passable (0), Tile 1 is solid (1)
-    const dummy_coll = [_]u8{ 0, 1 };
+    // TileSet says Tile 0 is passable (NONE), Tile 1 is solid (Layer 0)
+    const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0) };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
-        .collision_flags = &dummy_coll,
+        .collision_masks = &dummy_coll,
     };
 
     // 2x2 map where all tiles visually are Tile 0
@@ -354,10 +358,10 @@ test "TLM004: TileMapLayer collision override grid takes precedence over TileSet
         .{ .tile_index = 0 }, .{ .tile_index = 0 },
     };
 
-    // Explicit override grid marking (1, 0) as solid (1) and (1, 1) as ladder (3)
-    const collision_grid = [_]u8{
-        0, 1,
-        0, 3,
+    // Explicit override grid marking (1, 0) as solid (Layer 0) and (1, 1) as ladder (Layer 2)
+    const collision_grid = [_]CollisionMask{
+        Collision.NONE, Collision.layer(0),
+        Collision.NONE, Collision.layer(2),
     };
 
     const layer_data = MapLayerData{
@@ -376,27 +380,28 @@ test "TLM004: TileMapLayer collision override grid takes precedence over TileSet
         .data = &layer_data,
     };
 
-    // (0, 0) -> 0
-    try std.testing.expectEqual(@as(u8, 0), layer.getCollisionAt(0, 0));
-    // (8, 0) -> override says 1 (despite visual tile being Tile 0)
-    try std.testing.expectEqual(@as(u8, 1), layer.getCollisionAt(8, 0));
-    // (8, 8) -> override says 3
-    try std.testing.expectEqual(@as(u8, 3), layer.getCollisionAt(8, 8));
+    // (0, 0) -> NONE
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 0));
+    // (8, 0) -> override says Layer 0 (despite visual tile being Tile 0)
+    try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(8, 0));
+    // (8, 8) -> override says Layer 2
+    try std.testing.expectEqual(Collision.layer(2), layer.getCollisionAt(8, 8));
 }
 
 test "TLM005: TileMapLayer.asCollisionMap physics integration" {
     const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
     const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
-    const dummy_coll = [_]u8{ 0, 1 };
+    const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(2) };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
-        .collision_flags = &dummy_coll,
+        .collision_masks = &dummy_coll,
     };
 
-    // 32x32 tiles map with a wall at (2, 2)
+    // 32x32 tiles map with a wall at (2, 2) [Layer 0] and water at (4, 4) [Layer 2]
     var entries = [_]ScreenEntry{.{}} ** (32 * 32);
     entries[2 * 32 + 2] = .{ .tile_index = 1 }; // Tile 1 at (2, 2)
+    entries[4 * 32 + 4] = .{ .tile_index = 2 }; // Tile 2 at (4, 4)
 
     const layer_data = MapLayerData{
         .width = 32,
@@ -405,12 +410,13 @@ test "TLM005: TileMapLayer.asCollisionMap physics integration" {
         .entries = &entries,
     };
 
-    const layer = TileMapLayer{
+    var layer = TileMapLayer{
         .bg_id = .bg0,
         .charblock = 0,
         .screenblock = 0,
         .size = .size_32x32,
         .data = &layer_data,
+        .collision_mask = Collision.layer(0), // Only collide with solid walls
     };
 
     const coll_map = layer.asCollisionMap();
@@ -420,9 +426,17 @@ test "TLM005: TileMapLayer.asCollisionMap physics integration" {
     const box_clear = physics.AABB.fromInt(0, 0, 8, 8);
     try std.testing.expect(!coll_map.isColliding(box_clear));
 
-    // Box at (16, 16, 8, 8) -> hit tile (2, 2)
-    const box_hit = physics.AABB.fromInt(16, 16, 8, 8);
-    try std.testing.expect(coll_map.isColliding(box_hit));
+    // Box at (16, 16, 8, 8) -> hit tile (2, 2) which has Layer 0
+    const box_hit_wall = physics.AABB.fromInt(16, 16, 8, 8);
+    try std.testing.expect(coll_map.isColliding(box_hit_wall));
+
+    // Box at (32, 32, 8, 8) -> tile (4, 4) which has Layer 2 -> ignored by layer.collision_mask (Layer 0)
+    const box_water = physics.AABB.fromInt(32, 32, 8, 8);
+    try std.testing.expect(!coll_map.isColliding(box_water));
+
+    // Switch collision_mask to include Layer 2
+    layer.collision_mask = Collision.layer(0) | Collision.layer(2);
+    try std.testing.expect(coll_map.isColliding(box_water));
 }
 
 test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
