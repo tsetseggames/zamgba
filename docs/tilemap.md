@@ -100,13 +100,40 @@ pub const ScreenEntry = packed struct(u16) {
 };
 ```
 
-### 3.2 ROM TileSet Asset (`TileSet`)
+### 3.2 ROM TileSet Asset (`TileSet`, `TileData`, `Bgr555`)
 ```zig
+pub const Bgr555 = packed struct(u16) {
+    r: u5 = 0,
+    g: u5 = 0,
+    b: u5 = 0,
+    unused: u1 = 0,
+
+    pub inline fn raw(self: Bgr555) u16 {
+        return @bitCast(self);
+    }
+    pub inline fn fromRaw(val: u16) Bgr555 {
+        return @bitCast(val);
+    }
+};
+
+pub const Tile4bpp = [8]u32;  // 32 bytes (8x8 pixels at 4-bpp)
+pub const Tile8bpp = [16]u32; // 64 bytes (8x8 pixels at 8-bpp)
+
+pub const TileData = union(enum) {
+    bpp4: []const Tile4bpp,
+    bpp8: []const Tile8bpp,
+
+    pub fn tileCount(self: TileData) usize { ... }
+    pub fn byteSize(self: TileData) usize { ... }
+    pub fn wordCount(self: TileData) usize { ... }
+    pub fn rawPtr(self: TileData) [*]const u32 { ... }
+    pub fn is8bpp(self: TileData) bool { ... }
+};
+
 pub const TileSet = struct {
-    tiles_data: []const u32,       // 4-bpp / 8-bpp raw tile data (32-bit aligned for fast DMA)
-    palette: []const u16,         // RGB555 palette colors
+    tiles: TileData,              // Type-safe 4-bpp or 8-bpp tile array
+    palette: []const Bgr555,      // Type-safe 15-bit BGR palette colors
     collision_flags: []const u8,  // Collision type for each tile index
-    is_8bpp: bool = false,
 };
 ```
 

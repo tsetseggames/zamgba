@@ -6,12 +6,16 @@ pub const drawLine = line.drawLine;
 
 pub const color = @import("color.zig");
 pub const Color = color.Color;
+pub const Bgr555 = color.Bgr555;
 
 pub const vram_allocator = @import("vram_allocator.zig");
 pub const dma_queue = @import("dma_queue.zig");
 
 pub const tilemap = @import("tilemap.zig");
 pub const ScreenEntry = tilemap.ScreenEntry;
+pub const Tile4bpp = tilemap.Tile4bpp;
+pub const Tile8bpp = tilemap.Tile8bpp;
+pub const TileData = tilemap.TileData;
 pub const TileSet = tilemap.TileSet;
 pub const MapLayerData = tilemap.MapLayerData;
 pub const TileMapLayer = tilemap.TileMapLayer;

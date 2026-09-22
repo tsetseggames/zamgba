@@ -1,6 +1,10 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
 const physics = @import("../physics/physics.zig");
+const color = @import("color.zig");
+
+/// Re-export GBA hardware 15-bit Bgr555 representation.
+pub const Bgr555 = color.Bgr555;
 
 /// Hardware-aligned 16-bit packed Screen Entry for GBA Text Backgrounds.
 /// The definition is here: https://gbadev.net/tonc/regbg.html#sec-map
@@ -19,12 +23,52 @@ pub const ScreenEntry = packed struct(u16) {
     }
 };
 
+/// 4-bpp 8x8 Tile (32 bytes = 8 u32 words).
+pub const Tile4bpp = [8]u32;
+
+/// 8-bpp 8x8 Tile (64 bytes = 16 u32 words).
+pub const Tile8bpp = [16]u32;
+
+/// Tagged union representing typed tile graphics data in 4-bpp or 8-bpp format.
+pub const TileData = union(enum) {
+    bpp4: []const Tile4bpp,
+    bpp8: []const Tile8bpp,
+
+    pub fn tileCount(self: TileData) usize {
+        return switch (self) {
+            .bpp4 => |tiles| tiles.len,
+            .bpp8 => |tiles| tiles.len,
+        };
+    }
+
+    pub fn byteSize(self: TileData) usize {
+        return switch (self) {
+            .bpp4 => |tiles| tiles.len * @sizeOf(Tile4bpp),
+            .bpp8 => |tiles| tiles.len * @sizeOf(Tile8bpp),
+        };
+    }
+
+    pub fn wordCount(self: TileData) usize {
+        return self.byteSize() / @sizeOf(u32);
+    }
+
+    pub fn rawPtr(self: TileData) [*]const u32 {
+        return switch (self) {
+            .bpp4 => |tiles| @ptrCast(tiles.ptr),
+            .bpp8 => |tiles| @ptrCast(tiles.ptr),
+        };
+    }
+
+    pub fn is8bpp(self: TileData) bool {
+        return self == .bpp8;
+    }
+};
+
 /// ROM-baked static TileSet asset containing graphics, palette, and tile collision lookup.
 pub const TileSet = struct {
-    tiles_data: []const u32,
-    palette: []const u16,
+    tiles: TileData,
+    palette: []const Bgr555,
     collision_flags: []const u8,
-    is_8bpp: bool = false,
 };
 
 /// ROM-baked static map layer asset referencing a TileSet and cell entries.
@@ -64,7 +108,7 @@ pub const TileMapLayer = struct {
                 .priority = self.priority,
                 .charblock = self.charblock,
                 .screenblock = self.screenblock,
-                .is_8bpp = self.data.tileset.is_8bpp,
+                .is_8bpp = self.data.tileset.tiles.is8bpp(),
                 .size = self.size,
             });
             hal.display.enableBgLayer(self.bg_id);
@@ -74,15 +118,18 @@ pub const TileMapLayer = struct {
             const pal = self.data.tileset.palette;
             for (pal, 0..) |col, i| {
                 if (i >= hal.specs.MemorySections.PALRAM_SIZE_BYTES / @sizeOf(u16)) break;
-                hal.specs.MemorySections.PALRAM[i] = col;
+                hal.specs.MemorySections.PALRAM[i] = col.raw();
             }
 
             // Copy tileset graphics data (32-bit words) to designated Charblock
             const cbb_ptr: [*]volatile u32 = @ptrCast(@alignCast(hal.specs.MemorySections.VRAM + (@as(usize, self.charblock) * hal.specs.MemorySections.CHARBLOCK_SIZE_WORDS)));
-            const tiles = self.data.tileset.tiles_data;
-            for (tiles, 0..) |word, i| {
-                if (i >= hal.specs.MemorySections.CHARBLOCK_SIZE_BYTES / @sizeOf(u32)) break;
-                cbb_ptr[i] = word;
+            const words_to_copy = @min(
+                self.data.tileset.tiles.wordCount(),
+                hal.specs.MemorySections.CHARBLOCK_SIZE_BYTES / @sizeOf(u32),
+            );
+            const tiles_raw = self.data.tileset.tiles.rawPtr();
+            for (0..words_to_copy) |i| {
+                cbb_ptr[i] = tiles_raw[i];
             }
 
             // Copy screenblock entries to designated Screenblock
@@ -196,11 +243,11 @@ test "TLM001: ScreenEntry packed encoding and decoding" {
 }
 
 test "TLM002: MapLayerData cell entry resolution and dimensions" {
-    const dummy_tiles = [_]u32{0} ** 8;
-    const dummy_pal = [_]u16{0} ** 16;
+    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
+    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
     const dummy_coll = [_]u8{ 0, 1, 2, 0 };
     const tileset = TileSet{
-        .tiles_data = &dummy_tiles,
+        .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
         .collision_flags = &dummy_coll,
     };
@@ -228,12 +275,12 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
 }
 
 test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundary safety" {
-    const dummy_tiles = [_]u32{0} ** 8;
-    const dummy_pal = [_]u16{0} ** 16;
+    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
+    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
     // Tile 0: Passable (0), Tile 1: Solid (1), Tile 2: Hazard/Water (2)
     const dummy_coll = [_]u8{ 0, 1, 2 };
     const tileset = TileSet{
-        .tiles_data = &dummy_tiles,
+        .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
         .collision_flags = &dummy_coll,
     };
@@ -291,12 +338,12 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
 }
 
 test "TLM004: TileMapLayer collision override grid takes precedence over TileSet flags" {
-    const dummy_tiles = [_]u32{0} ** 8;
-    const dummy_pal = [_]u16{0} ** 16;
+    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
+    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
     // TileSet says Tile 0 is passable (0), Tile 1 is solid (1)
     const dummy_coll = [_]u8{ 0, 1 };
     const tileset = TileSet{
-        .tiles_data = &dummy_tiles,
+        .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
         .collision_flags = &dummy_coll,
     };
@@ -338,11 +385,11 @@ test "TLM004: TileMapLayer collision override grid takes precedence over TileSet
 }
 
 test "TLM005: TileMapLayer.asCollisionMap physics integration" {
-    const dummy_tiles = [_]u32{0} ** 8;
-    const dummy_pal = [_]u16{0} ** 16;
+    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
+    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
     const dummy_coll = [_]u8{ 0, 1 };
     const tileset = TileSet{
-        .tiles_data = &dummy_tiles,
+        .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
         .collision_flags = &dummy_coll,
     };
@@ -376,4 +423,30 @@ test "TLM005: TileMapLayer.asCollisionMap physics integration" {
     // Box at (16, 16, 8, 8) -> hit tile (2, 2)
     const box_hit = physics.AABB.fromInt(16, 16, 8, 8);
     try std.testing.expect(coll_map.isColliding(box_hit));
+}
+
+test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
+    // 1. Tile4bpp and Tile8bpp size guarantees
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(Tile4bpp));
+    try std.testing.expectEqual(@as(usize, 64), @sizeOf(Tile8bpp));
+
+    // 2. TileData tagged union operations
+    const tiles_4bpp = [_]Tile4bpp{
+        [_]u32{0} ** 8,
+        [_]u32{0x11111111} ** 8,
+    };
+    const data_4bpp = TileData{ .bpp4 = &tiles_4bpp };
+    try std.testing.expect(!data_4bpp.is8bpp());
+    try std.testing.expectEqual(@as(usize, 2), data_4bpp.tileCount());
+    try std.testing.expectEqual(@as(usize, 64), data_4bpp.byteSize());
+    try std.testing.expectEqual(@as(usize, 16), data_4bpp.wordCount());
+
+    const tiles_8bpp = [_]Tile8bpp{
+        [_]u32{0} ** 16,
+    };
+    const data_8bpp = TileData{ .bpp8 = &tiles_8bpp };
+    try std.testing.expect(data_8bpp.is8bpp());
+    try std.testing.expectEqual(@as(usize, 1), data_8bpp.tileCount());
+    try std.testing.expectEqual(@as(usize, 64), data_8bpp.byteSize());
+    try std.testing.expectEqual(@as(usize, 16), data_8bpp.wordCount());
 }
