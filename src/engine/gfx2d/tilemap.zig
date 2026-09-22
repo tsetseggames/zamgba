@@ -80,7 +80,6 @@ pub const MapLayerData = struct {
     height: u16, // Height in tiles (e.g. 32, 64)
     tileset: *const TileSet,
     entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
-    collision: ?[]const CollisionMask = null, // Optional direct per-cell collision override grid
 };
 
 /// Converts hal.display.BgSize to physics.MapSize.
@@ -169,13 +168,6 @@ pub const TileMapLayer = struct {
         if (tx >= self.data.width or ty >= self.data.height) return Collision.NONE;
 
         const cell_idx = ty * @as(usize, self.data.width) + tx;
-        if (self.data.collision) |coll| {
-            if (cell_idx < coll.len) {
-                return coll[cell_idx];
-            }
-            return Collision.NONE;
-        }
-
         if (cell_idx < self.data.entries.len) {
             const entry = self.data.entries[cell_idx];
             if (entry.tile_index < self.data.tileset.collision_masks.len) {
@@ -341,35 +333,28 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
     try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 32));
 }
 
-test "TLM004: TileMapLayer collision override grid takes precedence over TileSet flags" {
+test "TLM004: TileMapLayer collision handling with empty or partial TileSet collision masks" {
     const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
     const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
-    // TileSet says Tile 0 is passable (NONE), Tile 1 is solid (Layer 0)
-    const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0) };
-    const tileset = TileSet{
+    // TileSet provides collision mask only for Tile 0 (NONE) and Tile 1 (Layer 0)
+    const partial_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0) };
+    const tileset_partial = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
         .palette = &dummy_pal,
-        .collision_masks = &dummy_coll,
+        .collision_masks = &partial_coll,
     };
 
-    // 2x2 map where all tiles visually are Tile 0
+    // 2x2 map referencing Tile 0, Tile 1, Tile 2 (out of collision_masks bounds), Tile 3
     const entries = [_]ScreenEntry{
-        .{ .tile_index = 0 }, .{ .tile_index = 0 },
-        .{ .tile_index = 0 }, .{ .tile_index = 0 },
-    };
-
-    // Explicit override grid marking (1, 0) as solid (Layer 0) and (1, 1) as ladder (Layer 2)
-    const collision_grid = [_]CollisionMask{
-        Collision.NONE, Collision.layer(0),
-        Collision.NONE, Collision.layer(2),
+        .{ .tile_index = 0 }, .{ .tile_index = 1 },
+        .{ .tile_index = 2 }, .{ .tile_index = 3 },
     };
 
     const layer_data = MapLayerData{
         .width = 2,
         .height = 2,
-        .tileset = &tileset,
+        .tileset = &tileset_partial,
         .entries = &entries,
-        .collision = &collision_grid,
     };
 
     const layer = TileMapLayer{
@@ -380,12 +365,35 @@ test "TLM004: TileMapLayer collision override grid takes precedence over TileSet
         .data = &layer_data,
     };
 
-    // (0, 0) -> NONE
+    // (0, 0) -> Tile 0 -> NONE
     try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 0));
-    // (8, 0) -> override says Layer 0 (despite visual tile being Tile 0)
+    // (8, 0) -> Tile 1 -> Layer 0
     try std.testing.expectEqual(Collision.layer(0), layer.getCollisionAt(8, 0));
-    // (8, 8) -> override says Layer 2
-    try std.testing.expectEqual(Collision.layer(2), layer.getCollisionAt(8, 8));
+    // (0, 8) -> Tile 2 (beyond collision_masks slice) -> safely falls back to NONE
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(0, 8));
+    // (8, 8) -> Tile 3 (beyond collision_masks slice) -> safely falls back to NONE
+    try std.testing.expectEqual(Collision.NONE, layer.getCollisionAt(8, 8));
+
+    // Test with completely empty collision_masks
+    const tileset_empty = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles },
+        .palette = &dummy_pal,
+        .collision_masks = &.{},
+    };
+    const layer_data_empty = MapLayerData{
+        .width = 2,
+        .height = 2,
+        .tileset = &tileset_empty,
+        .entries = &entries,
+    };
+    const layer_empty = TileMapLayer{
+        .bg_id = .bg0,
+        .charblock = 0,
+        .screenblock = 4,
+        .size = .size_32x32,
+        .data = &layer_data_empty,
+    };
+    try std.testing.expectEqual(Collision.NONE, layer_empty.getCollisionAt(8, 0));
 }
 
 test "TLM005: TileMapLayer.asCollisionMap physics integration" {

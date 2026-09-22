@@ -131,9 +131,9 @@ pub const TileData = union(enum) {
 };
 
 pub const TileSet = struct {
-    tiles: TileData,              // Type-safe 4-bpp or 8-bpp tile array
-    palette: []const Bgr555,      // Type-safe 15-bit BGR palette colors
-    collision_flags: []const u8,  // Collision type for each tile index
+    tiles: TileData,                        // Type-safe 4-bpp or 8-bpp tile array
+    palette: []const Bgr555,                // Type-safe 15-bit BGR palette colors
+    collision_masks: []const CollisionMask, // 16-bit collision layer mask for each tile index
 };
 ```
 
@@ -144,7 +144,6 @@ pub const MapLayerData = struct {
     height: u16,                  // Height in tiles (e.g. 32, 32, 100)
     tileset: *const TileSet,      // Reference to the shared TileSet
     entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
-    collision: ?[]const u8 = null,// Optional direct per-cell collision override grid
 };
 ```
 
@@ -159,6 +158,7 @@ pub const TileMapLayer = struct {
     scroll_x: i32 = 0,
     scroll_y: i32 = 0,
     priority: u2 = 1,
+    collision_mask: CollisionMask = Collision.ALL,
 
     /// Uploads tileset and screenblock entries to VRAM via DMA and configures REG_BGxCNT
     pub fn initHardware(self: *TileMapLayer) void { ... }
@@ -167,25 +167,24 @@ pub const TileMapLayer = struct {
     pub fn setScroll(self: *TileMapLayer, x: i32, y: i32) void {
         self.scroll_x = x;
         self.scroll_y = y;
-        hal.display.setBgScroll(self.bg_id, @intCast(x & 0x1FF), @intCast(y & 0x1FF));
+        hal.display.setBgScroll(self.bg_id, @truncate(@as(u32, @bitCast(x))), @truncate(@as(u32, @bitCast(y))));
     }
 
-    /// O(1) constant-time collision lookup for world coordinates
-    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) u8 {
-        if (world_x < 0 or world_y < 0) return 0;
+    /// O(1) constant-time collision lookup for world coordinates, returning 16-bit CollisionMask
+    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) CollisionMask {
+        if (world_x < 0 or world_y < 0) return Collision.NONE;
         const tx = @as(usize, @intCast(world_x >> 3));
         const ty = @as(usize, @intCast(world_y >> 3));
-        if (tx >= self.data.width or ty >= self.data.height) return 0;
+        if (tx >= self.data.width or ty >= self.data.height) return Collision.NONE;
 
-        // Check per-cell collision override first, or fallback to TileSet lookup
-        if (self.data.collision) |coll| {
-            return coll[ty * self.data.width + tx];
+        const cell_idx = ty * @as(usize, self.data.width) + tx;
+        if (cell_idx < self.data.entries.len) {
+            const entry = self.data.entries[cell_idx];
+            if (entry.tile_index < self.data.tileset.collision_masks.len) {
+                return self.data.tileset.collision_masks[entry.tile_index];
+            }
         }
-        const entry = self.data.entries[ty * self.data.width + tx];
-        if (entry.tile_index < self.data.tileset.collision_flags.len) {
-            return self.data.tileset.collision_flags[entry.tile_index];
-        }
-        return 0;
+        return Collision.NONE;
     }
 };
 ```
@@ -206,7 +205,9 @@ pub fn asCollisionMap(layer: *const TileMapLayer) physics.CollisionMap {
         struct {
             fn isTileSolid(ctx: ?*const anyopaque, tx: u16, ty: u16) bool {
                 const self: *const TileMapLayer = @ptrCast(@alignCast(ctx.?));
-                return self.getCollisionAt(@as(i32, tx) << 3, @as(i32, ty) << 3) != 0;
+                const wx = @as(i32, tx) << 3;
+                const wy = @as(i32, ty) << 3;
+                return (self.getCollisionAt(wx, wy) & self.collision_mask) != 0;
             }
         }.isTileSolid,
         .solid,
@@ -214,6 +215,27 @@ pub fn asCollisionMap(layer: *const TileMapLayer) physics.CollisionMap {
 }
 ```
 This enables unified physics execution: `sprite.moveAndCollide(layer.asCollisionMap())` works seamlessly out of the box with fixed-point `Fixed24_8` precision and 1-cycle collision masks (`CollisionMask`).
+
+### 4.2 Collision Definition Architecture: TileSet vs. Map Grid Decision Analysis
+
+During the design of the collision model, two architectural paradigms were evaluated:
+
+1. **Map-Grid Collision (Per-Cell Override Array on `MapLayerData`)**:
+   - Every cell in the map has an independent collision mask entry (e.g. `[]const CollisionMask` of size `width * height`).
+2. **TileSet-Bound Collision (`TileSet.collision_masks`)**:
+   - Collision masks are bound directly to `tile_index` inside the `TileSet`.
+
+#### Architectural Comparison Matrix
+
+| Evaluation Metric | Map-Grid Override Array | TileSet-Bound Collision Mask (`zamgba` Choice) |
+| :--- | :--- | :--- |
+| **ROM Memory Footprint** | **Severe (~16 KB per 128×64 layer)**: Storing a separate 16-bit mask per cell on large stages rapidly exhausts cartridge ROM. | **Minimal (~256–512 B per TileSet)**: An array of 128~256 entries is shared across all map layers referencing the tileset (64x reduction). |
+| **Ambiguity & Fallback Hazard** | **High**: Dual-source collision introduces subtle bugs when a developer defines masks on tilesets but forgets map grid entries (or vice versa). | **Zero**: Single source of truth. Every tile index deterministically maps to its collision attributes. |
+| **GBA Palette-Bank Synergy** | **Irrelevant**: Ignores GBA's hardware strength of reusing tile bitmaps with different palette banks. | **Optimal**: Different visual variants (e.g. lit wall vs shadow wall) can share the same tile index + collision mask via `palette_bank`, or use a separate visual tile if passable. |
+| **Passable Clones / Secret Passages** | Handled by overriding specific grid cells. | Handled cleanly by allocating a dedicated passable tile clone in the tileset (at merely 32 bytes for a 4-bpp tile) without burdening the entire map with a 16 KB grid table. |
+
+**Final Architectural Decision**:
+Collision is **strictly bound to `TileSet.collision_masks`**. `MapLayerData` does not store redundant per-cell collision arrays. The build tool (`zurag`) extracts collision classifications directly into the static ROM `TileSet` asset.
 
 ### 4.2 VRAM Streaming & DMA Queue Integration (`docs/tile_loading.md`)
 * **Tile Data Loading**:
