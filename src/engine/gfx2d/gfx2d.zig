@@ -10,6 +10,13 @@ pub const Color = color.Color;
 pub const vram_allocator = @import("vram_allocator.zig");
 pub const dma_queue = @import("dma_queue.zig");
 
+pub const tilemap = @import("tilemap.zig");
+pub const ScreenEntry = tilemap.ScreenEntry;
+pub const TileSet = tilemap.TileSet;
+pub const MapLayerData = tilemap.MapLayerData;
+pub const TileMapLayer = tilemap.TileMapLayer;
+pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
+
 pub const tile = @import("tile.zig");
 pub const StaticTile = tile.StaticTile;
 pub const AnimatedTiles = tile.AnimatedTiles;
@@ -25,4 +32,5 @@ test {
     _ = tile;
     _ = vram_allocator;
     _ = dma_queue;
+    _ = tilemap;
 }

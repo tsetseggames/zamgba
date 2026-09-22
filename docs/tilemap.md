@@ -116,7 +116,7 @@ pub const MapLayerData = struct {
     width: u16,                   // Width in tiles (e.g. 32, 64, 200)
     height: u16,                  // Height in tiles (e.g. 32, 32, 100)
     tileset: *const TileSet,      // Reference to the shared TileSet
-    entries: []const u16,         // Flattened 2D grid of ScreenEntry values (width * height)
+    entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
     collision: ?[]const u8 = null,// Optional direct per-cell collision override grid
 };
 ```
@@ -154,7 +154,7 @@ pub const TileMapLayer = struct {
         if (self.data.collision) |coll| {
             return coll[ty * self.data.width + tx];
         }
-        const entry = ScreenEntry.fromRaw(self.data.entries[ty * self.data.width + tx]);
+        const entry = self.data.entries[ty * self.data.width + tx];
         if (entry.tile_index < self.data.tileset.collision_flags.len) {
             return self.data.tileset.collision_flags[entry.tile_index];
         }
@@ -249,3 +249,35 @@ Generated Zig Code (ROM-baked, ready for TileMapLayer)
 ### Phase 3: Large Map Seam Streaming & Camera Viewport (v0.3.x / v0.4.0)
 1. Implement `Camera2D` entity managing viewport tracking, bounding bounds, and dead zones.
 2. Implement ring-buffer seam updater for maps exceeding 64×64 tiles, scheduling seam tile writes via `dma_queue`.
+
+---
+
+## 7. Future Extension: Affine Backgrounds & Mode 7 (v0.8.0)
+
+### 7.1 Hardware Differences: Text vs. Affine Backgrounds
+In GBA **Mode 1** (`BG0`, `BG1` Text + `BG2` Affine) and **Mode 2** (`BG2`, `BG3` Affine), the Picture Processing Unit (PPU) supports hardware matrix transformation (rotation, scaling, shear, and perspective distortion):
+
+| Property | Text Backgrounds (Mode 0) | Affine Backgrounds (Mode 1 / Mode 2) |
+| :--- | :--- | :--- |
+| **PPU Channels** | `BG0`, `BG1`, `BG2`, `BG3` | `BG2`, `BG3` only |
+| **Color Depth** | 4-bpp (16-color) or 8-bpp (256-color) | Strictly 8-bpp (256-color) only |
+| **Screen Entry Size** | 16-bit (`u16`) with tile index, flips, and bank | 8-bit (`u8`) raw tile index (0..255) only |
+| **Hardware Mirroring** | Hardware `h_flip` and `v_flip` bits | Not supported in hardware screen entries |
+| **Hardware Registers** | `REG_BGxHOFS`, `REG_BGxVOFS` (Offset only) | `REG_BGxPA`, `PB`, `PC`, `PD` (2x2 Matrix) + `REG_BGxX`, `Y` (28.8 Fixed-Point reference points) |
+| **Affine Sizes** | 32×32, 64×32, 32×64, 64×64 | 16×16 (128px), 32×32 (256px), 64×64 (512px), 128×128 (1024px) |
+
+### 7.2 Abstraction Hierarchy Evolution
+To keep the engine zero-overhead, orthogonal, and simple:
+1. **`TileMapLayer` Remains Strictly 2D Mode 0**: 
+   The core `TileMapLayer` will continue targeting standard text backgrounds with zero matrix math overhead.
+2. **`AffineTileMapLayer` for Transformed Planes**:
+   A dedicated `AffineTileMapLayer` will be introduced in milestone v0.8.0:
+   - Holds the 2x2 fixed-point transformation matrix (`Fixed8_8` `pa`, `pb`, `pc`, `pd`) and pivot coordinates (`dx`, `dy`).
+   - Supports 8-bit screen entries (`[]const u8`).
+   - Updates `REG_BGxPA..PD` and reference registers during VBlank.
+3. **`MapLayerData` Reusability**:
+   `MapLayerData` can represent affine layers via an `is_affine: bool = false` flag or an 8-bit entry slice variation, sharing the same `TileSet` palette and graphics definitions.
+4. **`Camera2D` vs. `Camera3D`**:
+   - `Camera2D`: Manages 2D `(x, y)` scrolling, bounding box clamping, dead zones, and screen shake.
+   - `Camera3D`: A dedicated Mode 7 / Pseudo-3D camera that computes the transformation matrix (pitch, yaw, height/altitude, horizon line) and projectively maps 3D world coordinates onto the affine registers of `AffineTileMapLayer`.
+   - Keeping `Camera2D` and `Camera3D` distinct prevents 3D trigonometric code and matrix overhead from polluting pure 2D platformers and top-down games.

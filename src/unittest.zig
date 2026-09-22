@@ -5,6 +5,7 @@ test {
     _ = @import("engine/gfx2d/vram_allocator.zig");
     _ = @import("engine/gfx2d/dma_queue.zig");
     _ = @import("engine/gfx2d/tile.zig");
+    _ = @import("engine/gfx2d/tilemap.zig");
     _ = @import("engine/gfx2d/gfx2d.zig");
     _ = @import("engine/sprite.zig");
     _ = @import("engine/engine.zig");
