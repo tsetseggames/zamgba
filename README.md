@@ -75,6 +75,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 
 ### 1. Hardware Abstraction Layer (HAL) Demos
 *   **`mode3_lines`** (`demo/hal/mode3_lines.zig`): Demonstrates basic Mode 3 bitmap graphics. Renders three intersecting colored lines on a bitmap background using low-level, context-agnostic line-drawing algorithms.
+*   **`background_hal`** (`demo/hal/background_hal.zig`): Demonstrates low-level Mode 0 text tiled background setup and register-level scrolling. Manually populates palette memory (PALRAM), tile image graphics in Charblock 0, 32x32 screen entries in Screenblock 16, and updates `REG_BG0HOFS`/`REG_BG0VOFS` scroll registers interactively via D-Pad in VBlank.
 *   **`sprite_hal`** (`demo/hal/sprite_hal.zig`): Demonstrates direct, register-level sprite setup on the GBA. Manually populates palette memory (PALRAM) and sprite tile memory (VRAM), configures packed `ObjAttr` coordinates, and bounces a single white 8x8 block smoothly left-to-right inside a VBlank-synchronized loop.
 *   **`panic_demo`** (`demo/hal/panic_demo.zig`): Demonstrates bare-metal panic handling. Triggers `@panic`, disables interrupts, outputs formatted fatal diagnostic logs to mGBA's debug port, and sets a red backdrop visual indicator.
 
@@ -121,10 +122,10 @@ Enjoy!
   - [x] Color palettes conversion tool (`zurag`)
   - [x] Engine-level streaming sprite loader & VBlank DMA manager
 * **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
-  - [ ] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
-  - [ ] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
-  - [ ] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
-  - [ ] Integration of `TileMapLayer` with `CollisionMap` physics system
+  - [x] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
+  - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
+  - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
+  - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
   - [ ] Camera support for scrolling backgrounds and viewport tracking
   - [ ] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
