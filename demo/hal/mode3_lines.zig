@@ -32,7 +32,7 @@ export fn main() noreturn {
     // The example https://www.coranac.com/tonc/text/first.htm
 
     hal.display.setMode3();
-    hal.display.setBackground2();
+    hal.display.enableBgLayer(.bg2);
     hal.display.writeRegister();
 
     var ctx = hal.context.Mode3Context.init();

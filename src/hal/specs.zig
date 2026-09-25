@@ -47,6 +47,22 @@ pub const MemorySections = struct {
     pub const PAKROM = @as([*]u32, @ptrFromInt(0x08000000));
     pub const CARTROM = @as([*]volatile u32, @ptrFromInt(0x0E000000));
 
+    // Background Control Registers (0x04000008 - 0x0400000E)
+    pub const REG_BG0CNT = @as(*volatile u16, @ptrFromInt(0x04000008));
+    pub const REG_BG1CNT = @as(*volatile u16, @ptrFromInt(0x0400000A));
+    pub const REG_BG2CNT = @as(*volatile u16, @ptrFromInt(0x0400000C));
+    pub const REG_BG3CNT = @as(*volatile u16, @ptrFromInt(0x0400000E));
+
+    // Background Scroll Registers (0x04000010 - 0x0400001E)
+    pub const REG_BG0HOFS = @as(*volatile u16, @ptrFromInt(0x04000010));
+    pub const REG_BG0VOFS = @as(*volatile u16, @ptrFromInt(0x04000012));
+    pub const REG_BG1HOFS = @as(*volatile u16, @ptrFromInt(0x04000014));
+    pub const REG_BG1VOFS = @as(*volatile u16, @ptrFromInt(0x04000016));
+    pub const REG_BG2HOFS = @as(*volatile u16, @ptrFromInt(0x04000018));
+    pub const REG_BG2VOFS = @as(*volatile u16, @ptrFromInt(0x0400001A));
+    pub const REG_BG3HOFS = @as(*volatile u16, @ptrFromInt(0x0400001C));
+    pub const REG_BG3VOFS = @as(*volatile u16, @ptrFromInt(0x0400001E));
+
     // Direct pointers to OBJ sub-regions
     pub const OBJ_PALRAM = @as([*]volatile u16, @ptrFromInt(0x05000200));
     pub const OBJ_VRAM = @as([*]volatile u16, @ptrFromInt(0x06010000));
@@ -60,6 +76,14 @@ pub const MemorySections = struct {
     pub const OARAM_SIZE_BYTES = 1024;
     pub const PAKROM_SIZE_BYTES = 32 * 1024 * 1024;
     pub const CARTROM_SIZE_BYTES = 64 * 1024;
+
+    // Background Charblock (16KB) and Screenblock (2KB) VRAM allocations
+    pub const CHARBLOCK_SIZE_BYTES: usize = 16 * 1024;
+    pub const CHARBLOCK_SIZE_WORDS: usize = CHARBLOCK_SIZE_BYTES / 2; // 8192
+    pub const SCREENBLOCK_SIZE_BYTES: usize = 2 * 1024;
+    pub const SCREENBLOCK_SIZE_WORDS: usize = SCREENBLOCK_SIZE_BYTES / 2; // 1024
+    pub const TOTAL_CHARBLOCKS: usize = 4;
+    pub const TOTAL_SCREENBLOCKS: usize = 32;
 
     // OBJ VRAM Character Block 4 & 5 (0x06010000)
     pub const OBJ_VRAM_OFFSET_BYTES: usize = 64 * 1024;

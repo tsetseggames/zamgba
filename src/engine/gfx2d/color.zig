@@ -1,5 +1,41 @@
 const hal = @import("zamgba-hal");
 
+/// 15-bit packed BGR555 color value used directly by GBA hardware (PALRAM, VRAM).
+pub const Bgr555 = packed struct(u16) {
+    r: u5 = 0,
+    g: u5 = 0,
+    b: u5 = 0,
+    unused: u1 = 0,
+
+    pub inline fn raw(self: Bgr555) u16 {
+        return @bitCast(self);
+    }
+
+    pub inline fn fromRaw(val: u16) Bgr555 {
+        return @bitCast(val);
+    }
+
+    /// Converts 15-bit BGR555 color to 8-bit RGBA Color.
+    pub fn toColor(self: Bgr555) Color {
+        const r: u8 = self.r;
+        const g: u8 = self.g;
+        const b: u8 = self.b;
+        const r8: u8 = (r << 3) | (r >> 2);
+        const g8: u8 = (g << 3) | (g >> 2);
+        const b8: u8 = (b << 3) | (b >> 2);
+        return .{ .r = r8, .g = g8, .b = b8, .a = 255 };
+    }
+
+    /// Creates a Bgr555 value from an 8-bit RGBA Color.
+    pub fn fromColor(c: Color) Bgr555 {
+        return .{
+            .r = @truncate(c.r >> 3),
+            .g = @truncate(c.g >> 3),
+            .b = @truncate(c.b >> 3),
+        };
+    }
+};
+
 /// Engine-level 8-bit RGBA color representation.
 pub const Color = struct {
     r: u8,
@@ -67,4 +103,31 @@ test "CLR002: Color roundtrip fromBgr555 and toBgr555" {
     const original_bgr: u16 = 0x3E1F; // R=31, G=16, B=15
     const color = Color.fromBgr555(original_bgr);
     try std.testing.expectEqual(original_bgr, color.toBgr555());
+}
+
+test "CLR003: Bgr555 packed bitfield layout and color conversion" {
+    const std = @import("std");
+
+    // 1. Bitfield layout
+    const red = Bgr555{ .r = 31, .g = 0, .b = 0 };
+    try std.testing.expectEqual(@as(u16, 0x001F), red.raw());
+
+    const blue = Bgr555{ .r = 0, .g = 0, .b = 31 };
+    try std.testing.expectEqual(@as(u16, 0x7C00), blue.raw());
+
+    const restored = Bgr555.fromRaw(0x7C1F); // Magenta (R=31, G=0, B=31)
+    try std.testing.expectEqual(@as(u5, 31), restored.r);
+    try std.testing.expectEqual(@as(u5, 0), restored.g);
+    try std.testing.expectEqual(@as(u5, 31), restored.b);
+
+    // 2. Conversion to/from Color
+    const c = red.toColor();
+    try std.testing.expectEqual(@as(u8, 255), c.r);
+    try std.testing.expectEqual(@as(u8, 0), c.g);
+    try std.testing.expectEqual(@as(u8, 0), c.b);
+
+    const bgr = Bgr555.fromColor(c);
+    try std.testing.expectEqual(@as(u5, 31), bgr.r);
+    try std.testing.expectEqual(@as(u5, 0), bgr.g);
+    try std.testing.expectEqual(@as(u5, 0), bgr.b);
 }
