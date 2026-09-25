@@ -97,12 +97,32 @@ pub const CliArgs = struct {
     };
 
     pub fn parseCli(args: []const []const u8) ParseError!ParsedCli {
-        _ = args;
-        return error.Unimplemented;
+        if (args.len == 0) {
+            return error.MissingSubcommand;
+        }
+
+        const first_arg = args[0];
+        if (std.mem.eql(u8, first_arg, "-h") or std.mem.eql(u8, first_arg, "--help")) {
+            return .{ .global_help = {} };
+        }
+
+        const subcmd = Subcommand.fromString(first_arg) orelse return error.UnknownSubcommand;
+        const rest = args[1..];
+
+        switch (subcmd) {
+            .sprite => {
+                const sprite_args = try parseSprite(rest);
+                return .{ .sprite = sprite_args };
+            },
+            .tilemap => {
+                const tilemap_args = try parseTilemap(rest);
+                return .{ .tilemap = tilemap_args };
+            },
+        }
     }
 
-    fn parse(args: []const []const u8) ParseError!CliArgs {
-        var result = CliArgs{};
+    fn parseSprite(args: []const []const u8) ParseError!SpriteCliArgs {
+        var result = SpriteCliArgs{};
         var i: usize = 0;
 
         while (i < args.len) : (i += 1) {
@@ -129,6 +149,11 @@ pub const CliArgs = struct {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
                 result.output_path = args[i];
+            } else if (std.mem.eql(u8, arg, "--format")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                const fmt = SpriteFormat.fromString(args[i]) orelse return error.InvalidFormat;
+                result.format = fmt;
             } else if (std.mem.eql(u8, arg, "--bpp")) {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
@@ -153,6 +178,42 @@ pub const CliArgs = struct {
 
         return result;
     }
+
+    fn parseTilemap(args: []const []const u8) ParseError!TilemapCliArgs {
+        var result = TilemapCliArgs{};
+        var i: usize = 0;
+
+        while (i < args.len) : (i += 1) {
+            const arg = args[i];
+
+            if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+                result.show_help = true;
+                return result;
+            } else if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--input")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                result.input_path = args[i];
+            } else if (std.mem.eql(u8, arg, "-o") or std.mem.eql(u8, arg, "--output")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                result.output_path = args[i];
+            } else if (std.mem.eql(u8, arg, "--format")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                const fmt = TilemapFormat.fromString(args[i]) orelse return error.InvalidFormat;
+                result.format = fmt;
+            } else if (std.mem.eql(u8, arg, "--bpp")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                const mode = BppMode.fromString(args[i]) orelse return error.InvalidBppMode;
+                result.bpp = mode;
+            } else {
+                return error.UnknownFlag;
+            }
+        }
+
+        return result;
+    }
 };
 
 fn printUsage(io: std.Io, program_name: []const u8) void {
@@ -161,23 +222,54 @@ fn printUsage(io: std.Io, program_name: []const u8) void {
         \\zurag - GBA Sprite & Asset converter for Zamgba
         \\
         \\Usage:
-        \\  {s} --png <input.png> [--json <input.json>] [--output <output.zig>] [options]
+        \\  {s} <subcommand> [options]
         \\  {s} -h | --help
+        \\
+        \\Subcommands:
+        \\  sprite      Convert Indexed PNG + JSON metadata to GBA sprite code
+        \\  tilemap     Convert LDtk tilemap project to GBA tilemap code
+        \\
+        \\Use '{s} <subcommand> --help' for details on a specific subcommand.
+        \\
+    , .{ program_name, program_name, program_name }) catch return;
+    std.Io.File.writeStreamingAll(.stdout(), io, msg) catch {};
+}
+
+fn printSpriteUsage(io: std.Io, program_name: []const u8) void {
+    var buf: [2048]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf,
+        \\Usage:
+        \\  {s} sprite --png <input.png> [--json <input.json>] [options]
         \\
         \\Options:
         \\  -p, --png <path>        Path to input Indexed-color PNG sprite sheet (Required)
         \\  -j, --json <path>       Path to input Aseprite JSON frame metadata (Required unless --palette-only)
-        \\  -o, --output <path>     Optional path to output generated Zig file (default: stdout)
+        \\      --format <fmt>      Metadata format: aseprite (default: aseprite)
+        \\  -o, --output <path>     Path to output generated Zig file (default: stdout)
         \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
         \\  -c, --color-adjust      Enable full-range rounded RGB to GBA BGR555 scaling
         \\  -P, --palette-only      Extract palette data only (skips tiles, --json not required)
         \\  -N, --no-palette        Omit embedded palette in generated sprite (for external master palettes)
         \\  -h, --help              Display this help message and exit
         \\
-        \\Note:
-        \\  Options can be specified in any order.
+    , .{program_name}) catch return;
+    std.Io.File.writeStreamingAll(.stdout(), io, msg) catch {};
+}
+
+fn printTilemapUsage(io: std.Io, program_name: []const u8) void {
+    var buf: [2048]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf,
+        \\Usage:
+        \\  {s} tilemap --input <project.ldtk> [options]
         \\
-    , .{ program_name, program_name }) catch return;
+        \\Options:
+        \\  -i, --input <path>      Path to input LDtk project file (Required)
+        \\      --format <fmt>      Tilemap format: ldtk (default: ldtk)
+        \\  -o, --output <path>     Path to output generated Zig file (default: stdout)
+        \\      --bpp <mode>        Bits-per-pixel mode: 4, 8 (default: 4)
+        \\  -h, --help              Display this help message and exit
+        \\
+    , .{program_name}) catch return;
     std.Io.File.writeStreamingAll(.stdout(), io, msg) catch {};
 }
 
@@ -208,119 +300,148 @@ pub fn main(init: std.process.Init) !void {
     const program_name = if (args.len > 0) args[0] else "zurag";
     const cli_slice = if (args.len > 1) args[1..] else &[_][]const u8{};
 
-    const parsed_args = CliArgs.parse(cli_slice) catch |err| {
+    const parsed_cli = CliArgs.parseCli(cli_slice) catch |err| {
         switch (err) {
+            error.MissingSubcommand => {
+                std.debug.print("Error: missing subcommand (expected 'sprite' or 'tilemap').\n\n", .{});
+                printUsage(init.io, program_name);
+            },
+            error.UnknownSubcommand => {
+                std.debug.print("Error: unknown subcommand or flag.\n\n", .{});
+                printUsage(init.io, program_name);
+            },
             error.UnknownFlag => {
                 std.debug.print("Error: unknown command-line option.\n\n", .{});
             },
             error.MissingValue => {
                 std.debug.print("Error: option requires a value.\n\n", .{});
             },
+            error.InvalidFormat => {
+                std.debug.print("Error: invalid --format option.\n\n", .{});
+            },
             error.InvalidBppMode => {
-                std.debug.print("Error: invalid --bpp mode. Expected '4', '4x16', '8', or 'auto'.\n\n", .{});
+                std.debug.print("Error: invalid --bpp mode.\n\n", .{});
             },
             error.ConflictingPaletteOptions => {
                 std.debug.print("Error: --palette-only (-P) and --no-palette (-N) cannot be used together.\n\n", .{});
             },
             error.MissingRequiredArguments => {
-                std.debug.print("Error: missing required options (--png is always required, --json is required unless --palette-only is set).\n\n", .{});
+                std.debug.print("Error: missing required arguments.\n\n", .{});
             },
-        }
-        printUsage(init.io, program_name);
-        std.process.exit(1);
-    };
-
-    if (parsed_args.show_help) {
-        printUsage(init.io, program_name);
-        std.process.exit(0);
-    }
-
-    const input_png_path = parsed_args.png_path.?;
-    const input_json_path = parsed_args.json_path;
-    const output_zig_path = parsed_args.output_path;
-
-    // Step 1: Open and validate input.png
-    const png_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_png_path, allocator, .unlimited) catch |err| {
-        std.debug.print("Error: unable to read input image '{s}': {s}\n", .{ input_png_path, @errorName(err) });
-        std.process.exit(1);
-    };
-
-    _ = png.parseHeader(png_data) catch |err| {
-        switch (err) {
-            error.NotIndexedColor => {
-                std.debug.print("Error: '{s}' is not an indexed-color PNG.\nHint: in Aseprite, export using Sprite -> Color Mode -> Indexed.\n", .{input_png_path});
-            },
-            error.InvalidPngSignature, error.InvalidIhdrChunk, error.TruncatedHeader => {
-                std.debug.print("Error: '{s}' is not a valid PNG file.\n", .{input_png_path});
-            },
-            error.UnsupportedBitDepth => {
-                std.debug.print("Error: '{s}' has an unsupported bit depth.\n", .{input_png_path});
+            error.Unimplemented => {
+                std.debug.print("Error: requested feature is not yet implemented.\n\n", .{});
             },
         }
         std.process.exit(1);
     };
 
-    if (!parsed_args.palette_only) {
-        var img = png.decompressIndexedPixels(allocator, png_data) catch |err| {
-            std.debug.print("Error: failed to decompress image data '{s}': {s}\n", .{ input_png_path, @errorName(err) });
-            std.process.exit(1);
-        };
-        defer img.deinit();
+    switch (parsed_cli) {
+        .global_help => {
+            printUsage(init.io, program_name);
+            std.process.exit(0);
+        },
+        .tilemap => |tm_args| {
+            if (tm_args.show_help) {
+                printTilemapUsage(init.io, program_name);
+                std.process.exit(0);
+            }
+            std.debug.print("Tilemap subcommand is under construction.\n", .{});
+            std.process.exit(0);
+        },
+        .sprite => |sprite_args| {
+            if (sprite_args.show_help) {
+                printSpriteUsage(init.io, program_name);
+                std.process.exit(0);
+            }
 
-        // Step 2: Open and validate input.json
-        const json_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_json_path.?, allocator, .unlimited) catch |err| {
-            std.debug.print("Error: unable to read input JSON '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
-            std.process.exit(1);
-        };
+            const input_png_path = sprite_args.png_path.?;
+            const input_json_path = sprite_args.json_path;
+            const output_zig_path = sprite_args.output_path;
 
-        var meta = metadata.parseMetadata(allocator, json_data, .auto) catch |err| {
-            std.debug.print("Error: failed to parse JSON metadata '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
-            std.process.exit(1);
-        };
-        defer meta.deinit();
-
-        // Step 3: Generate Zig Source Code
-        const zig_source = codegen.generateZigSource(allocator, png_data, json_data, .{
-            .bpp = parsed_args.bpp,
-            .color_adjust = parsed_args.color_adjust,
-            .palette_only = parsed_args.palette_only,
-            .no_palette = parsed_args.no_palette,
-        }) catch |err| {
-            std.debug.print("Error: code generation failed: {s}\n", .{@errorName(err)});
-            std.process.exit(1);
-        };
-        defer allocator.free(zig_source);
-
-        // Step 4: Output to file or stdout
-        if (output_zig_path) |out_path| {
-            writeOutputFile(init.io, out_path, zig_source) catch |err| {
-                std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+            // Step 1: Open and validate input.png
+            const png_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_png_path, allocator, .unlimited) catch |err| {
+                std.debug.print("Error: unable to read input image '{s}': {s}\n", .{ input_png_path, @errorName(err) });
                 std.process.exit(1);
             };
-        } else {
-            std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
-        }
-    } else {
-        // Palette only mode code generation
-        const zig_source = codegen.generateZigSource(allocator, png_data, null, .{
-            .bpp = parsed_args.bpp,
-            .color_adjust = parsed_args.color_adjust,
-            .palette_only = true,
-            .no_palette = false,
-        }) catch |err| {
-            std.debug.print("Error: palette code generation failed: {s}\n", .{@errorName(err)});
-            std.process.exit(1);
-        };
-        defer allocator.free(zig_source);
 
-        if (output_zig_path) |out_path| {
-            writeOutputFile(init.io, out_path, zig_source) catch |err| {
-                std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+            _ = png.parseHeader(png_data) catch |err| {
+                switch (err) {
+                    error.NotIndexedColor => {
+                        std.debug.print("Error: '{s}' is not an indexed-color PNG.\nHint: in Aseprite, export using Sprite -> Color Mode -> Indexed.\n", .{input_png_path});
+                    },
+                    error.InvalidPngSignature, error.InvalidIhdrChunk, error.TruncatedHeader => {
+                        std.debug.print("Error: '{s}' is not a valid PNG file.\n", .{input_png_path});
+                    },
+                    error.UnsupportedBitDepth => {
+                        std.debug.print("Error: '{s}' has an unsupported bit depth.\n", .{input_png_path});
+                    },
+                }
                 std.process.exit(1);
             };
-        } else {
-            std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
-        }
+
+            if (!sprite_args.palette_only) {
+                var img = png.decompressIndexedPixels(allocator, png_data) catch |err| {
+                    std.debug.print("Error: failed to decompress image data '{s}': {s}\n", .{ input_png_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+                defer img.deinit();
+
+                // Step 2: Open and validate input.json
+                const json_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_json_path.?, allocator, .unlimited) catch |err| {
+                    std.debug.print("Error: unable to read input JSON '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
+                    std.process.exit(1);
+                };
+
+                var meta = metadata.parseMetadata(allocator, json_data, .auto) catch |err| {
+                    std.debug.print("Error: failed to parse JSON metadata '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
+                    std.process.exit(1);
+                };
+                defer meta.deinit();
+
+                // Step 3: Generate Zig Source Code
+                const zig_source = codegen.generateZigSource(allocator, png_data, json_data, .{
+                    .bpp = sprite_args.bpp,
+                    .color_adjust = sprite_args.color_adjust,
+                    .palette_only = sprite_args.palette_only,
+                    .no_palette = sprite_args.no_palette,
+                }) catch |err| {
+                    std.debug.print("Error: code generation failed: {s}\n", .{@errorName(err)});
+                    std.process.exit(1);
+                };
+                defer allocator.free(zig_source);
+
+                // Step 4: Output to file or stdout
+                if (output_zig_path) |out_path| {
+                    writeOutputFile(init.io, out_path, zig_source) catch |err| {
+                        std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                        std.process.exit(1);
+                    };
+                } else {
+                    std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+                }
+            } else {
+                // Palette only mode code generation
+                const zig_source = codegen.generateZigSource(allocator, png_data, null, .{
+                    .bpp = sprite_args.bpp,
+                    .color_adjust = sprite_args.color_adjust,
+                    .palette_only = true,
+                    .no_palette = false,
+                }) catch |err| {
+                    std.debug.print("Error: palette code generation failed: {s}\n", .{@errorName(err)});
+                    std.process.exit(1);
+                };
+                defer allocator.free(zig_source);
+
+                if (output_zig_path) |out_path| {
+                    writeOutputFile(init.io, out_path, zig_source) catch |err| {
+                        std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                        std.process.exit(1);
+                    };
+                } else {
+                    std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+                }
+            }
+        },
     }
 }
 

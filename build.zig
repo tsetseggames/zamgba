@@ -152,6 +152,7 @@ pub fn build(b: *std.Build) void {
 
     // Build step: Automatically convert tsetseg flying broom asset to Zig
     const convert_broom_sprite = b.addRunArtifact(zurag_exe);
+    convert_broom_sprite.addArg("sprite");
     convert_broom_sprite.addArg("--png");
     convert_broom_sprite.addFileArg(b.path("assets/tsetseg-ride-on-broom-64x64-0001.png"));
     convert_broom_sprite.addArg("--json");
