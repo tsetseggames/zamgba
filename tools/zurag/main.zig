@@ -19,7 +19,62 @@ pub const BppMode = enum {
     }
 };
 
-const CliArgs = struct {
+pub const Subcommand = enum {
+    sprite,
+    tilemap,
+
+    pub fn fromString(str: []const u8) ?Subcommand {
+        if (std.mem.eql(u8, str, "sprite")) return .sprite;
+        if (std.mem.eql(u8, str, "tilemap")) return .tilemap;
+        return null;
+    }
+};
+
+pub const SpriteFormat = enum {
+    aseprite,
+
+    pub fn fromString(str: []const u8) ?SpriteFormat {
+        if (std.mem.eql(u8, str, "aseprite")) return .aseprite;
+        return null;
+    }
+};
+
+pub const TilemapFormat = enum {
+    ldtk,
+
+    pub fn fromString(str: []const u8) ?TilemapFormat {
+        if (std.mem.eql(u8, str, "ldtk")) return .ldtk;
+        return null;
+    }
+};
+
+pub const SpriteCliArgs = struct {
+    png_path: ?[]const u8 = null,
+    json_path: ?[]const u8 = null,
+    format: SpriteFormat = .aseprite,
+    output_path: ?[]const u8 = null,
+    bpp: BppMode = .auto,
+    palette_only: bool = false,
+    no_palette: bool = false,
+    color_adjust: bool = false,
+    show_help: bool = false,
+};
+
+pub const TilemapCliArgs = struct {
+    input_path: ?[]const u8 = null,
+    format: TilemapFormat = .ldtk,
+    output_path: ?[]const u8 = null,
+    bpp: BppMode = .bpp4,
+    show_help: bool = false,
+};
+
+pub const ParsedCli = union(enum) {
+    sprite: SpriteCliArgs,
+    tilemap: TilemapCliArgs,
+    global_help: void,
+};
+
+pub const CliArgs = struct {
     png_path: ?[]const u8 = null,
     json_path: ?[]const u8 = null,
     output_path: ?[]const u8 = null,
@@ -29,13 +84,22 @@ const CliArgs = struct {
     color_adjust: bool = false,
     show_help: bool = false,
 
-    const ParseError = error{
+    pub const ParseError = error{
         MissingValue,
         UnknownFlag,
+        UnknownSubcommand,
+        MissingSubcommand,
+        InvalidFormat,
         InvalidBppMode,
         MissingRequiredArguments,
         ConflictingPaletteOptions,
+        Unimplemented,
     };
+
+    pub fn parseCli(args: []const []const u8) ParseError!ParsedCli {
+        _ = args;
+        return error.Unimplemented;
+    }
 
     fn parse(args: []const []const u8) ParseError!CliArgs {
         var result = CliArgs{};
@@ -260,122 +324,92 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-test "CLI001: CliArgs parse in standard order with all options" {
-    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--output", "out.zig", "--bpp", "4" };
-    const parsed = try CliArgs.parse(&raw_args);
-    try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
-    try std.testing.expectEqualStrings("test.json", parsed.json_path.?);
-    try std.testing.expectEqualStrings("out.zig", parsed.output_path.?);
-    try std.testing.expectEqual(BppMode.bpp4, parsed.bpp);
-    try std.testing.expect(!parsed.palette_only);
-    try std.testing.expect(!parsed.show_help);
+test "CLI001: parseCli sprite default format and standard arguments" {
+    const raw_args = [_][]const u8{ "sprite", "--png", "test.png", "--json", "test.json", "--output", "out.zig", "--bpp", "4" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.sprite, std.meta.activeTag(parsed));
+    try std.testing.expectEqualStrings("test.png", parsed.sprite.png_path.?);
+    try std.testing.expectEqualStrings("test.json", parsed.sprite.json_path.?);
+    try std.testing.expectEqual(SpriteFormat.aseprite, parsed.sprite.format);
+    try std.testing.expectEqualStrings("out.zig", parsed.sprite.output_path.?);
+    try std.testing.expectEqual(BppMode.bpp4, parsed.sprite.bpp);
+    try std.testing.expect(!parsed.sprite.palette_only);
+    try std.testing.expect(!parsed.sprite.show_help);
 }
 
-test "CLI002: CliArgs parse --color-adjust flag" {
-    const raw_args_long = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--color-adjust" };
-    const parsed_long = try CliArgs.parse(&raw_args_long);
-    try std.testing.expect(parsed_long.color_adjust);
-
-    const raw_args_short = [_][]const u8{ "-p", "test.png", "-j", "test.json", "-c" };
-    const parsed_short = try CliArgs.parse(&raw_args_short);
-    try std.testing.expect(parsed_short.color_adjust);
-
-    const raw_args_default = [_][]const u8{ "--png", "test.png", "--json", "test.json" };
-    const parsed_default = try CliArgs.parse(&raw_args_default);
-    try std.testing.expect(!parsed_default.color_adjust);
+test "CLI002: parseCli sprite explicit --format aseprite flag" {
+    const raw_args = [_][]const u8{ "sprite", "-p", "test.png", "-j", "test.json", "--format", "aseprite" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.sprite, std.meta.activeTag(parsed));
+    try std.testing.expectEqual(SpriteFormat.aseprite, parsed.sprite.format);
 }
 
-test "CLI003: CliArgs default values" {
-    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json" };
-    const parsed = try CliArgs.parse(&raw_args);
-    try std.testing.expectEqualStrings("test.png", parsed.png_path.?);
-    try std.testing.expectEqualStrings("test.json", parsed.json_path.?);
-    try std.testing.expect(parsed.output_path == null);
-    try std.testing.expectEqual(BppMode.auto, parsed.bpp);
-    try std.testing.expect(!parsed.palette_only);
-    try std.testing.expect(!parsed.show_help);
+test "CLI003: parseCli sprite reject invalid --format" {
+    const raw_args = [_][]const u8{ "sprite", "-p", "test.png", "-j", "test.json", "--format", "unknown_fmt" };
+    try std.testing.expectError(error.InvalidFormat, CliArgs.parseCli(&raw_args));
 }
 
-test "CLI004: CliArgs parse --bpp modes" {
-    const modes = [_]struct { str: []const u8, expected: BppMode }{
-        .{ .str = "4", .expected = .bpp4 },
-        .{ .str = "4x16", .expected = .bpp4x16 },
-        .{ .str = "8", .expected = .bpp8 },
-        .{ .str = "auto", .expected = .auto },
-    };
-
-    for (modes) |m| {
-        const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--bpp", m.str };
-        const parsed = try CliArgs.parse(&raw_args);
-        try std.testing.expectEqual(m.expected, parsed.bpp);
-    }
+test "CLI004: parseCli sprite palette-only and optional flags" {
+    const raw_args = [_][]const u8{ "sprite", "-p", "palette.png", "-P", "--bpp", "4x16", "-o", "pal.zig", "-c" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.sprite, std.meta.activeTag(parsed));
+    try std.testing.expectEqualStrings("palette.png", parsed.sprite.png_path.?);
+    try std.testing.expect(parsed.sprite.json_path == null);
+    try std.testing.expect(parsed.sprite.palette_only);
+    try std.testing.expect(parsed.sprite.color_adjust);
+    try std.testing.expectEqual(BppMode.bpp4x16, parsed.sprite.bpp);
+    try std.testing.expectEqualStrings("pal.zig", parsed.sprite.output_path.?);
 }
 
-test "CLI005: CliArgs reject invalid --bpp value" {
-    const raw_args = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--bpp", "16" };
-    try std.testing.expectError(error.InvalidBppMode, CliArgs.parse(&raw_args));
+test "CLI005: parseCli sprite reject conflicting palette options" {
+    const conflicting_args = [_][]const u8{ "sprite", "-p", "hero.png", "-j", "hero.json", "-P", "-N" };
+    try std.testing.expectError(error.ConflictingPaletteOptions, CliArgs.parseCli(&conflicting_args));
 }
 
-test "CLI006: CliArgs parse --palette-only without --json" {
-    const raw_args = [_][]const u8{ "--png", "palette.png", "--palette-only", "--bpp", "4x16", "-o", "pal.zig" };
-    const parsed = try CliArgs.parse(&raw_args);
-    try std.testing.expectEqualStrings("palette.png", parsed.png_path.?);
-    try std.testing.expect(parsed.json_path == null);
-    try std.testing.expectEqualStrings("pal.zig", parsed.output_path.?);
-    try std.testing.expectEqual(BppMode.bpp4x16, parsed.bpp);
-    try std.testing.expect(parsed.palette_only);
+test "CLI006: parseCli tilemap default format (ldtk) and flags" {
+    const raw_args = [_][]const u8{ "tilemap", "--input", "level.ldtk", "--output", "level.zig", "--bpp", "4" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed));
+    try std.testing.expectEqualStrings("level.ldtk", parsed.tilemap.input_path.?);
+    try std.testing.expectEqual(TilemapFormat.ldtk, parsed.tilemap.format);
+    try std.testing.expectEqualStrings("level.zig", parsed.tilemap.output_path.?);
+    try std.testing.expectEqual(BppMode.bpp4, parsed.tilemap.bpp);
 }
 
-test "CLI007: CliArgs parse reordered with short flags" {
-    const raw_args = [_][]const u8{ "-P", "-o", "pal.zig", "-p", "sheet.png" };
-    const parsed = try CliArgs.parse(&raw_args);
-    try std.testing.expectEqualStrings("sheet.png", parsed.png_path.?);
-    try std.testing.expect(parsed.palette_only);
-    try std.testing.expectEqualStrings("pal.zig", parsed.output_path.?);
+test "CLI007: parseCli tilemap explicit --format ldtk" {
+    const raw_args = [_][]const u8{ "tilemap", "-i", "level.ldtk", "--format", "ldtk" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed));
+    try std.testing.expectEqual(TilemapFormat.ldtk, parsed.tilemap.format);
 }
 
-test "CLI008: CliArgs parse help flag" {
-    const raw_args_long = [_][]const u8{"--help"};
-    const parsed_long = try CliArgs.parse(&raw_args_long);
-    try std.testing.expect(parsed_long.show_help);
-
-    const raw_args_short = [_][]const u8{"-h"};
-    const parsed_short = try CliArgs.parse(&raw_args_short);
-    try std.testing.expect(parsed_short.show_help);
+test "CLI008: parseCli tilemap reject invalid --format" {
+    const raw_args = [_][]const u8{ "tilemap", "-i", "level.ldtk", "--format", "tiled" };
+    try std.testing.expectError(error.InvalidFormat, CliArgs.parseCli(&raw_args));
 }
 
-test "CLI009: CliArgs parse error conditions" {
-    // Missing required png
-    const no_png = [_][]const u8{ "--json", "test.json" };
-    try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&no_png));
+test "CLI009: parseCli reject missing or unknown subcommand" {
+    const no_subcmd = [_][]const u8{ "--png", "test.png" };
+    try std.testing.expectError(error.UnknownSubcommand, CliArgs.parseCli(&no_subcmd));
 
-    // Missing required json when not palette-only
-    const no_json = [_][]const u8{ "--png", "test.png" };
-    try std.testing.expectError(error.MissingRequiredArguments, CliArgs.parse(&no_json));
-
-    // Missing value
-    const missing_val = [_][]const u8{ "--png", "test.png", "--bpp" };
-    try std.testing.expectError(error.MissingValue, CliArgs.parse(&missing_val));
-
-    // Unknown flag
-    const unknown = [_][]const u8{ "--png", "test.png", "--json", "test.json", "--unknown" };
-    try std.testing.expectError(error.UnknownFlag, CliArgs.parse(&unknown));
+    const unknown_subcmd = [_][]const u8{ "audio", "bgm.mid" };
+    try std.testing.expectError(error.UnknownSubcommand, CliArgs.parseCli(&unknown_subcmd));
 }
 
-test "CLI010: CliArgs parse --no-palette and -N flag" {
-    const raw_args_long = [_][]const u8{ "--png", "hero.png", "--json", "hero.json", "--no-palette" };
-    const parsed_long = try CliArgs.parse(&raw_args_long);
-    try std.testing.expect(parsed_long.no_palette);
-    try std.testing.expect(!parsed_long.palette_only);
+test "CLI010: parseCli top-level and subcommand help flags" {
+    const global_help = [_][]const u8{"--help"};
+    const parsed_global = try CliArgs.parseCli(&global_help);
+    try std.testing.expectEqual(ParsedCli.global_help, std.meta.activeTag(parsed_global));
 
-    const raw_args_short = [_][]const u8{ "-p", "hero.png", "-j", "hero.json", "-N" };
-    const parsed_short = try CliArgs.parse(&raw_args_short);
-    try std.testing.expect(parsed_short.no_palette);
-}
+    const sprite_help = [_][]const u8{ "sprite", "--help" };
+    const parsed_sprite = try CliArgs.parseCli(&sprite_help);
+    try std.testing.expectEqual(ParsedCli.sprite, std.meta.activeTag(parsed_sprite));
+    try std.testing.expect(parsed_sprite.sprite.show_help);
 
-test "CLI011: CliArgs reject conflicting --palette-only and --no-palette" {
-    const conflicting_args = [_][]const u8{ "-p", "hero.png", "-j", "hero.json", "-P", "-N" };
-    try std.testing.expectError(error.ConflictingPaletteOptions, CliArgs.parse(&conflicting_args));
+    const tilemap_help = [_][]const u8{ "tilemap", "-h" };
+    const parsed_tilemap = try CliArgs.parseCli(&tilemap_help);
+    try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed_tilemap));
+    try std.testing.expect(parsed_tilemap.tilemap.show_help);
 }
 
 test {

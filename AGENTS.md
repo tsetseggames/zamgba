@@ -80,8 +80,10 @@ To successfully use Zamgba in an external/client project:
 
 Every new feature, tool, and algorithm implementation MUST strictly adhere to the following sequence:
 
+- **Strict Separation Rule**: Red Phase and Green Phase MUST NEVER be implemented in the same turn/round. The agent must pause and wait for explicit user confirmation after the Red Phase before writing any implementation code for the Green Phase.
+
 1. **Step 1: Interface & Test Definition (Red Phase)**
-   - First, define the public data structures, types, and stub functions (returning `error.Unimplemented`).
+   - First, define the public data structures, types, and stub functions (returning `error.Unimplemented` or stub values).
    - Write comprehensive unit tests that cover all edge cases, validations, and expected behaviors.
    - **Test Naming Convention**: All unit test blocks MUST follow the `[XXX000: description]` format (a 3-uppercase-letter module prefix + 3-digit sequential number + description):
      - `CLI001`: CLI argument parser tests (`tools/zurag/main.zig`)
@@ -95,11 +97,12 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
      - `CLR001`: Color representation and conversion tests (`src/engine/color.zig`)
      - `SPR001`: Engine sprite representation and OAM encoding tests (`src/engine/sprite.zig`)
      - `MAT001`, `ABB001`, `MAP001`, `LAY001`, `OVL001`: Physics sub-engine tests
+     - `LDT001`: LDtk JSON parser and tilemap converter tests (`tools/zurag/ldtk.zig`)
    - Run `zig build test` to prove that the new tests fail (Red state) without breaking existing tests.
-   - Present the design to the user for review and wait for explicit confirmation.
+   - Present the design and failing tests to the user for review and wait for explicit confirmation.
 
 2. **Step 2: Incremental Implementation (Green Phase)**
-   - Only after user confirmation, implement the concrete function logic one step at a time.
+   - Only after explicit user confirmation, implement the concrete function logic one step at a time.
    - Run `zig build test` to prove that the target unit tests transition from Red to Green.
 
 3. **Step 3: Refactoring & Review (Refactor Phase)**
