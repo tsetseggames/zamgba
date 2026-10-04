@@ -1,6 +1,6 @@
 const std = @import("std");
-pub const types = @import("metadata/types.zig");
-pub const aseprite = @import("metadata/aseprite.zig");
+pub const types = @import("sprite/types.zig");
+pub const aseprite = @import("sprite/aseprite.zig");
 
 // Re-export common domain types for consumers
 pub const Rect = types.Rect;

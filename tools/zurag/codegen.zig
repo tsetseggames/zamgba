@@ -1,7 +1,7 @@
 const std = @import("std");
 const png = @import("png.zig");
 const tile = @import("tile.zig");
-const metadata = @import("metadata.zig");
+const sprite = @import("sprite.zig");
 
 pub const CodegenOptions = struct {
     sprite_name: []const u8 = "sprite",
@@ -126,7 +126,7 @@ pub fn generateZigSource(
 
     // 3. Full Sprite Mode: Parse Metadata
     const json_content = json_bytes orelse return error.MetadataParseError;
-    var meta = metadata.parseMetadata(allocator, json_content, .auto) catch return error.MetadataParseError;
+    var meta = sprite.parseMetadata(allocator, json_content, .auto) catch return error.MetadataParseError;
     defer meta.deinit();
 
     if (meta.frames.len == 0) {

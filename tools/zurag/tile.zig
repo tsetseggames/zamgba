@@ -1,7 +1,7 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
 const png = @import("png.zig");
-const types = @import("metadata/types.zig");
+const types = @import("sprite/types.zig");
 const Rect = types.Rect;
 const BppMode = @import("main.zig").BppMode;
 

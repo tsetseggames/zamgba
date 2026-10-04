@@ -1,8 +1,9 @@
 const std = @import("std");
 const png = @import("png.zig");
 const tile = @import("tile.zig");
-pub const metadata = @import("metadata.zig");
+pub const sprite = @import("sprite.zig");
 pub const codegen = @import("codegen.zig");
+pub const tilemap = @import("tilemap.zig");
 
 pub const BppMode = enum {
     bpp4,
@@ -392,7 +393,7 @@ pub fn main(init: std.process.Init) !void {
                     std.process.exit(1);
                 };
 
-                var meta = metadata.parseMetadata(allocator, json_data, .auto) catch |err| {
+                var meta = sprite.parseMetadata(allocator, json_data, .auto) catch |err| {
                     std.debug.print("Error: failed to parse JSON metadata '{s}': {s}\n", .{ input_json_path.?, @errorName(err) });
                     std.process.exit(1);
                 };
@@ -534,9 +535,13 @@ test "CLI010: parseCli top-level and subcommand help flags" {
 }
 
 test {
+    _ = tilemap;
+}
+
+test {
     _ = png;
     _ = tile;
-    _ = metadata;
+    _ = sprite;
     _ = codegen;
     _ = @import("algo/paeth.zig");
     _ = @import("algo/unfilter.zig");
