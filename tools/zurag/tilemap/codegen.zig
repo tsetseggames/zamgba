@@ -44,13 +44,12 @@ fn writeSinglePalette(writer: *std.Io.Writer, name: []const u8, pal: []const u16
 }
 
 fn writeBankedPalettes(writer: *std.Io.Writer, banks: *const [16][16]u16) TilemapCodegenError!void {
-    writer.writeAll("pub const palettes = [16][16]u16{\n") catch return error.WriteError;
+    writer.writeAll("pub const palette: [256]u16 = [_]u16{\n") catch return error.WriteError;
     for (banks, 0..) |bank, b_idx| {
-        writer.print("    [_]u16{{ // Bank {}\n", .{b_idx}) catch return error.WriteError;
-        try writeColorArray(writer, &bank, "        ");
-        writer.writeAll("    },\n") catch return error.WriteError;
+        writer.print("    // Bank {}\n", .{b_idx}) catch return error.WriteError;
+        try writeColorArray(writer, &bank, "    ");
     }
-    writer.writeAll("};\n\npub const palette: [256]u16 = @bitCast(palettes);\n\n") catch return error.WriteError;
+    writer.writeAll("};\n\npub const palettes: *const [16][16]u16 = @ptrCast(&palette);\n\n") catch return error.WriteError;
 }
 
 fn writePaletteResult(writer: *std.Io.Writer, pal_res: png.PaletteResult) TilemapCodegenError!void {

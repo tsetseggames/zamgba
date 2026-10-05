@@ -88,7 +88,7 @@ GBA OBJ Palette RAM (`0x05000200`) provides 512 bytes for up to 256 colors. `zur
 
 ### B. 16-Bank 4-Bpp Mode (`--bpp 4x16`)
 * **Usage**: Allows a single 256-color master PNG to contain sprites belonging to 16 distinct 16-color palette banks (e.g., character color variations, different enemy types, UI).
-* **Palette**: Generates 16 banks of 16 colors (`[16][16]u16`) or a flat `[256]u16` table.
+* **Palette**: Generates a flat `pub const palette: [256]u16` table for simple DMA copies and a typed 2D alias `pub const palettes: *const [16][16]u16 = @ptrCast(&palette);` for bank indexing.
 * **Pixel Re-indexing**: Tile pixels are automatically folded via `pixel % 16` to 4-bit values.
 * **Bank Attribution**: The recommended OAM palette bank (`pixel / 16`) is recorded per animation frame.
 * **Validation**: Errors out if any individual sprite frame uses colors from multiple palette banks.
@@ -251,7 +251,10 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
   const enemy = @import("enemy.zig");
 
   // Load global 256-color palette once at scene startup via DMA
-  hal.dma.copy16(&master_pal.raw_palette, PALRAM_OBJ, 256);
+  hal.dma.copy16(&master_pal.palette, PALRAM_OBJ, 256);
+
+  // Or selectively update a specific bank using the typed alias:
+  // hal.dma.copy16(&master_pal.palettes[1], &PALRAM_OBJ[16], 16);
 
   // Render hero using Bank 0, enemy using Bank 1 (zero extra palette ROM overhead!)
   ```
