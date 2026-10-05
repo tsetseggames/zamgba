@@ -76,14 +76,16 @@ To successfully use Zamgba in an external/client project:
 
 ---
 
-## Strict Test-Driven Development (TDD) Workflow
+## Strict Test-Driven Development (TDD) & Review Workflow
 
-Every new feature, tool, and algorithm implementation MUST strictly adhere to the following sequence:
+Every new feature, tool, and algorithm implementation MUST strictly adhere to the following lifecycle:
 
-- **Strict Separation Rule**: Red Phase and Green Phase MUST NEVER be implemented in the same turn/round. The agent must pause and wait for explicit user confirmation after the Red Phase before writing any implementation code for the Green Phase.
+`TDD Red` -> `Commit` -> `Review` -> `Commit` -> `TDD Green` -> `Review` -> `Commit`
 
-1. **Step 1: Interface & Test Definition (Red Phase)**
-   - First, define the public data structures, types, and stub functions (returning `error.Unimplemented` or stub values).
+### Lifecycle Phases
+
+1. **Step 1: Interface & Test Definition (TDD Red Phase)**
+   - Define public data structures, types, and stub functions (returning `error.Unimplemented` or stub values).
    - Write comprehensive unit tests that cover all edge cases, validations, and expected behaviors.
    - **Test Naming Convention**: All unit test blocks MUST follow the `[XXX000: description]` format (a 3-uppercase-letter module prefix + 3-digit sequential number + description):
      - `CLI001`: CLI argument parser tests (`tools/zurag/main.zig`)
@@ -99,13 +101,33 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
      - `MAT001`, `ABB001`, `MAP001`, `LAY001`, `OVL001`: Physics sub-engine tests
      - `LDT001`: LDtk JSON parser and tilemap converter tests (`tools/zurag/ldtk.zig`)
    - Run `zig build test` to prove that the new tests fail (Red state) without breaking existing tests.
-   - Present the design and failing tests to the user for review and wait for explicit confirmation.
+   - Commit the Red state.
 
-2. **Step 2: Incremental Implementation (Green Phase)**
-   - Only after explicit user confirmation, implement the concrete function logic one step at a time.
-   - Run `zig build test` to prove that the target unit tests transition from Red to Green.
+2. **Step 2: Review Phase (Post-Red Review)**
+   - Follow the **Interactive Review Mode** rules below.
+   - Once the user confirms the review is complete, commit and push, then transition to TDD Green.
 
-3. **Step 3: Refactoring & Review (Refactor Phase)**
-   - Clean up magic numbers (replace with named constants).
-   - Enforce the Principle of Least Visibility (keep internal helpers, constants, and parser details private).
-   - Commit and push only after tests pass.
+3. **Step 3: Incremental Implementation (TDD Green Phase)**
+   - Implement the concrete function logic one step at a time.
+   - Run `zig build test` to verify that all target unit tests transition from Red to Green.
+   - Refactor: Clean up magic numbers (replace with named constants) and enforce the Principle of Least Visibility.
+
+4. **Step 4: Review Phase (Post-Green Review)**
+   - Follow the **Interactive Review Mode** rules below.
+   - Once the user confirms the review is complete, commit and push.
+
+---
+
+### Interactive Review Mode Rules
+
+During any Review Phase, the agent and developer operate under the following rules:
+
+1. **Q&A Driven Iteration**:
+   - The developer asks questions, requests explanations, or points out adjustments; the agent answers and modifies the codebase accordingly.
+2. **Preservation of Unit Tests**:
+   - Unit tests are the source of truth for behavioral correctness.
+   - Adding new unit tests during the review phase is permitted and encouraged.
+   - Existing unit tests must **never** be modified or deleted arbitrarily. Modifying an existing unit test is allowed only when the developer explicitly requests it. If in doubt, ask the developer for confirmation before making changes to tests.
+3. **Multi-round Review Cycles**:
+   - The review Q&A process may span multiple rounds.
+   - When the developer explicitly confirms that the current review round is finished, the agent must `commit` and `push` the changes, then transition into the next phase (e.g., TDD Green or the next feature task).

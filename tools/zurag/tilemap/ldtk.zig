@@ -13,19 +13,15 @@ pub const TilemapMetadata = types.TilemapMetadata;
 
 /// Detects whether the parsed JSON root object belongs to LDtk via `__header__` or `jsonVersion` signature.
 pub fn detectLdtk(root: std.json.ObjectMap) bool {
-    if (root.get("__header__")) |header_val| {
-        if (header_val == .object) {
-            if (header_val.object.get("app")) |app_val| {
-                if (app_val == .string and std.mem.indexOf(u8, app_val.string, "LDtk") != null) {
-                    return true;
-                }
-            }
-        }
-    }
-    if (root.get("jsonVersion")) |_| {
-        return true;
-    }
-    return false;
+    if (root.contains("jsonVersion")) return true;
+
+    const header_val = root.get("__header__") orelse return false;
+    if (header_val != .object) return false;
+
+    const app_val = header_val.object.get("app") orelse return false;
+    if (app_val != .string) return false;
+
+    return std.mem.indexOf(u8, app_val.string, "LDtk") != null;
 }
 
 fn getIntField(comptime T: type, obj: std.json.ObjectMap, key: []const u8) ?T {
