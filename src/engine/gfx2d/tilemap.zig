@@ -78,7 +78,7 @@ pub const TileSet = struct {
 pub const MapLayerData = struct {
     width: u16, // Width in tiles (e.g. 32, 64)
     height: u16, // Height in tiles (e.g. 32, 64)
-    tileset: *const TileSet,
+    tileset: ?*const TileSet = null,
     entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
 };
 
@@ -107,32 +107,35 @@ pub const TileMapLayer = struct {
     /// Configures hardware registers and stages initial tiles/entries to VRAM.
     pub fn initHardware(self: *TileMapLayer) void {
         if (hal.specs.is_gba_target) {
+            const is_8bpp = if (self.data.tileset) |ts| ts.tiles.is8bpp() else false;
             hal.display.setBgControl(self.bg_id, .{
                 .priority = self.priority,
                 .charblock = self.charblock,
                 .screenblock = self.screenblock,
-                .is_8bpp = self.data.tileset.tiles.is8bpp(),
+                .is_8bpp = is_8bpp,
                 .size = self.size,
             });
             hal.display.enableBgLayer(self.bg_id);
             hal.display.writeRegister();
 
-            // Copy palette data to PALRAM
-            const pal = self.data.tileset.palette;
-            for (pal, 0..) |col, i| {
-                if (i >= hal.specs.MemorySections.PALRAM_SIZE_BYTES / @sizeOf(u16)) break;
-                hal.specs.MemorySections.PALRAM[i] = col.raw();
-            }
+            if (self.data.tileset) |ts| {
+                // Copy palette data to PALRAM
+                const pal = ts.palette;
+                for (pal, 0..) |col, i| {
+                    if (i >= hal.specs.MemorySections.PALRAM_SIZE_BYTES / @sizeOf(u16)) break;
+                    hal.specs.MemorySections.PALRAM[i] = col.raw();
+                }
 
-            // Copy tileset graphics data (32-bit words) to designated Charblock
-            const cbb_ptr: [*]volatile u32 = @ptrCast(@alignCast(hal.specs.MemorySections.VRAM + (@as(usize, self.charblock) * hal.specs.MemorySections.CHARBLOCK_SIZE_WORDS)));
-            const words_to_copy = @min(
-                self.data.tileset.tiles.wordCount(),
-                hal.specs.MemorySections.CHARBLOCK_SIZE_BYTES / @sizeOf(u32),
-            );
-            const tiles_raw = self.data.tileset.tiles.rawPtr();
-            for (0..words_to_copy) |i| {
-                cbb_ptr[i] = tiles_raw[i];
+                // Copy tileset graphics data (32-bit words) to designated Charblock
+                const cbb_ptr: [*]volatile u32 = @ptrCast(@alignCast(hal.specs.MemorySections.VRAM + (@as(usize, self.charblock) * hal.specs.MemorySections.CHARBLOCK_SIZE_WORDS)));
+                const words_to_copy = @min(
+                    ts.tiles.wordCount(),
+                    hal.specs.MemorySections.CHARBLOCK_SIZE_BYTES / @sizeOf(u32),
+                );
+                const tiles_raw = ts.tiles.rawPtr();
+                for (0..words_to_copy) |i| {
+                    cbb_ptr[i] = tiles_raw[i];
+                }
             }
 
             // Copy screenblock entries to designated Screenblock
@@ -170,8 +173,10 @@ pub const TileMapLayer = struct {
         const cell_idx = ty * @as(usize, self.data.width) + tx;
         if (cell_idx < self.data.entries.len) {
             const entry = self.data.entries[cell_idx];
-            if (entry.tile_index < self.data.tileset.collision_masks.len) {
-                return self.data.tileset.collision_masks[entry.tile_index];
+            if (self.data.tileset) |ts| {
+                if (entry.tile_index < ts.collision_masks.len) {
+                    return ts.collision_masks[entry.tile_index];
+                }
             }
         }
         return Collision.NONE;

@@ -64,7 +64,9 @@ pub const TilemapCliArgs = struct {
     input_path: ?[]const u8 = null,
     format: TilemapFormat = .ldtk,
     output_path: ?[]const u8 = null,
-    bpp: BppMode = .bpp4,
+    bpp: BppMode = .auto,
+    color_adjust: bool = false,
+    no_palette: bool = false,
     show_help: bool = false,
 };
 
@@ -189,6 +191,10 @@ pub const CliArgs = struct {
             if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
                 result.show_help = true;
                 return result;
+            } else if (std.mem.eql(u8, arg, "-c") or std.mem.eql(u8, arg, "--color-adjust")) {
+                result.color_adjust = true;
+            } else if (std.mem.eql(u8, arg, "-N") or std.mem.eql(u8, arg, "--no-palette")) {
+                result.no_palette = true;
             } else if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--input")) {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
@@ -266,7 +272,9 @@ fn printTilemapUsage(io: std.Io, program_name: []const u8) void {
         \\  -i, --input <path>      Path to input LDtk project file (Required)
         \\      --format <fmt>      Tilemap format: ldtk (default: ldtk)
         \\  -o, --output <path>     Path to output generated Zig file (default: stdout)
-        \\      --bpp <mode>        Bits-per-pixel mode: 4, 8 (default: 4)
+        \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
+        \\  -c, --color-adjust      Enable full-range rounded RGB to GBA BGR555 scaling
+        \\  -N, --no-palette        Omit embedded palette in generated tilemap (for external master palettes)
         \\  -h, --help              Display this help message and exit
         \\
     , .{program_name}) catch return;
@@ -531,6 +539,18 @@ test "CLI010: parseCli top-level and subcommand help flags" {
     const parsed_tilemap = try CliArgs.parseCli(&tilemap_help);
     try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed_tilemap));
     try std.testing.expect(parsed_tilemap.tilemap.show_help);
+}
+
+test "CLI011: parseCli tilemap with --color-adjust, --no-palette, and --bpp 4x16" {
+    const raw_args = [_][]const u8{ "tilemap", "-i", "dungeon.ldtk", "-o", "dungeon.zig", "-c", "-N", "--bpp", "4x16" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed));
+    try std.testing.expectEqualStrings("dungeon.ldtk", parsed.tilemap.input_path.?);
+    try std.testing.expectEqualStrings("dungeon.zig", parsed.tilemap.output_path.?);
+    try std.testing.expect(parsed.tilemap.color_adjust);
+    try std.testing.expect(parsed.tilemap.no_palette);
+    try std.testing.expectEqual(BppMode.bpp4x16, parsed.tilemap.bpp);
+    try std.testing.expect(!parsed.tilemap.show_help);
 }
 
 test {

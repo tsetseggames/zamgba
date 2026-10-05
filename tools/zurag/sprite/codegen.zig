@@ -22,12 +22,13 @@ pub const CodegenError = error{
 
 /// Formats a flat slice of 16-bit GBA BGR555 colors as hex literals with 8 items per line.
 fn writeColorArray(writer: *std.Io.Writer, colors: []const u16, indent: []const u8) CodegenError!void {
+    const ITEMS_PER_LINE: usize = 8;
     for (colors, 0..) |col, i| {
-        if (i % 8 == 0) {
+        if (i % ITEMS_PER_LINE == 0) {
             writer.writeAll(indent) catch return error.WriteError;
         }
         writer.print("0x{X:0>4}, ", .{col}) catch return error.WriteError;
-        if (i % 8 == 7 or i == colors.len - 1) {
+        if (i % ITEMS_PER_LINE == (ITEMS_PER_LINE - 1) or i == colors.len - 1) {
             writer.writeAll("\n") catch return error.WriteError;
         }
     }
