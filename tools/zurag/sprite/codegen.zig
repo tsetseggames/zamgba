@@ -1,7 +1,7 @@
 const std = @import("std");
-const png = @import("png.zig");
-const tile = @import("tile.zig");
-const metadata = @import("metadata.zig");
+const png = @import("../png.zig");
+const tile = @import("../tile.zig");
+const sprite = @import("../sprite.zig");
 
 pub const CodegenOptions = struct {
     sprite_name: []const u8 = "sprite",
@@ -22,33 +22,33 @@ pub const CodegenError = error{
 
 /// Formats a flat slice of 16-bit GBA BGR555 colors as hex literals with 8 items per line.
 fn writeColorArray(writer: *std.Io.Writer, colors: []const u16, indent: []const u8) CodegenError!void {
+    const ITEMS_PER_LINE: usize = 8;
     for (colors, 0..) |col, i| {
-        if (i % 8 == 0) {
+        if (i % ITEMS_PER_LINE == 0) {
             writer.writeAll(indent) catch return error.WriteError;
         }
         writer.print("0x{X:0>4}, ", .{col}) catch return error.WriteError;
-        if (i % 8 == 7 or i == colors.len - 1) {
+        if (i % ITEMS_PER_LINE == (ITEMS_PER_LINE - 1) or i == colors.len - 1) {
             writer.writeAll("\n") catch return error.WriteError;
         }
     }
 }
 
-/// Emits a single 1D palette definition: `pub const <name> = [_]u16{ ... };`
+/// Emits a single 1D palette definition: `pub const <name>: [<len>]u16 = [_]u16{ ... };`
 fn writeSinglePalette(writer: *std.Io.Writer, name: []const u8, pal: []const u16) CodegenError!void {
-    writer.print("pub const {s} = [_]u16{{\n", .{name}) catch return error.WriteError;
+    writer.print("pub const {s}: [{}]u16 = [_]u16{{\n", .{ name, pal.len }) catch return error.WriteError;
     try writeColorArray(writer, pal, "    ");
     writer.writeAll("};\n") catch return error.WriteError;
 }
 
-/// Emits a 16-bank 2D palette definition: `pub const palettes = [16][16]u16{ ... };`
+/// Emits banked palette definitions: flat 1D `pub const palette: [256]u16` and 2D typed alias `pub const palettes: *const [16][16]u16 = @ptrCast(&palette);`
 fn writeBankedPalettes(writer: *std.Io.Writer, banks: *const [16][16]u16) CodegenError!void {
-    writer.writeAll("pub const palettes = [16][16]u16{\n") catch return error.WriteError;
+    writer.writeAll("pub const palette: [256]u16 = [_]u16{\n") catch return error.WriteError;
     for (banks, 0..) |bank, b_idx| {
-        writer.print("    [_]u16{{ // Bank {}\n", .{b_idx}) catch return error.WriteError;
-        try writeColorArray(writer, &bank, "        ");
-        writer.writeAll("    },\n") catch return error.WriteError;
+        writer.print("    // Bank {}\n", .{b_idx}) catch return error.WriteError;
+        try writeColorArray(writer, &bank, "    ");
     }
-    writer.writeAll("};\n\npub const raw_palette: [256]u16 = @bitCast(palettes);\n") catch return error.WriteError;
+    writer.writeAll("};\n\npub const palettes: *const [16][16]u16 = @ptrCast(&palette);\n") catch return error.WriteError;
 }
 
 /// Dispatches palette emission based on the PaletteResult variant.
@@ -126,7 +126,7 @@ pub fn generateZigSource(
 
     // 3. Full Sprite Mode: Parse Metadata
     const json_content = json_bytes orelse return error.MetadataParseError;
-    var meta = metadata.parseMetadata(allocator, json_content, .auto) catch return error.MetadataParseError;
+    var meta = sprite.parseMetadata(allocator, json_content, .auto) catch return error.MetadataParseError;
     defer meta.deinit();
 
     if (meta.frames.len == 0) {
@@ -231,10 +231,7 @@ pub fn generateZigSource(
     // ==========================================
     // Emit Unified SpriteSheet Descriptor
     // ==========================================
-    const pal_ptr_str = if (!options.no_palette) switch (pal_res) {
-        .bpp4x16 => "&raw_palette",
-        else => "&palette",
-    } else "null";
+    const pal_ptr_str = if (!options.no_palette) "&palette" else "null";
 
     writer.writeAll("pub const sheet: engine.SpriteSheet = .{\n") catch return error.WriteError;
     writer.writeAll("    .bpp = bpp_mode,\n") catch return error.WriteError;
@@ -263,7 +260,7 @@ test "GEN001: generateZigSource for palette-only mode" {
     });
     defer std.testing.allocator.free(out);
 
-    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette = [_]u16{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette: [16]u16 = [_]u16{") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "pub const frame_tiles") == null);
 }
 
@@ -292,7 +289,8 @@ test "GEN003: generateZigSource 4x16 banked mode syntax" {
     });
     defer std.testing.allocator.free(out);
 
-    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palettes = [16][16]u16{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette: [256]u16 = [_]u16{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palettes: *const [16][16]u16 = @ptrCast(&palette);") != null);
 }
 
 test "GEN004: generateZigSource error when missing json in full sprite mode" {

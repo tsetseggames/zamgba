@@ -3,8 +3,12 @@ const std = @import("std");
 /// 16-bit collision mask supporting up to 16 distinct collision layers (0 to 15).
 pub const CollisionMask = u16;
 
+/// Number of distinct collision layers supported by CollisionMask (bit width).
+pub const COLLISION_MASK_BITS: usize = @bitSizeOf(CollisionMask);
+
 /// Helper utilities and constants for 16-layer collision filtering.
 pub const Collision = struct {
+    pub const LAYER_COUNT: usize = COLLISION_MASK_BITS;
     pub const ALL: CollisionMask = 0xFFFF;
     pub const NONE: CollisionMask = 0x0000;
 

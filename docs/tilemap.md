@@ -284,7 +284,7 @@ Generated Zig Code (ROM-baked, ready for TileMapLayer)
    - Add `REG_BGxCNT` bitfield structures in `src/hal/display.zig` (Charblock, Screenblock, Priority, Size, 4bpp/8bpp).
    - Implement `setBgControl()`, `enableBgLayer()`, and `setBgScroll()`.
 2. **Engine Layer**:
-   - Implement `ScreenEntry`, `TileSet`, `MapLayerData`, and `TileMapLayer` in `src/engine/gfx2d/tilemap.zig`.
+   - Implement `ScreenEntry`, `TileSet`, `MapLayerData`, and `TileMapLayer` in `src/engine/tilemap.zig`.
    - Support standard hardware SBB sizes (`32x32`, `64x32`, `32x64`, `64x64`).
    - Implement `TileMapLayer.asCollisionMap()` bridge to integrate with `src/engine/physics/map.zig`.
 3. **Demo**:

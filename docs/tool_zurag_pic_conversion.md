@@ -17,26 +17,63 @@ GBA hardware requires image data to be structured in specific formats:
 
 ## 2. Command-Line Interface (CLI)
 
-### Syntax
+`zurag` uses a subcommand-based CLI architecture:
+* `zurag sprite`: Converts spritesheets and animation frame metadata into GBA sprite structs.
+* `zurag tilemap`: Converts 2D level maps and tilesets (e.g. LDtk projects) into GBA tilemap assets.
+
+### Global Syntax
 ```bash
-zurag --png <input.png> [--json <input.json>] [--output <output.zig>] [options]
+zurag <subcommand> [options]
 zurag -h | --help
 ```
 
-### Options
+---
+
+### 2.1 `zurag sprite` Subcommand
+
+Converts Indexed-color PNG sprite sheets and animation metadata into type-safe Zig structures.
+
+#### Syntax
+```bash
+zurag sprite --png <input.png> [--json <input.json>] [--format <format>] [--output <output.zig>] [options]
+```
+
+#### Options
 
 | Option | Short | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--png <path>` | `-p` | Path to the input Indexed-color PNG sprite sheet (exported from Aseprite). **Required**. | *None* |
-| `--json <path>` | `-j` | Path to the input Aseprite JSON frame metadata. Required unless `--palette-only` is set. | *None* |
+| `--png <path>` | `-p` | Path to input Indexed-color PNG sprite sheet. **Required**. | *None* |
+| `--json <path>` | `-j` | Path to input frame metadata. Required unless `--palette-only` is set. | *None* |
+| `--format <fmt>`| | Input metadata format: `aseprite`. | `aseprite` |
 | `--output <path>`| `-o` | Path to write the generated Zig source file. If omitted, outputs to `stdout`. | `stdout` |
 | `--bpp <mode>` | | Bits-per-pixel color mode: `4`, `4x16`, `8`, `auto`. | `auto` |
 | `--color-adjust`| `-c` | Enable full-range rounded RGB to GBA BGR555 color scaling: `(c * 31 + 127) / 255`. | `false` |
 | `--palette-only`| `-P` | Extract palette data only. Skips tile/frame conversion; `--json` is not required. | `false` |
 | `--no-palette`  | `-N` | Omit palette definition in generated sprite code (for external shared master palettes). | `false` |
-| `--help` | `-h` | Display usage and help message to `stdout`. | |
+| `--help` | `-h` | Display sprite subcommand help message. | |
 
-*Note: Command-line options may be passed in any order.*
+---
+
+### 2.2 `zurag tilemap` Subcommand
+
+Converts level maps, layer definitions, and tilesets into GBA Mode 0 background tilemap assets (`TileSet`, `MapLayerData`).
+
+#### Syntax
+```bash
+zurag tilemap --input <level.ldtk> [--format <format>] [--output <output.zig>] [options]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--input <path>` | `-i`, `-l` | Path to input level project file. **Required**. | *None* |
+| `--format <fmt>`| | Input map format: `ldtk`. | `ldtk` |
+| `--output <path>`| `-o` | Path to write generated Zig tilemap code. If omitted, outputs to `stdout`. | `stdout` |
+| `--bpp <mode>` | | Bits-per-pixel color mode for tileset: `4`, `8`. | `4` |
+| `--help` | `-h` | Display tilemap subcommand help message. | |
+
+*Note: Options may be passed in any order after the subcommand.*
 
 ---
 
@@ -51,7 +88,7 @@ GBA OBJ Palette RAM (`0x05000200`) provides 512 bytes for up to 256 colors. `zur
 
 ### B. 16-Bank 4-Bpp Mode (`--bpp 4x16`)
 * **Usage**: Allows a single 256-color master PNG to contain sprites belonging to 16 distinct 16-color palette banks (e.g., character color variations, different enemy types, UI).
-* **Palette**: Generates 16 banks of 16 colors (`[16][16]u16`) or a flat `[256]u16` table.
+* **Palette**: Generates a flat `pub const palette: [256]u16` table for simple DMA copies and a typed 2D alias `pub const palettes: *const [16][16]u16 = @ptrCast(&palette);` for bank indexing.
 * **Pixel Re-indexing**: Tile pixels are automatically folded via `pixel % 16` to 4-bit values.
 * **Bank Attribution**: The recommended OAM palette bank (`pixel / 16`) is recorded per animation frame.
 * **Validation**: Errors out if any individual sprite frame uses colors from multiple palette banks.
@@ -214,7 +251,10 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
   const enemy = @import("enemy.zig");
 
   // Load global 256-color palette once at scene startup via DMA
-  hal.dma.copy16(&master_pal.raw_palette, PALRAM_OBJ, 256);
+  hal.dma.copy16(&master_pal.palette, PALRAM_OBJ, 256);
+
+  // Or selectively update a specific bank using the typed alias:
+  // hal.dma.copy16(&master_pal.palettes[1], &PALRAM_OBJ[16], 16);
 
   // Render hero using Bank 0, enemy using Bank 1 (zero extra palette ROM overhead!)
   ```
