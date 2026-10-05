@@ -127,7 +127,7 @@ Enjoy!
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
   - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
   - [ ] Camera support for scrolling backgrounds and viewport tracking
-  - [ ] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
+  - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
   - [x] Panic handler
