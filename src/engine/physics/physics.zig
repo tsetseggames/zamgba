@@ -15,6 +15,7 @@ pub const SimpleTileSolidFn = map.SimpleTileSolidFn;
 
 pub const layer = @import("layer.zig");
 pub const CollisionMask = layer.CollisionMask;
+pub const COLLISION_MASK_BITS = layer.COLLISION_MASK_BITS;
 pub const Collision = layer.Collision;
 
 pub const overlap = @import("overlap.zig");

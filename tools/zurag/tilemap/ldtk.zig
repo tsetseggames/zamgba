@@ -109,6 +109,309 @@ fn parseTilesetDefs(allocator: std.mem.Allocator, root: std.json.ObjectMap) !std
     return map;
 }
 
+fn validateIntGridDefs(root: std.json.ObjectMap) types.TilemapError!void {
+    const defs_val = root.get("defs") orelse return;
+    if (defs_val != .object) return;
+    const layers_def = defs_val.object.get("layers") orelse return;
+    if (layers_def != .array) return;
+
+    for (layers_def.array.items) |ld_item| {
+        if (ld_item != .object) continue;
+        const igv = ld_item.object.get("intGridValues") orelse continue;
+        if (igv != .array) continue;
+
+        for (igv.array.items) |v_item| {
+            if (v_item != .object) continue;
+            const v = getIntField(i64, v_item.object, "value") orelse continue;
+            if (v < 1 or v > Limits.MAX_INTGRID_VALUE) {
+                return types.TilemapError.IntGridValueOutOfRange;
+            }
+        }
+    }
+}
+
+fn parseIntGridCollisions(aa: std.mem.Allocator, layer_obj: std.json.ObjectMap) types.TilemapError!?[]const u16 {
+    const csv_val = layer_obj.get("intGridCsv") orelse return null;
+    if (csv_val != .array) return null;
+
+    const masks = aa.alloc(u16, csv_val.array.items.len) catch return types.TilemapError.OutOfMemory;
+    for (csv_val.array.items, 0..) |cell, idx| {
+        const val = switch (cell) {
+            .integer => |i| i,
+            else => 0,
+        };
+        if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
+            return types.TilemapError.IntGridValueOutOfRange;
+        }
+        masks[idx] = if (val == 0)
+            0
+        else
+            @as(u16, 1) << @intCast(val - 1);
+    }
+    return masks;
+}
+
+fn parseLayerTiles(
+    aa: std.mem.Allocator,
+    layer_obj: std.json.ObjectMap,
+    grid_size: u32,
+    tileset_defs: std.AutoHashMap(i64, TilesetDef),
+    has_alpha_warning: *bool,
+) types.TilemapError![]const ParsedTileEntry {
+    var tiles_list: std.ArrayList(ParsedTileEntry) = .empty;
+    defer tiles_list.deinit(aa);
+
+    const tileset_def_uid = getIntField(i64, layer_obj, "__tilesetDefUid") orelse -1;
+    const tileset_c_wid_8 = if (tileset_defs.get(tileset_def_uid)) |ts|
+        ts.c_wid_8
+    else
+        32;
+
+    const tile_arrays = [_]?std.json.Value{
+        layer_obj.get("autoLayerTiles"),
+        layer_obj.get("gridTiles"),
+    };
+
+    for (tile_arrays) |opt_arr| {
+        const arr_val = opt_arr orelse continue;
+        if (arr_val != .array) continue;
+
+        for (arr_val.array.items) |t_item| {
+            if (t_item != .object) continue;
+            const t_obj = t_item.object;
+
+            const px_val = t_obj.get("px") orelse continue;
+            if (px_val != .array or px_val.array.items.len < 2) continue;
+            const px_x = switch (px_val.array.items[0]) {
+                .integer => |i| @as(i32, @intCast(i)),
+                else => 0,
+            };
+            const px_y = switch (px_val.array.items[1]) {
+                .integer => |i| @as(i32, @intCast(i)),
+                else => 0,
+            };
+
+            const f_bits = getIntField(u8, t_obj, "f") orelse 0;
+            const h_flip = (f_bits & 1) != 0;
+            const v_flip = (f_bits & 2) != 0;
+            const tile_id = getIntField(u16, t_obj, "t") orelse 0;
+            const alpha = getFloatField(f32, t_obj, "a") orelse 1.0;
+
+            if (alpha != 1.0) {
+                has_alpha_warning.* = true;
+            }
+
+            if (grid_size == 16) {
+                const gx: u16 = @intCast(@divTrunc(px_x, 16));
+                const gy: u16 = @intCast(@divTrunc(px_y, 16));
+
+                var base_8x8_id = tile_id;
+                if (t_obj.get("src")) |src_val| parse_src: {
+                    if (src_val != .array or src_val.array.items.len < 2) break :parse_src;
+                    const src_x = switch (src_val.array.items[0]) {
+                        .integer => |i| @as(u32, @intCast(i)),
+                        else => 0,
+                    };
+                    const src_y = switch (src_val.array.items[1]) {
+                        .integer => |i| @as(u32, @intCast(i)),
+                        else => 0,
+                    };
+                    base_8x8_id = @intCast((src_x / 8) + (src_y / 8) * tileset_c_wid_8);
+                }
+
+                const sub_tiles = split16x16Tile(base_8x8_id, tileset_c_wid_8, gx, gy, h_flip, v_flip);
+                for (sub_tiles) |st| {
+                    tiles_list.append(aa, st) catch return types.TilemapError.OutOfMemory;
+                }
+            } else {
+                const gx: u16 = @intCast(@divTrunc(px_x, 8));
+                const gy: u16 = @intCast(@divTrunc(px_y, 8));
+                tiles_list.append(aa, .{
+                    .tile_id = tile_id,
+                    .x = gx,
+                    .y = gy,
+                    .h_flip = h_flip,
+                    .v_flip = v_flip,
+                    .alpha = 1.0,
+                }) catch return types.TilemapError.OutOfMemory;
+            }
+        }
+    }
+
+    return tiles_list.toOwnedSlice(aa) catch return types.TilemapError.OutOfMemory;
+}
+
+fn parseEntities(aa: std.mem.Allocator, layer_obj: std.json.ObjectMap) types.TilemapError![]const ParsedEntity {
+    var entities_list: std.ArrayList(ParsedEntity) = .empty;
+    defer entities_list.deinit(aa);
+
+    const ents_val = layer_obj.get("entityInstances") orelse return &[_]ParsedEntity{};
+    if (ents_val != .array) return &[_]ParsedEntity{};
+
+    for (ents_val.array.items) |ent_item| {
+        if (ent_item != .object) continue;
+        const ent_obj = ent_item.object;
+
+        const ent_id = getStringField(ent_obj, "__identifier") orelse "Entity";
+        const px_val = ent_obj.get("px") orelse continue;
+        if (px_val != .array or px_val.array.items.len < 2) continue;
+        const ent_x = switch (px_val.array.items[0]) {
+            .integer => |i| @as(i32, @intCast(i)),
+            else => 0,
+        };
+        const ent_y = switch (px_val.array.items[1]) {
+            .integer => |i| @as(i32, @intCast(i)),
+            else => 0,
+        };
+        const ent_w = getIntField(u32, ent_obj, "width") orelse 16;
+        const ent_h = getIntField(u32, ent_obj, "height") orelse 16;
+
+        entities_list.append(aa, .{
+            .identifier = aa.dupe(u8, ent_id) catch return types.TilemapError.OutOfMemory,
+            .x = ent_x,
+            .y = ent_y,
+            .width = ent_w,
+            .height = ent_h,
+        }) catch return types.TilemapError.OutOfMemory;
+    }
+
+    return entities_list.toOwnedSlice(aa) catch return types.TilemapError.OutOfMemory;
+}
+
+fn parseLayerInstance(
+    aa: std.mem.Allocator,
+    layer_obj: std.json.ObjectMap,
+    px_wid: u32,
+    px_hei: u32,
+    tileset_defs: std.AutoHashMap(i64, TilesetDef),
+    bg_layer_count: *usize,
+    parsed_layers_len: usize,
+) types.TilemapError!?ParsedLayer {
+    const type_str = getStringField(layer_obj, "__type") orelse return null;
+    const layer_type: LayerType = if (std.mem.eql(u8, type_str, "IntGrid"))
+        .int_grid
+    else if (std.mem.eql(u8, type_str, "AutoLayer"))
+        .auto_layer
+    else if (std.mem.eql(u8, type_str, "Tiles"))
+        .tiles
+    else if (std.mem.eql(u8, type_str, "Entities"))
+        .entities
+    else
+        return types.TilemapError.UnsupportedLayerType;
+
+    const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
+    const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
+    const c_wid = getIntField(u32, layer_obj, "__cWid") orelse (px_wid / grid_size);
+    const c_hei = getIntField(u32, layer_obj, "__cHei") orelse (px_hei / grid_size);
+    const tileset_rel_path = if (getStringField(layer_obj, "__tilesetRelPath")) |p|
+        aa.dupe(u8, p) catch return types.TilemapError.OutOfMemory
+    else
+        null;
+
+    const collision_masks = if (layer_type == .int_grid)
+        try parseIntGridCollisions(aa, layer_obj)
+    else
+        null;
+
+    var has_alpha_warning = false;
+    const tiles = try parseLayerTiles(aa, layer_obj, grid_size, tileset_defs, &has_alpha_warning);
+
+    const is_visual_bg = (layer_type == .tiles or layer_type == .auto_layer or
+        (layer_type == .int_grid and tiles.len > 0));
+
+    if (is_visual_bg) {
+        bg_layer_count.* += 1;
+        if (bg_layer_count.* > Limits.MAX_BG_LAYERS) {
+            return types.TilemapError.TooManyLayers;
+        }
+    }
+
+    const entities = if (layer_type == .entities)
+        try parseEntities(aa, layer_obj)
+    else
+        &[_]ParsedEntity{};
+
+    // Skip empty Entities layers
+    if (layer_type == .entities and entities.len == 0) {
+        return null;
+    }
+
+    // Skip empty IntGrid helper layers when visual auto-layers are already present
+    if (layer_type == .int_grid and tiles.len == 0 and parsed_layers_len > 0) {
+        return null;
+    }
+
+    return ParsedLayer{
+        .identifier = aa.dupe(u8, layer_id) catch return types.TilemapError.OutOfMemory,
+        .layer_type = layer_type,
+        .grid_size = grid_size,
+        .c_wid = c_wid,
+        .c_hei = c_hei,
+        .tileset_rel_path = tileset_rel_path,
+        .tiles = tiles,
+        .collision_masks = collision_masks,
+        .entities = entities,
+        .has_alpha_warning = has_alpha_warning,
+    };
+}
+
+fn parseLevel(
+    aa: std.mem.Allocator,
+    lvl_item: std.json.Value,
+    tileset_defs: std.AutoHashMap(i64, TilesetDef),
+) types.TilemapError!ParsedLevel {
+    if (lvl_item != .object) return types.TilemapError.InvalidJsonSchema;
+    const lvl_obj = lvl_item.object;
+
+    const identifier = getStringField(lvl_obj, "identifier") orelse "Level";
+    const world_x = getIntField(i32, lvl_obj, "worldX") orelse 0;
+    const world_y = getIntField(i32, lvl_obj, "worldY") orelse 0;
+    const px_wid = getIntField(u32, lvl_obj, "pxWid") orelse return types.TilemapError.InvalidMapDimensions;
+    const px_hei = getIntField(u32, lvl_obj, "pxHei") orelse return types.TilemapError.InvalidMapDimensions;
+
+    if (px_wid == 0 or px_hei == 0 or
+        px_wid % Limits.TILE_SIZE_PX != 0 or px_hei % Limits.TILE_SIZE_PX != 0)
+    {
+        return types.TilemapError.InvalidMapDimensions;
+    }
+
+    if (px_wid > Limits.MAX_MAP_DIMENSION_PX or px_hei > Limits.MAX_MAP_DIMENSION_PX) {
+        return types.TilemapError.MapSizeExceedsLimit;
+    }
+
+    var parsed_layers: std.ArrayList(ParsedLayer) = .empty;
+    defer parsed_layers.deinit(aa);
+    var bg_layer_count: usize = 0;
+
+    if (lvl_obj.get("layerInstances")) |layers_val| {
+        if (layers_val == .array) {
+            for (layers_val.array.items) |layer_item| {
+                if (layer_item != .object) continue;
+                if (try parseLayerInstance(
+                    aa,
+                    layer_item.object,
+                    px_wid,
+                    px_hei,
+                    tileset_defs,
+                    &bg_layer_count,
+                    parsed_layers.items.len,
+                )) |layer| {
+                    parsed_layers.append(aa, layer) catch return types.TilemapError.OutOfMemory;
+                }
+            }
+        }
+    }
+
+    return ParsedLevel{
+        .identifier = aa.dupe(u8, identifier) catch return types.TilemapError.OutOfMemory,
+        .world_x = world_x,
+        .world_y = world_y,
+        .px_wid = px_wid,
+        .px_hei = px_hei,
+        .layers = parsed_layers.toOwnedSlice(aa) catch return types.TilemapError.OutOfMemory,
+    };
+}
+
 /// Parses raw LDtk project JSON content and validates against GBA hardware constraints
 pub fn parseLdtkJson(
     allocator: std.mem.Allocator,
@@ -121,29 +424,7 @@ pub fn parseLdtkJson(
     var tileset_defs = parseTilesetDefs(aa, root) catch return types.TilemapError.OutOfMemory;
     defer tileset_defs.deinit();
 
-    // Validate IntGrid value definitions in defs.layers
-    if (root.get("defs")) |defs_val| {
-        if (defs_val == .object) {
-            if (defs_val.object.get("layers")) |layers_def_val| {
-                if (layers_def_val == .array) {
-                    for (layers_def_val.array.items) |ld_item| {
-                        if (ld_item != .object) continue;
-                        if (ld_item.object.get("intGridValues")) |igv_val| {
-                            if (igv_val == .array) {
-                                for (igv_val.array.items) |v_item| {
-                                    if (v_item != .object) continue;
-                                    const v = getIntField(i64, v_item.object, "value") orelse continue;
-                                    if (v < 1 or v > Limits.MAX_INTGRID_VALUE) {
-                                        return types.TilemapError.IntGridValueOutOfRange;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    try validateIntGridDefs(root);
 
     const levels_val = root.get("levels") orelse return types.TilemapError.MissingLevelData;
     if (levels_val != .array or levels_val.array.items.len == 0) {
@@ -154,251 +435,13 @@ pub fn parseLdtkJson(
     defer parsed_levels.deinit(aa);
 
     for (levels_val.array.items) |lvl_item| {
-        if (lvl_item != .object) return types.TilemapError.InvalidJsonSchema;
-        const lvl_obj = lvl_item.object;
-
-        const identifier = getStringField(lvl_obj, "identifier") orelse "Level";
-        const world_x = getIntField(i32, lvl_obj, "worldX") orelse 0;
-        const world_y = getIntField(i32, lvl_obj, "worldY") orelse 0;
-        const px_wid = getIntField(u32, lvl_obj, "pxWid") orelse return types.TilemapError.InvalidMapDimensions;
-        const px_hei = getIntField(u32, lvl_obj, "pxHei") orelse return types.TilemapError.InvalidMapDimensions;
-
-        // Validation on map dimensions
-        if (px_wid == 0 or px_hei == 0 or
-            px_wid % Limits.TILE_SIZE_PX != 0 or px_hei % Limits.TILE_SIZE_PX != 0)
-        {
-            return types.TilemapError.InvalidMapDimensions;
-        }
-
-        if (px_wid > Limits.MAX_MAP_DIMENSION_PX or px_hei > Limits.MAX_MAP_DIMENSION_PX) {
-            return types.TilemapError.MapSizeExceedsLimit;
-        }
-
-        var parsed_layers: std.ArrayList(ParsedLayer) = .empty;
-        defer parsed_layers.deinit(aa);
-        var bg_layer_count: usize = 0;
-
-        if (lvl_obj.get("layerInstances")) |layers_val| {
-            if (layers_val == .array) {
-                for (layers_val.array.items) |layer_item| {
-                    if (layer_item != .object) continue;
-                    const layer_obj = layer_item.object;
-
-                    const type_str = getStringField(layer_obj, "__type") orelse continue;
-                    const layer_type: LayerType = if (std.mem.eql(u8, type_str, "IntGrid"))
-                        .int_grid
-                    else if (std.mem.eql(u8, type_str, "AutoLayer"))
-                        .auto_layer
-                    else if (std.mem.eql(u8, type_str, "Tiles"))
-                        .tiles
-                    else if (std.mem.eql(u8, type_str, "Entities"))
-                        .entities
-                    else
-                        return types.TilemapError.UnsupportedLayerType;
-
-                    const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
-                    const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
-                    const c_wid = getIntField(u32, layer_obj, "__cWid") orelse (px_wid / grid_size);
-                    const c_hei = getIntField(u32, layer_obj, "__cHei") orelse (px_hei / grid_size);
-                    const tileset_rel_path = if (getStringField(layer_obj, "__tilesetRelPath")) |p|
-                        try aa.dupe(u8, p)
-                    else
-                        null;
-
-                    // Parse IntGrid collision masks
-                    var collision_masks: ?[]const u16 = null;
-                    if (layer_type == .int_grid) {
-                        if (layer_obj.get("intGridCsv")) |csv_val| {
-                            if (csv_val == .array) {
-                                const masks = try aa.alloc(u16, csv_val.array.items.len);
-                                for (csv_val.array.items, 0..) |cell, idx| {
-                                    const val = switch (cell) {
-                                        .integer => |i| i,
-                                        else => 0,
-                                    };
-                                    if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
-                                        return types.TilemapError.IntGridValueOutOfRange;
-                                    }
-                                    masks[idx] = if (val == 0)
-                                        0
-                                    else
-                                        @as(u16, 1) << @intCast(val - 1);
-                                }
-                                collision_masks = masks;
-                            }
-                        }
-                    }
-
-                    // Parse tiles (autoLayerTiles & gridTiles)
-                    var tiles_list: std.ArrayList(ParsedTileEntry) = .empty;
-                    defer tiles_list.deinit(aa);
-                    var has_alpha_warning = false;
-
-                    const tileset_def_uid = getIntField(i64, layer_obj, "__tilesetDefUid") orelse -1;
-                    const tileset_c_wid_8 = if (tileset_defs.get(tileset_def_uid)) |ts|
-                        ts.c_wid_8
-                    else
-                        32;
-
-                    const tile_arrays = [_]?std.json.Value{
-                        layer_obj.get("autoLayerTiles"),
-                        layer_obj.get("gridTiles"),
-                    };
-
-                    for (tile_arrays) |opt_arr| {
-                        const arr_val = opt_arr orelse continue;
-                        if (arr_val != .array) continue;
-
-                        for (arr_val.array.items) |t_item| {
-                            if (t_item != .object) continue;
-                            const t_obj = t_item.object;
-
-                            const px_val = t_obj.get("px") orelse continue;
-                            if (px_val != .array or px_val.array.items.len < 2) continue;
-                            const px_x = switch (px_val.array.items[0]) {
-                                .integer => |i| @as(i32, @intCast(i)),
-                                else => 0,
-                            };
-                            const px_y = switch (px_val.array.items[1]) {
-                                .integer => |i| @as(i32, @intCast(i)),
-                                else => 0,
-                            };
-
-                            const f_bits = getIntField(u8, t_obj, "f") orelse 0;
-                            const h_flip = (f_bits & 1) != 0;
-                            const v_flip = (f_bits & 2) != 0;
-                            const tile_id = getIntField(u16, t_obj, "t") orelse 0;
-                            const alpha = getFloatField(f32, t_obj, "a") orelse 1.0;
-
-                            if (alpha != 1.0) {
-                                has_alpha_warning = true;
-                            }
-
-                            if (grid_size == 16) {
-                                const gx: u16 = @intCast(@divTrunc(px_x, 16));
-                                const gy: u16 = @intCast(@divTrunc(px_y, 16));
-
-                                // If src coordinates are given, calculate 8x8 base tile ID accurately
-                                var base_8x8_id = tile_id;
-                                if (t_obj.get("src")) |src_val| {
-                                    if (src_val == .array and src_val.array.items.len >= 2) {
-                                        const src_x = switch (src_val.array.items[0]) {
-                                            .integer => |i| @as(u32, @intCast(i)),
-                                            else => 0,
-                                        };
-                                        const src_y = switch (src_val.array.items[1]) {
-                                            .integer => |i| @as(u32, @intCast(i)),
-                                            else => 0,
-                                        };
-                                        base_8x8_id = @intCast((src_x / 8) + (src_y / 8) * tileset_c_wid_8);
-                                    }
-                                }
-
-                                const sub_tiles = split16x16Tile(base_8x8_id, tileset_c_wid_8, gx, gy, h_flip, v_flip);
-                                for (sub_tiles) |st| {
-                                    try tiles_list.append(aa, st);
-                                }
-                            } else {
-                                const gx: u16 = @intCast(@divTrunc(px_x, 8));
-                                const gy: u16 = @intCast(@divTrunc(px_y, 8));
-                                try tiles_list.append(aa, .{
-                                    .tile_id = tile_id,
-                                    .x = gx,
-                                    .y = gy,
-                                    .h_flip = h_flip,
-                                    .v_flip = v_flip,
-                                    .alpha = 1.0,
-                                });
-                            }
-                        }
-                    }
-
-                    // Check if this layer counts towards visual GBA hardware background layers
-                    const is_visual_bg = (layer_type == .tiles or layer_type == .auto_layer or
-                        (layer_type == .int_grid and tiles_list.items.len > 0));
-
-                    if (is_visual_bg) {
-                        bg_layer_count += 1;
-                        if (bg_layer_count > Limits.MAX_BG_LAYERS) {
-                            return types.TilemapError.TooManyLayers;
-                        }
-                    }
-
-                    // Parse entities
-                    var entities_list: std.ArrayList(ParsedEntity) = .empty;
-                    defer entities_list.deinit(aa);
-                    if (layer_type == .entities) {
-                        if (layer_obj.get("entityInstances")) |ents_val| {
-                            if (ents_val == .array) {
-                                for (ents_val.array.items) |ent_item| {
-                                    if (ent_item != .object) continue;
-                                    const ent_obj = ent_item.object;
-
-                                    const ent_id = getStringField(ent_obj, "__identifier") orelse "Entity";
-                                    const px_val = ent_obj.get("px") orelse continue;
-                                    if (px_val != .array or px_val.array.items.len < 2) continue;
-                                    const ent_x = switch (px_val.array.items[0]) {
-                                        .integer => |i| @as(i32, @intCast(i)),
-                                        else => 0,
-                                    };
-                                    const ent_y = switch (px_val.array.items[1]) {
-                                        .integer => |i| @as(i32, @intCast(i)),
-                                        else => 0,
-                                    };
-                                    const ent_w = getIntField(u32, ent_obj, "width") orelse 16;
-                                    const ent_h = getIntField(u32, ent_obj, "height") orelse 16;
-
-                                    try entities_list.append(aa, .{
-                                        .identifier = try aa.dupe(u8, ent_id),
-                                        .x = ent_x,
-                                        .y = ent_y,
-                                        .width = ent_w,
-                                        .height = ent_h,
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    // Skip empty Entities layers
-                    if (layer_type == .entities and entities_list.items.len == 0) {
-                        continue;
-                    }
-
-                    // Skip empty IntGrid helper layers when visual auto-layers are already present
-                    if (layer_type == .int_grid and tiles_list.items.len == 0 and parsed_layers.items.len > 0) {
-                        continue;
-                    }
-
-                    try parsed_layers.append(aa, .{
-                        .identifier = try aa.dupe(u8, layer_id),
-                        .layer_type = layer_type,
-                        .grid_size = grid_size,
-                        .c_wid = c_wid,
-                        .c_hei = c_hei,
-                        .tileset_rel_path = tileset_rel_path,
-                        .tiles = try tiles_list.toOwnedSlice(aa),
-                        .collision_masks = collision_masks,
-                        .entities = try entities_list.toOwnedSlice(aa),
-                        .has_alpha_warning = has_alpha_warning,
-                    });
-                }
-            }
-        }
-
-        try parsed_levels.append(aa, .{
-            .identifier = try aa.dupe(u8, identifier),
-            .world_x = world_x,
-            .world_y = world_y,
-            .px_wid = px_wid,
-            .px_hei = px_hei,
-            .layers = try parsed_layers.toOwnedSlice(aa),
-        });
+        const level = try parseLevel(aa, lvl_item, tileset_defs);
+        parsed_levels.append(aa, level) catch return types.TilemapError.OutOfMemory;
     }
 
     return TilemapMetadata{
         .arena = arena,
-        .levels = try parsed_levels.toOwnedSlice(aa),
+        .levels = parsed_levels.toOwnedSlice(aa) catch return types.TilemapError.OutOfMemory,
     };
 }
 

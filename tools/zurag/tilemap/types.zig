@@ -1,11 +1,13 @@
 const std = @import("std");
+const engine = @import("zamgba-engine");
 
 /// GBA hardware and engine tilemap constraints
 pub const Limits = struct {
     pub const MAX_BG_LAYERS: usize = 4;
     pub const MAX_MAP_DIMENSION_PX: u32 = 4096;
     pub const TILE_SIZE_PX: u32 = 8;
-    pub const MAX_INTGRID_VALUE: i64 = 16;
+    /// Maximum number of IntGrid values/layers, bounded by GBA engine's 16-bit CollisionMask
+    pub const MAX_INTGRID_VALUE: i64 = @as(i64, @intCast(engine.physics.COLLISION_MASK_BITS));
 };
 
 pub const TilemapFormat = enum {
