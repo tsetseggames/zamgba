@@ -2,7 +2,6 @@ const std = @import("std");
 const png = @import("png.zig");
 const tile = @import("tile.zig");
 pub const sprite = @import("sprite.zig");
-pub const codegen = @import("codegen.zig");
 pub const tilemap = @import("tilemap.zig");
 
 pub const BppMode = enum {
@@ -400,7 +399,7 @@ pub fn main(init: std.process.Init) !void {
                 defer meta.deinit();
 
                 // Step 3: Generate Zig Source Code
-                const zig_source = codegen.generateZigSource(allocator, png_data, json_data, .{
+                const zig_source = sprite.codegen.generateZigSource(allocator, png_data, json_data, .{
                     .bpp = sprite_args.bpp,
                     .color_adjust = sprite_args.color_adjust,
                     .palette_only = sprite_args.palette_only,
@@ -422,7 +421,7 @@ pub fn main(init: std.process.Init) !void {
                 }
             } else {
                 // Palette only mode code generation
-                const zig_source = codegen.generateZigSource(allocator, png_data, null, .{
+                const zig_source = sprite.codegen.generateZigSource(allocator, png_data, null, .{
                     .bpp = sprite_args.bpp,
                     .color_adjust = sprite_args.color_adjust,
                     .palette_only = true,
@@ -542,7 +541,6 @@ test {
     _ = png;
     _ = tile;
     _ = sprite;
-    _ = codegen;
     _ = @import("algo/paeth.zig");
     _ = @import("algo/unfilter.zig");
 }

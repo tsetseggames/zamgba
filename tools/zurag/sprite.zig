@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const types = @import("sprite/types.zig");
 pub const aseprite = @import("sprite/aseprite.zig");
+pub const codegen = @import("sprite/codegen.zig");
 
 // Re-export common domain types for consumers
 pub const Rect = types.Rect;
@@ -10,6 +11,9 @@ pub const Tag = types.Tag;
 pub const SpriteMetadata = types.SpriteMetadata;
 pub const MetadataFormat = types.MetadataFormat;
 pub const MetadataError = types.MetadataError;
+pub const CodegenOptions = codegen.CodegenOptions;
+pub const CodegenError = codegen.CodegenError;
+pub const generateZigSource = codegen.generateZigSource;
 
 /// Automatically detects metadata format (or uses requested format) and parses into SpriteMetadata.
 pub fn parseMetadata(
@@ -102,4 +106,5 @@ test "MET005: parseMetadata: auto-detection supports LibreSprite app signature" 
 
 test {
     _ = aseprite;
+    _ = codegen;
 }

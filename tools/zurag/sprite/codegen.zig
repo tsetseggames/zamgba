@@ -1,7 +1,7 @@
 const std = @import("std");
-const png = @import("png.zig");
-const tile = @import("tile.zig");
-const sprite = @import("sprite.zig");
+const png = @import("../png.zig");
+const tile = @import("../tile.zig");
+const sprite = @import("../sprite.zig");
 
 pub const CodegenOptions = struct {
     sprite_name: []const u8 = "sprite",
