@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const types = @import("tilemap/types.zig");
 pub const ldtk = @import("tilemap/ldtk.zig");
+pub const codegen = @import("tilemap/codegen.zig");
 
 // Re-export common tilemap types
 pub const Limits = types.Limits;
@@ -12,6 +13,9 @@ pub const LayerType = types.LayerType;
 pub const ParsedLayer = types.ParsedLayer;
 pub const ParsedLevel = types.ParsedLevel;
 pub const TilemapMetadata = types.TilemapMetadata;
+pub const TilemapCodegenOptions = codegen.TilemapCodegenOptions;
+pub const TilemapCodegenError = codegen.TilemapCodegenError;
+pub const generateTilemapZigSource = codegen.generateTilemapZigSource;
 
 /// Automatically detects tilemap metadata format (or uses requested format) and parses into TilemapMetadata.
 pub fn parseMetadata(
@@ -76,4 +80,5 @@ test "TLM002: parseMetadata reject invalid and unsupported JSON" {
 
 test {
     _ = ldtk;
+    _ = codegen;
 }
