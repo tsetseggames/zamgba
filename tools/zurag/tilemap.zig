@@ -49,12 +49,16 @@ test "TLM001: parseMetadata auto-detection and explicit dispatch" {
     const test_assets = @import("test_palettes");
 
     // Auto-detection
-    const res_auto = parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
-    try std.testing.expectError(error.Unimplemented, res_auto);
+    var res_auto = try parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
+    defer res_auto.deinit();
+    try std.testing.expectEqual(@as(usize, 1), res_auto.levels.len);
+    try std.testing.expectEqual(@as(u32, 256), res_auto.levels[0].px_wid);
 
     // Explicit dispatch
-    const res_ldtk = parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .ldtk);
-    try std.testing.expectError(error.Unimplemented, res_ldtk);
+    var res_ldtk = try parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .ldtk);
+    defer res_ldtk.deinit();
+    try std.testing.expectEqual(@as(usize, 1), res_ldtk.levels.len);
+    try std.testing.expectEqual(@as(u32, 256), res_ldtk.levels[0].px_wid);
 }
 
 test "TLM002: parseMetadata reject invalid and unsupported JSON" {

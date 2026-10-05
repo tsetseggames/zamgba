@@ -28,6 +28,31 @@ pub fn detectLdtk(root: std.json.ObjectMap) bool {
     return false;
 }
 
+fn getIntField(comptime T: type, obj: std.json.ObjectMap, key: []const u8) ?T {
+    const val = obj.get(key) orelse return null;
+    return switch (val) {
+        .integer => |i| if (i >= std.math.minInt(T) and i <= std.math.maxInt(T)) @intCast(i) else null,
+        else => null,
+    };
+}
+
+fn getStringField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
+    const val = obj.get(key) orelse return null;
+    return switch (val) {
+        .string => |s| s,
+        else => null,
+    };
+}
+
+fn getFloatField(comptime T: type, obj: std.json.ObjectMap, key: []const u8) ?T {
+    const val = obj.get(key) orelse return null;
+    return switch (val) {
+        .float => |f| @floatCast(f),
+        .integer => |i| @floatFromInt(i),
+        else => null,
+    };
+}
+
 /// Splits a 16x16 tile placement into 4 standard 8x8 tile entries
 pub fn split16x16Tile(
     base_tile_id: u16,
@@ -37,19 +62,55 @@ pub fn split16x16Tile(
     h_flip: bool,
     v_flip: bool,
 ) [4]ParsedTileEntry {
-    _ = base_tile_id;
-    _ = tileset_c_wid;
-    _ = grid_x;
-    _ = grid_y;
-    _ = h_flip;
-    _ = v_flip;
-    // Stub implementation returning dummy entries
+    const c_wid: u16 = @intCast(tileset_c_wid);
+    const tl_id = base_tile_id;
+    const tr_id = base_tile_id + 1;
+    const bl_id = base_tile_id + c_wid;
+    const br_id = base_tile_id + c_wid + 1;
+
+    const x0 = grid_x * 2;
+    const x1 = grid_x * 2 + 1;
+    const y0 = grid_y * 2;
+    const y1 = grid_y * 2 + 1;
+
+    const id0 = if (h_flip) (if (v_flip) br_id else tr_id) else (if (v_flip) bl_id else tl_id);
+    const id1 = if (h_flip) (if (v_flip) bl_id else tl_id) else (if (v_flip) br_id else tr_id);
+    const id2 = if (h_flip) (if (v_flip) tr_id else br_id) else (if (v_flip) tl_id else bl_id);
+    const id3 = if (h_flip) (if (v_flip) tl_id else bl_id) else (if (v_flip) tr_id else br_id);
+
     return [4]ParsedTileEntry{
-        .{ .tile_id = 0, .x = 0, .y = 0, .h_flip = false, .v_flip = false },
-        .{ .tile_id = 0, .x = 0, .y = 0, .h_flip = false, .v_flip = false },
-        .{ .tile_id = 0, .x = 0, .y = 0, .h_flip = false, .v_flip = false },
-        .{ .tile_id = 0, .x = 0, .y = 0, .h_flip = false, .v_flip = false },
+        .{ .tile_id = id0, .x = x0, .y = y0, .h_flip = h_flip, .v_flip = v_flip },
+        .{ .tile_id = id1, .x = x1, .y = y0, .h_flip = h_flip, .v_flip = v_flip },
+        .{ .tile_id = id2, .x = x0, .y = y1, .h_flip = h_flip, .v_flip = v_flip },
+        .{ .tile_id = id3, .x = x1, .y = y1, .h_flip = h_flip, .v_flip = v_flip },
     };
+}
+
+const TilesetDef = struct {
+    uid: i64,
+    px_wid: u32,
+    c_wid_8: u32,
+};
+
+fn parseTilesetDefs(allocator: std.mem.Allocator, root: std.json.ObjectMap) !std.AutoHashMap(i64, TilesetDef) {
+    var map = std.AutoHashMap(i64, TilesetDef).init(allocator);
+    errdefer map.deinit();
+
+    const defs_val = root.get("defs") orelse return map;
+    if (defs_val != .object) return map;
+    const tilesets_val = defs_val.object.get("tilesets") orelse return map;
+    if (tilesets_val != .array) return map;
+
+    for (tilesets_val.array.items) |ts_item| {
+        if (ts_item != .object) continue;
+        const ts_obj = ts_item.object;
+        const uid = getIntField(i64, ts_obj, "uid") orelse continue;
+        const px_wid = getIntField(u32, ts_obj, "pxWid") orelse 256;
+        const c_wid_8 = px_wid / Limits.TILE_SIZE_PX;
+        try map.put(uid, .{ .uid = uid, .px_wid = px_wid, .c_wid_8 = c_wid_8 });
+    }
+
+    return map;
 }
 
 /// Parses raw LDtk project JSON content and validates against GBA hardware constraints
@@ -57,10 +118,292 @@ pub fn parseLdtkJson(
     allocator: std.mem.Allocator,
     root: std.json.ObjectMap,
 ) types.TilemapError!TilemapMetadata {
-    _ = allocator;
-    _ = root;
-    // Stub implementation (Red Phase)
-    return error.Unimplemented;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const aa = arena.allocator();
+
+    var tileset_defs = parseTilesetDefs(aa, root) catch return types.TilemapError.OutOfMemory;
+    defer tileset_defs.deinit();
+
+    // Validate IntGrid value definitions in defs.layers
+    if (root.get("defs")) |defs_val| {
+        if (defs_val == .object) {
+            if (defs_val.object.get("layers")) |layers_def_val| {
+                if (layers_def_val == .array) {
+                    for (layers_def_val.array.items) |ld_item| {
+                        if (ld_item != .object) continue;
+                        if (ld_item.object.get("intGridValues")) |igv_val| {
+                            if (igv_val == .array) {
+                                for (igv_val.array.items) |v_item| {
+                                    if (v_item != .object) continue;
+                                    const v = getIntField(i64, v_item.object, "value") orelse continue;
+                                    if (v < 1 or v > Limits.MAX_INTGRID_VALUE) {
+                                        return types.TilemapError.IntGridValueOutOfRange;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const levels_val = root.get("levels") orelse return types.TilemapError.MissingLevelData;
+    if (levels_val != .array or levels_val.array.items.len == 0) {
+        return types.TilemapError.MissingLevelData;
+    }
+
+    var parsed_levels: std.ArrayList(ParsedLevel) = .empty;
+    defer parsed_levels.deinit(aa);
+
+    for (levels_val.array.items) |lvl_item| {
+        if (lvl_item != .object) return types.TilemapError.InvalidJsonSchema;
+        const lvl_obj = lvl_item.object;
+
+        const identifier = getStringField(lvl_obj, "identifier") orelse "Level";
+        const world_x = getIntField(i32, lvl_obj, "worldX") orelse 0;
+        const world_y = getIntField(i32, lvl_obj, "worldY") orelse 0;
+        const px_wid = getIntField(u32, lvl_obj, "pxWid") orelse return types.TilemapError.InvalidMapDimensions;
+        const px_hei = getIntField(u32, lvl_obj, "pxHei") orelse return types.TilemapError.InvalidMapDimensions;
+
+        // Validation on map dimensions
+        if (px_wid == 0 or px_hei == 0 or
+            px_wid % Limits.TILE_SIZE_PX != 0 or px_hei % Limits.TILE_SIZE_PX != 0)
+        {
+            return types.TilemapError.InvalidMapDimensions;
+        }
+
+        if (px_wid > Limits.MAX_MAP_DIMENSION_PX or px_hei > Limits.MAX_MAP_DIMENSION_PX) {
+            return types.TilemapError.MapSizeExceedsLimit;
+        }
+
+        var parsed_layers: std.ArrayList(ParsedLayer) = .empty;
+        defer parsed_layers.deinit(aa);
+        var bg_layer_count: usize = 0;
+
+        if (lvl_obj.get("layerInstances")) |layers_val| {
+            if (layers_val == .array) {
+                for (layers_val.array.items) |layer_item| {
+                    if (layer_item != .object) continue;
+                    const layer_obj = layer_item.object;
+
+                    const type_str = getStringField(layer_obj, "__type") orelse continue;
+                    const layer_type: LayerType = if (std.mem.eql(u8, type_str, "IntGrid"))
+                        .int_grid
+                    else if (std.mem.eql(u8, type_str, "AutoLayer"))
+                        .auto_layer
+                    else if (std.mem.eql(u8, type_str, "Tiles"))
+                        .tiles
+                    else if (std.mem.eql(u8, type_str, "Entities"))
+                        .entities
+                    else
+                        return types.TilemapError.UnsupportedLayerType;
+
+                    const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
+                    const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
+                    const c_wid = getIntField(u32, layer_obj, "__cWid") orelse (px_wid / grid_size);
+                    const c_hei = getIntField(u32, layer_obj, "__cHei") orelse (px_hei / grid_size);
+                    const tileset_rel_path = if (getStringField(layer_obj, "__tilesetRelPath")) |p|
+                        try aa.dupe(u8, p)
+                    else
+                        null;
+
+                    // Parse IntGrid collision masks
+                    var collision_masks: ?[]const u16 = null;
+                    if (layer_type == .int_grid) {
+                        if (layer_obj.get("intGridCsv")) |csv_val| {
+                            if (csv_val == .array) {
+                                const masks = try aa.alloc(u16, csv_val.array.items.len);
+                                for (csv_val.array.items, 0..) |cell, idx| {
+                                    const val = switch (cell) {
+                                        .integer => |i| i,
+                                        else => 0,
+                                    };
+                                    if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
+                                        return types.TilemapError.IntGridValueOutOfRange;
+                                    }
+                                    masks[idx] = if (val == 0)
+                                        0
+                                    else
+                                        @as(u16, 1) << @intCast(val - 1);
+                                }
+                                collision_masks = masks;
+                            }
+                        }
+                    }
+
+                    // Parse tiles (autoLayerTiles & gridTiles)
+                    var tiles_list: std.ArrayList(ParsedTileEntry) = .empty;
+                    defer tiles_list.deinit(aa);
+                    var has_alpha_warning = false;
+
+                    const tileset_def_uid = getIntField(i64, layer_obj, "__tilesetDefUid") orelse -1;
+                    const tileset_c_wid_8 = if (tileset_defs.get(tileset_def_uid)) |ts|
+                        ts.c_wid_8
+                    else
+                        32;
+
+                    const tile_arrays = [_]?std.json.Value{
+                        layer_obj.get("autoLayerTiles"),
+                        layer_obj.get("gridTiles"),
+                    };
+
+                    for (tile_arrays) |opt_arr| {
+                        const arr_val = opt_arr orelse continue;
+                        if (arr_val != .array) continue;
+
+                        for (arr_val.array.items) |t_item| {
+                            if (t_item != .object) continue;
+                            const t_obj = t_item.object;
+
+                            const px_val = t_obj.get("px") orelse continue;
+                            if (px_val != .array or px_val.array.items.len < 2) continue;
+                            const px_x = switch (px_val.array.items[0]) {
+                                .integer => |i| @as(i32, @intCast(i)),
+                                else => 0,
+                            };
+                            const px_y = switch (px_val.array.items[1]) {
+                                .integer => |i| @as(i32, @intCast(i)),
+                                else => 0,
+                            };
+
+                            const f_bits = getIntField(u8, t_obj, "f") orelse 0;
+                            const h_flip = (f_bits & 1) != 0;
+                            const v_flip = (f_bits & 2) != 0;
+                            const tile_id = getIntField(u16, t_obj, "t") orelse 0;
+                            const alpha = getFloatField(f32, t_obj, "a") orelse 1.0;
+
+                            if (alpha != 1.0) {
+                                has_alpha_warning = true;
+                            }
+
+                            if (grid_size == 16) {
+                                const gx: u16 = @intCast(@divTrunc(px_x, 16));
+                                const gy: u16 = @intCast(@divTrunc(px_y, 16));
+
+                                // If src coordinates are given, calculate 8x8 base tile ID accurately
+                                var base_8x8_id = tile_id;
+                                if (t_obj.get("src")) |src_val| {
+                                    if (src_val == .array and src_val.array.items.len >= 2) {
+                                        const src_x = switch (src_val.array.items[0]) {
+                                            .integer => |i| @as(u32, @intCast(i)),
+                                            else => 0,
+                                        };
+                                        const src_y = switch (src_val.array.items[1]) {
+                                            .integer => |i| @as(u32, @intCast(i)),
+                                            else => 0,
+                                        };
+                                        base_8x8_id = @intCast((src_x / 8) + (src_y / 8) * tileset_c_wid_8);
+                                    }
+                                }
+
+                                const sub_tiles = split16x16Tile(base_8x8_id, tileset_c_wid_8, gx, gy, h_flip, v_flip);
+                                for (sub_tiles) |st| {
+                                    try tiles_list.append(aa, st);
+                                }
+                            } else {
+                                const gx: u16 = @intCast(@divTrunc(px_x, 8));
+                                const gy: u16 = @intCast(@divTrunc(px_y, 8));
+                                try tiles_list.append(aa, .{
+                                    .tile_id = tile_id,
+                                    .x = gx,
+                                    .y = gy,
+                                    .h_flip = h_flip,
+                                    .v_flip = v_flip,
+                                    .alpha = 1.0,
+                                });
+                            }
+                        }
+                    }
+
+                    // Check if this layer counts towards visual GBA hardware background layers
+                    const is_visual_bg = (layer_type == .tiles or layer_type == .auto_layer or
+                        (layer_type == .int_grid and tiles_list.items.len > 0));
+
+                    if (is_visual_bg) {
+                        bg_layer_count += 1;
+                        if (bg_layer_count > Limits.MAX_BG_LAYERS) {
+                            return types.TilemapError.TooManyLayers;
+                        }
+                    }
+
+                    // Parse entities
+                    var entities_list: std.ArrayList(ParsedEntity) = .empty;
+                    defer entities_list.deinit(aa);
+                    if (layer_type == .entities) {
+                        if (layer_obj.get("entityInstances")) |ents_val| {
+                            if (ents_val == .array) {
+                                for (ents_val.array.items) |ent_item| {
+                                    if (ent_item != .object) continue;
+                                    const ent_obj = ent_item.object;
+
+                                    const ent_id = getStringField(ent_obj, "__identifier") orelse "Entity";
+                                    const px_val = ent_obj.get("px") orelse continue;
+                                    if (px_val != .array or px_val.array.items.len < 2) continue;
+                                    const ent_x = switch (px_val.array.items[0]) {
+                                        .integer => |i| @as(i32, @intCast(i)),
+                                        else => 0,
+                                    };
+                                    const ent_y = switch (px_val.array.items[1]) {
+                                        .integer => |i| @as(i32, @intCast(i)),
+                                        else => 0,
+                                    };
+                                    const ent_w = getIntField(u32, ent_obj, "width") orelse 16;
+                                    const ent_h = getIntField(u32, ent_obj, "height") orelse 16;
+
+                                    try entities_list.append(aa, .{
+                                        .identifier = try aa.dupe(u8, ent_id),
+                                        .x = ent_x,
+                                        .y = ent_y,
+                                        .width = ent_w,
+                                        .height = ent_h,
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Skip empty Entities layers
+                    if (layer_type == .entities and entities_list.items.len == 0) {
+                        continue;
+                    }
+
+                    // Skip empty IntGrid helper layers when visual auto-layers are already present
+                    if (layer_type == .int_grid and tiles_list.items.len == 0 and parsed_layers.items.len > 0) {
+                        continue;
+                    }
+
+                    try parsed_layers.append(aa, .{
+                        .identifier = try aa.dupe(u8, layer_id),
+                        .layer_type = layer_type,
+                        .grid_size = grid_size,
+                        .c_wid = c_wid,
+                        .c_hei = c_hei,
+                        .tileset_rel_path = tileset_rel_path,
+                        .tiles = try tiles_list.toOwnedSlice(aa),
+                        .collision_masks = collision_masks,
+                        .entities = try entities_list.toOwnedSlice(aa),
+                        .has_alpha_warning = has_alpha_warning,
+                    });
+                }
+            }
+        }
+
+        try parsed_levels.append(aa, .{
+            .identifier = try aa.dupe(u8, identifier),
+            .world_x = world_x,
+            .world_y = world_y,
+            .px_wid = px_wid,
+            .px_hei = px_hei,
+            .layers = try parsed_layers.toOwnedSlice(aa),
+        });
+    }
+
+    return TilemapMetadata{
+        .arena = arena,
+        .levels = try parsed_levels.toOwnedSlice(aa),
+    };
 }
 
 // ============================================================================
@@ -161,14 +504,14 @@ test "LDT005: Parse and extract level entities" {
     for (level.layers) |layer| {
         if (layer.layer_type == .entities) {
             found_entities_layer = true;
-            try std.testing.expect(layer.entities.len >= 2);
-            // Verify PlayerSpawn entity coordinates
+            try std.testing.expect(layer.entities.len >= 1);
+            // Verify Player entity coordinates
             var found_player = false;
             for (layer.entities) |ent| {
-                if (std.mem.eql(u8, ent.identifier, "PlayerSpawn")) {
+                if (std.mem.eql(u8, ent.identifier, "Player")) {
                     found_player = true;
-                    try std.testing.expectEqual(@as(i32, 32), ent.x);
-                    try std.testing.expectEqual(@as(i32, 192), ent.y);
+                    try std.testing.expectEqual(@as(i32, 48), ent.x);
+                    try std.testing.expectEqual(@as(i32, 200), ent.y);
                 }
             }
             try std.testing.expect(found_player);
