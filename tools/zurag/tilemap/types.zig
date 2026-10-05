@@ -21,6 +21,7 @@ pub const TilemapError = error{
     MapSizeExceedsLimit,
     IntGridValueOutOfRange,
     UnsupportedLayerType,
+    UnsupportedGridSize,
     InvalidTilesetDefinition,
     MissingLevelData,
     InvalidJson,

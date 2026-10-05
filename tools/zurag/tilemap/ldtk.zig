@@ -1,4 +1,5 @@
 const std = @import("std");
+const engine = @import("zamgba-engine");
 const types = @import("types.zig");
 const test_assets = @import("test_palettes");
 
@@ -144,11 +145,123 @@ fn parseIntGridCollisions(aa: std.mem.Allocator, layer_obj: std.json.ObjectMap) 
             return types.TilemapError.IntGridValueOutOfRange;
         }
         masks[idx] = if (val == 0)
-            0
+            engine.physics.Collision.NONE
         else
-            @as(u16, 1) << @intCast(val - 1);
+            engine.physics.Collision.layer(@intCast(val - 1));
     }
     return masks;
+}
+
+const RawTileInfo = struct {
+    px_x: i32,
+    px_y: i32,
+    tile_id: u16,
+    h_flip: bool,
+    v_flip: bool,
+    alpha: f32,
+    src_x: ?u32,
+    src_y: ?u32,
+};
+
+fn parseRawTileObject(t_obj: std.json.ObjectMap) ?RawTileInfo {
+    const px_val = t_obj.get("px") orelse return null;
+    if (px_val != .array or px_val.array.items.len < 2) return null;
+    const px_x = switch (px_val.array.items[0]) {
+        .integer => |i| @as(i32, @intCast(i)),
+        else => return null,
+    };
+    const px_y = switch (px_val.array.items[1]) {
+        .integer => |i| @as(i32, @intCast(i)),
+        else => return null,
+    };
+
+    const f_bits = getIntField(u8, t_obj, "f") orelse 0;
+    const h_flip = (f_bits & 1) != 0;
+    const v_flip = (f_bits & 2) != 0;
+    const tile_id = getIntField(u16, t_obj, "t") orelse 0;
+    const alpha = getFloatField(f32, t_obj, "a") orelse 1.0;
+
+    var src_x: ?u32 = null;
+    var src_y: ?u32 = null;
+    if (t_obj.get("src")) |src_val| {
+        if (src_val == .array and src_val.array.items.len >= 2) {
+            src_x = switch (src_val.array.items[0]) {
+                .integer => |i| @as(u32, @intCast(i)),
+                else => null,
+            };
+            src_y = switch (src_val.array.items[1]) {
+                .integer => |i| @as(u32, @intCast(i)),
+                else => null,
+            };
+        }
+    }
+
+    return .{
+        .px_x = px_x,
+        .px_y = px_y,
+        .tile_id = tile_id,
+        .h_flip = h_flip,
+        .v_flip = v_flip,
+        .alpha = alpha,
+        .src_x = src_x,
+        .src_y = src_y,
+    };
+}
+
+fn append16x16SubTiles(
+    aa: std.mem.Allocator,
+    tiles_list: *std.ArrayList(ParsedTileEntry),
+    raw_tile: RawTileInfo,
+    tileset_c_wid_8: u32,
+) types.TilemapError!void {
+    const gx: u16 = @intCast(@divTrunc(raw_tile.px_x, 16));
+    const gy: u16 = @intCast(@divTrunc(raw_tile.px_y, 16));
+
+    var base_8x8_id = raw_tile.tile_id;
+    if (raw_tile.src_x != null and raw_tile.src_y != null) {
+        base_8x8_id = @intCast((raw_tile.src_x.? / 8) + (raw_tile.src_y.? / 8) * tileset_c_wid_8);
+    }
+
+    const sub_tiles = split16x16Tile(base_8x8_id, tileset_c_wid_8, gx, gy, raw_tile.h_flip, raw_tile.v_flip);
+    for (sub_tiles) |st| {
+        tiles_list.append(aa, st) catch return types.TilemapError.OutOfMemory;
+    }
+}
+
+fn append8x8Tile(
+    aa: std.mem.Allocator,
+    tiles_list: *std.ArrayList(ParsedTileEntry),
+    raw_tile: RawTileInfo,
+) types.TilemapError!void {
+    const gx: u16 = @intCast(@divTrunc(raw_tile.px_x, 8));
+    const gy: u16 = @intCast(@divTrunc(raw_tile.px_y, 8));
+    tiles_list.append(aa, .{
+        .tile_id = raw_tile.tile_id,
+        .x = gx,
+        .y = gy,
+        .h_flip = raw_tile.h_flip,
+        .v_flip = raw_tile.v_flip,
+        .alpha = 1.0,
+    }) catch return types.TilemapError.OutOfMemory;
+}
+
+fn appendTileEntries(
+    aa: std.mem.Allocator,
+    tiles_list: *std.ArrayList(ParsedTileEntry),
+    raw_tile: RawTileInfo,
+    grid_size: u32,
+    tileset_c_wid_8: u32,
+    has_alpha_warning: *bool,
+) types.TilemapError!void {
+    if (raw_tile.alpha != 1.0) {
+        has_alpha_warning.* = true;
+    }
+
+    switch (grid_size) {
+        8 => try append8x8Tile(aa, tiles_list, raw_tile),
+        16 => try append16x16SubTiles(aa, tiles_list, raw_tile, tileset_c_wid_8),
+        else => return types.TilemapError.UnsupportedGridSize,
+    }
 }
 
 fn parseLayerTiles(
@@ -158,14 +271,20 @@ fn parseLayerTiles(
     tileset_defs: std.AutoHashMap(i64, TilesetDef),
     has_alpha_warning: *bool,
 ) types.TilemapError![]const ParsedTileEntry {
+    if (grid_size != 8 and grid_size != 16) {
+        return types.TilemapError.UnsupportedGridSize;
+    }
+
     var tiles_list: std.ArrayList(ParsedTileEntry) = .empty;
     defer tiles_list.deinit(aa);
 
     const tileset_def_uid = getIntField(i64, layer_obj, "__tilesetDefUid") orelse -1;
-    const tileset_c_wid_8 = if (tileset_defs.get(tileset_def_uid)) |ts|
+    const tileset_c_wid_8: u32 = if (tileset_defs.get(tileset_def_uid)) |ts|
         ts.c_wid_8
+    else if (grid_size == 16)
+        return types.TilemapError.InvalidTilesetDefinition
     else
-        32;
+        0;
 
     const tile_arrays = [_]?std.json.Value{
         layer_obj.get("autoLayerTiles"),
@@ -178,63 +297,8 @@ fn parseLayerTiles(
 
         for (arr_val.array.items) |t_item| {
             if (t_item != .object) continue;
-            const t_obj = t_item.object;
-
-            const px_val = t_obj.get("px") orelse continue;
-            if (px_val != .array or px_val.array.items.len < 2) continue;
-            const px_x = switch (px_val.array.items[0]) {
-                .integer => |i| @as(i32, @intCast(i)),
-                else => 0,
-            };
-            const px_y = switch (px_val.array.items[1]) {
-                .integer => |i| @as(i32, @intCast(i)),
-                else => 0,
-            };
-
-            const f_bits = getIntField(u8, t_obj, "f") orelse 0;
-            const h_flip = (f_bits & 1) != 0;
-            const v_flip = (f_bits & 2) != 0;
-            const tile_id = getIntField(u16, t_obj, "t") orelse 0;
-            const alpha = getFloatField(f32, t_obj, "a") orelse 1.0;
-
-            if (alpha != 1.0) {
-                has_alpha_warning.* = true;
-            }
-
-            if (grid_size == 16) {
-                const gx: u16 = @intCast(@divTrunc(px_x, 16));
-                const gy: u16 = @intCast(@divTrunc(px_y, 16));
-
-                var base_8x8_id = tile_id;
-                if (t_obj.get("src")) |src_val| parse_src: {
-                    if (src_val != .array or src_val.array.items.len < 2) break :parse_src;
-                    const src_x = switch (src_val.array.items[0]) {
-                        .integer => |i| @as(u32, @intCast(i)),
-                        else => 0,
-                    };
-                    const src_y = switch (src_val.array.items[1]) {
-                        .integer => |i| @as(u32, @intCast(i)),
-                        else => 0,
-                    };
-                    base_8x8_id = @intCast((src_x / 8) + (src_y / 8) * tileset_c_wid_8);
-                }
-
-                const sub_tiles = split16x16Tile(base_8x8_id, tileset_c_wid_8, gx, gy, h_flip, v_flip);
-                for (sub_tiles) |st| {
-                    tiles_list.append(aa, st) catch return types.TilemapError.OutOfMemory;
-                }
-            } else {
-                const gx: u16 = @intCast(@divTrunc(px_x, 8));
-                const gy: u16 = @intCast(@divTrunc(px_y, 8));
-                tiles_list.append(aa, .{
-                    .tile_id = tile_id,
-                    .x = gx,
-                    .y = gy,
-                    .h_flip = h_flip,
-                    .v_flip = v_flip,
-                    .alpha = 1.0,
-                }) catch return types.TilemapError.OutOfMemory;
-            }
+            const raw_tile = parseRawTileObject(t_item.object) orelse continue;
+            try appendTileEntries(aa, &tiles_list, raw_tile, grid_size, tileset_c_wid_8, has_alpha_warning);
         }
     }
 
@@ -314,7 +378,10 @@ fn parseLayerInstance(
         null;
 
     var has_alpha_warning = false;
-    const tiles = try parseLayerTiles(aa, layer_obj, grid_size, tileset_defs, &has_alpha_warning);
+    const tiles = if (layer_type != .entities)
+        try parseLayerTiles(aa, layer_obj, grid_size, tileset_defs, &has_alpha_warning)
+    else
+        &[_]ParsedTileEntry{};
 
     const is_visual_bg = (layer_type == .tiles or layer_type == .auto_layer or
         (layer_type == .int_grid and tiles.len > 0));
@@ -613,4 +680,83 @@ test "LDT008: Handle tile alpha blending warning and clamp to 1.0" {
     for (layer.tiles) |t| {
         try std.testing.expectEqual(@as(f32, 1.0), t.alpha);
     }
+}
+
+test "LDT009: Reject 16x16 tile layer with missing tileset definition" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": { "tilesets": [], "layers": [] },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Tiles16",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 16,
+        \\          "__cWid": 16,
+        \\          "__cHei": 16,
+        \\          "__tilesetDefUid": 999,
+        \\          "gridTiles": [{ "px": [0, 0], "src": [0, 0], "f": 0, "t": 0, "a": 1.0 }]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.InvalidTilesetDefinition, parseJsonHelper(std.testing.allocator, raw_json));
+}
+
+test "LDT010: Reject unsupported tile grid size (e.g. 24x24 or 32x32)" {
+    const raw_json_24 =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": { "tilesets": [], "layers": [] },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 240,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Tiles24",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 24,
+        \\          "__cWid": 10,
+        \\          "__cHei": 10,
+        \\          "__tilesetDefUid": 1,
+        \\          "gridTiles": [{ "px": [0, 0], "src": [0, 0], "f": 0, "t": 0, "a": 1.0 }]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.UnsupportedGridSize, parseJsonHelper(std.testing.allocator, raw_json_24));
+
+    const raw_json_32 =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": { "tilesets": [], "layers": [] },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Tiles32",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 32,
+        \\          "__cWid": 8,
+        \\          "__cHei": 8,
+        \\          "__tilesetDefUid": 1,
+        \\          "gridTiles": [{ "px": [0, 0], "src": [0, 0], "f": 0, "t": 0, "a": 1.0 }]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.UnsupportedGridSize, parseJsonHelper(std.testing.allocator, raw_json_32));
 }
