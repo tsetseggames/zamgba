@@ -154,7 +154,7 @@ const Game = struct {
             self.anim_timer = 0;
             self.anim_frame = (self.anim_frame + 1) % broom.frame_count;
         }
-        self.player.tile.tile_index = self.anim_frame * TILES_PER_FRAME_8BPP;
+        self.player.tile_index = self.anim_frame * TILES_PER_FRAME_8BPP;
 
         // 5. Check player-enemy collision
         for (&self.enemies) |*enemy| {

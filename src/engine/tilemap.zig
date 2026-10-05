@@ -1,13 +1,13 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
-const physics = @import("../physics/physics.zig");
-const color = @import("color.zig");
+const physics = @import("physics/physics.zig");
+const gfx2d = @import("gfx2d/gfx2d.zig");
 
 pub const CollisionMask = physics.CollisionMask;
 pub const Collision = physics.Collision;
 
 /// Hardware 15-bit BGR555 color format.
-pub const Bgr555 = color.Bgr555;
+pub const Bgr555 = gfx2d.Bgr555;
 
 /// Hardware-aligned 16-bit packed Screen Entry for GBA Text Backgrounds.
 /// The definition is here: https://gbadev.net/tonc/regbg.html#sec-map

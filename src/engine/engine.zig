@@ -1,15 +1,24 @@
 const hal = @import("zamgba-hal");
 
-pub const Sprite = @import("sprite.zig").Sprite;
-pub const StaticSprite = @import("sprite.zig").StaticSprite;
-pub const StaticTile = gfx2d.StaticTile;
-pub const ScreenEntry = gfx2d.ScreenEntry;
-pub const TileSet = gfx2d.TileSet;
-pub const MapLayerData = gfx2d.MapLayerData;
-pub const TileMapLayer = gfx2d.TileMapLayer;
-pub const AnimationDirection = gfx2d.AnimationDirection;
-pub const AnimationTag = gfx2d.AnimationTag;
-pub const SpriteSheet = gfx2d.SpriteSheet;
+pub const sprite_mod = @import("sprite.zig");
+pub const Sprite = sprite_mod.Sprite;
+pub const StaticSprite = sprite_mod.StaticSprite;
+pub const AnimatedSprite = sprite_mod.AnimatedSprite;
+pub const SpriteSheet = sprite_mod.SpriteSheet;
+pub const AnimationTag = sprite_mod.AnimationTag;
+pub const AnimationDirection = sprite_mod.AnimationDirection;
+pub const AnimationMode = sprite_mod.AnimationMode;
+pub const SpriteError = sprite_mod.SpriteError;
+
+pub const tilemap = @import("tilemap.zig");
+pub const ScreenEntry = tilemap.ScreenEntry;
+pub const TileSet = tilemap.TileSet;
+pub const MapLayerData = tilemap.MapLayerData;
+pub const TileMapLayer = tilemap.TileMapLayer;
+pub const TileData = tilemap.TileData;
+pub const Tile4bpp = tilemap.Tile4bpp;
+pub const Tile8bpp = tilemap.Tile8bpp;
+pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
 pub const Color = gfx2d.Color;
 
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
@@ -133,13 +142,11 @@ pub const physics = @import("physics/physics.zig");
 pub const log = @import("log.zig");
 pub const vram_allocator = gfx2d.vram_allocator;
 pub const dma_queue = gfx2d.dma_queue;
-pub const AnimatedTiles = gfx2d.AnimatedTiles;
-pub const AnimatedSprite = @import("sprite.zig").AnimatedSprite;
-pub const AnimationMode = gfx2d.AnimationMode;
 
 test {
     _ = physics;
     _ = @import("sprite.zig");
+    _ = tilemap;
     _ = gfx2d;
     _ = log;
 }

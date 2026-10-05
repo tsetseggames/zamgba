@@ -9,7 +9,7 @@ graph TD
     subgraph High-Level Framework (Developer Facing)
         E[engine.Engine] --> SS[engine.StaticSprite / AnimatedSprite]
         SS --> S[engine.Sprite - Spatial/Physics]
-        SS --> T[engine.StaticTile / AnimatedTiles - Graphics]
+        SS --> A[engine.SpriteAnimation - Frame Sequencing]
         E --> G[engine.gfx2d.Drawing Algorithms]
     end
 
@@ -45,7 +45,7 @@ This is the **Game Engine Layer** (`zamgba.engine`). It is the primary API inter
 
 ### A. Engine Orchestration (`zamgba.engine`)
 *   **`engine.Sprite`**: A pure spatial and physics entity representing position (`Fixed24_8` sub-pixel coordinates), bounding box (`AABB`), velocity, collision layers/masks, and orientation (horizontal/vertical flip). It deliberately does **not** store graphical tile data.
-*   **`engine.StaticSprite` / `engine.AnimatedSprite`**: Composite renderable entities combining `Sprite` with graphical tile descriptors (`StaticTile` or `AnimatedTiles`). They implement `toOamAttr() hal.oam.ObjAttr` to calculate the GBA's complex shape, size, palette, and tile index bitmasks.
+*   **`engine.StaticSprite` / `engine.AnimatedSprite`**: Composite renderable entities combining `Sprite` with graphical VRAM descriptors (`tile_index`, `palette_bank`, `bpp`) or frame animation controllers (`SpriteAnimation`). They implement `toOamAttr() hal.oam.ObjAttr` to calculate the GBA's complex shape, size, palette, and tile index bitmasks.
 *   **`engine.Engine`**:
     *   **Shadow OAM**: Manages an internal `shadow_oam: [128]hal.oam.ObjAttr` array to stage sprite data before rendering.
     *   **`drawSprite(spr)`**: Accepts any renderable entity implementing `toOamAttr() hal.oam.ObjAttr` (enforced with compile-time assertion `@compileError`), dynamically staging it to the next available physical slot (0 to 127) for the current frame.
