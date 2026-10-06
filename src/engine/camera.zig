@@ -69,87 +69,161 @@ pub const Camera2D = struct {
 
     /// Initialize a Camera2D at the specified top-left world coordinates.
     pub fn init(x: Fixed24_8, y: Fixed24_8) Camera2D {
-        // TDD Red Stub: Return empty/zeroed struct
-        _ = x;
-        _ = y;
-        return .{};
+        return .{
+            .x = x,
+            .y = y,
+            .target_x = x,
+            .target_y = y,
+        };
     }
 
     /// Transforms world coordinates to screen pixel coordinates.
     pub fn worldToScreen(self: *const Camera2D, wx: Fixed24_8, wy: Fixed24_8) Point2 {
-        // TDD Red Stub
-        _ = self;
-        _ = wx;
-        _ = wy;
-        return Point2.init(0, 0);
+        const eff_x = self.x.add(self.shake_offset_x);
+        const eff_y = self.y.add(self.shake_offset_y);
+        return Point2.init(wx.sub(eff_x).toInt(), wy.sub(eff_y).toInt());
     }
 
     /// Transforms screen pixel coordinates to world coordinates.
     pub fn screenToWorld(self: *const Camera2D, sx: i32, sy: i32) Point2 {
-        // TDD Red Stub
-        _ = self;
-        _ = sx;
-        _ = sy;
-        return Point2.init(0, 0);
+        const eff_x = self.x.add(self.shake_offset_x);
+        const eff_y = self.y.add(self.shake_offset_y);
+        return Point2.init(sx + eff_x.toInt(), sy + eff_y.toInt());
     }
 
     /// Returns the active visible AABB of the camera in world coordinates.
     pub fn getVisibleAABB(self: *const Camera2D) AABB {
-        // TDD Red Stub
-        _ = self;
-        return AABB.fromInt(0, 0, 0, 0);
+        const eff_x = self.x.add(self.shake_offset_x);
+        const eff_y = self.y.add(self.shake_offset_y);
+        return AABB.init(eff_x, eff_y, self.viewport_width, self.viewport_height);
     }
 
     /// Checks whether an entity's AABB intersects with the visible camera viewport.
     pub fn isAABBVisible(self: *const Camera2D, aabb: AABB) bool {
-        // TDD Red Stub
-        _ = self;
-        _ = aabb;
-        return false;
+        return self.getVisibleAABB().isColliding(aabb);
     }
 
     /// Centers the camera viewport on a world-space point instantly.
     pub fn centerOn(self: *Camera2D, target_x: Fixed24_8, target_y: Fixed24_8) void {
-        // TDD Red Stub
-        _ = self;
-        _ = target_x;
-        _ = target_y;
+        const half_w = Fixed24_8.fromInt(@as(i32, self.viewport_width / 2));
+        const half_h = Fixed24_8.fromInt(@as(i32, self.viewport_height / 2));
+        const desired_x = target_x.sub(half_w);
+        const desired_y = target_y.sub(half_h);
+        const clamped = self.limits.clamp(desired_x, desired_y);
+        self.x = clamped.x;
+        self.y = clamped.y;
+        self.target_x = clamped.x;
+        self.target_y = clamped.y;
     }
 
     /// Sets the target look-at position (used with smooth_speed lerping).
     pub fn lookAt(self: *Camera2D, target_x: Fixed24_8, target_y: Fixed24_8) void {
-        // TDD Red Stub
-        _ = self;
-        _ = target_x;
-        _ = target_y;
+        const clamped = self.limits.clamp(target_x, target_y);
+        self.target_x = clamped.x;
+        self.target_y = clamped.y;
     }
 
     /// Tracks a target AABB, respecting drag margin boundaries and limits.
     pub fn follow(self: *Camera2D, target: AABB) void {
-        // TDD Red Stub
-        _ = self;
-        _ = target;
+        const half_w = Fixed24_8.fromInt(@as(i32, self.viewport_width / 2));
+        const half_h = Fixed24_8.fromInt(@as(i32, self.viewport_height / 2));
+
+        var new_cam_x = self.x;
+        var new_cam_y = self.y;
+
+        if (self.drag_margin) |margin| {
+            const target_center_x = target.x.add(Fixed24_8.fromInt(@as(i32, target.width / 2)));
+            const target_center_y = target.y.add(Fixed24_8.fromInt(@as(i32, target.height / 2)));
+
+            const margin_half_w = Fixed24_8.fromInt(@as(i32, margin.width / 2));
+            const margin_half_h = Fixed24_8.fromInt(@as(i32, margin.height / 2));
+
+            const cam_center_x = self.x.add(half_w);
+            const cam_center_y = self.y.add(half_h);
+
+            const margin_left = cam_center_x.sub(margin_half_w);
+            const margin_right = cam_center_x.add(margin_half_w);
+            const margin_top = cam_center_y.sub(margin_half_h);
+            const margin_bottom = cam_center_y.add(margin_half_h);
+
+            if (target_center_x.raw < margin_left.raw) {
+                new_cam_x = new_cam_x.sub(margin_left.sub(target_center_x));
+            } else if (target_center_x.raw > margin_right.raw) {
+                new_cam_x = new_cam_x.add(target_center_x.sub(margin_right));
+            }
+
+            if (target_center_y.raw < margin_top.raw) {
+                new_cam_y = new_cam_y.sub(margin_top.sub(target_center_y));
+            } else if (target_center_y.raw > margin_bottom.raw) {
+                new_cam_y = new_cam_y.add(target_center_y.sub(margin_bottom));
+            }
+        } else {
+            const target_center_x = target.x.add(Fixed24_8.fromInt(@as(i32, target.width / 2)));
+            const target_center_y = target.y.add(Fixed24_8.fromInt(@as(i32, target.height / 2)));
+            new_cam_x = target_center_x.sub(half_w);
+            new_cam_y = target_center_y.sub(half_h);
+        }
+
+        const clamped = self.limits.clamp(new_cam_x, new_cam_y);
+        if (self.smooth_speed.raw == 0) {
+            self.x = clamped.x;
+            self.y = clamped.y;
+            self.target_x = clamped.x;
+            self.target_y = clamped.y;
+        } else {
+            self.target_x = clamped.x;
+            self.target_y = clamped.y;
+        }
     }
 
     /// Triggers a screen shake effect with specified intensity and optional decay rate.
     pub fn shake(self: *Camera2D, intensity: Fixed24_8, decay: ?Fixed24_8) void {
-        // TDD Red Stub
-        _ = self;
-        _ = intensity;
-        _ = decay;
+        self.shake_intensity = intensity;
+        if (decay) |d| {
+            self.shake_decay = d;
+        }
     }
 
     /// Updates camera position interpolation, boundary clamping, and screen shake decay.
     pub fn update(self: *Camera2D) void {
-        // TDD Red Stub
-        _ = self;
+        // 1. Position smoothing interpolation
+        if (self.smooth_speed.raw > 0) {
+            const dx = self.target_x.sub(self.x);
+            self.x = self.x.add(dx.mul(self.smooth_speed));
+            const dy = self.target_y.sub(self.y);
+            self.y = self.y.add(dy.mul(self.smooth_speed));
+            const clamped = self.limits.clamp(self.x, self.y);
+            self.x = clamped.x;
+            self.y = clamped.y;
+        }
+
+        // 2. Screen shake oscillation & decay
+        if (self.shake_intensity.raw > 0) {
+            self.shake_step = (self.shake_step +% 1);
+            const offsets = [_]struct { x: i32, y: i32 }{
+                .{ .x = 1, .y = -1 },
+                .{ .x = -1, .y = 1 },
+                .{ .x = -1, .y = -1 },
+                .{ .x = 1, .y = 1 },
+            };
+            const dir = offsets[self.shake_step % offsets.len];
+            self.shake_offset_x = Fixed24_8.fromInt(dir.x).mul(self.shake_intensity);
+            self.shake_offset_y = Fixed24_8.fromInt(dir.y).mul(self.shake_intensity);
+
+            self.shake_intensity = self.shake_intensity.mul(self.shake_decay);
+            if (self.shake_intensity.raw < 25) {
+                self.shake_intensity = Fixed24_8.zero;
+                self.shake_offset_x = Fixed24_8.zero;
+                self.shake_offset_y = Fixed24_8.zero;
+            }
+        }
     }
 
     /// Synchronizes the camera viewport position to a hardware tilemap layer's scroll registers.
     pub fn applyToTileMap(self: *const Camera2D, layer: *TileMapLayer) void {
-        // TDD Red Stub
-        _ = self;
-        _ = layer;
+        const eff_x = self.x.add(self.shake_offset_x);
+        const eff_y = self.y.add(self.shake_offset_y);
+        layer.setScroll(eff_x.toInt(), eff_y.toInt());
     }
 
     /// Synchronizes the camera viewport position to a tilemap layer with parallax scaling factors.
@@ -159,11 +233,11 @@ pub const Camera2D = struct {
         factor_x: Fixed24_8,
         factor_y: Fixed24_8,
     ) void {
-        // TDD Red Stub
-        _ = self;
-        _ = layer;
-        _ = factor_x;
-        _ = factor_y;
+        const eff_x = self.x.add(self.shake_offset_x);
+        const eff_y = self.y.add(self.shake_offset_y);
+        const px = eff_x.mul(factor_x);
+        const py = eff_y.mul(factor_y);
+        layer.setScroll(px.toInt(), py.toInt());
     }
 };
 

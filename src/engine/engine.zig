@@ -24,7 +24,7 @@ pub const Color = gfx2d.Color;
 pub const camera = @import("camera.zig");
 pub const Camera2D = camera.Camera2D;
 pub const CameraLimits = camera.CameraLimits;
-pub const Deadzone = camera.Deadzone;
+pub const DragMargin = camera.DragMargin;
 
 pub var active_camera: ?*Camera2D = null;
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
@@ -104,7 +104,8 @@ pub fn setDmaVblankBudget(bytes: usize) void {
 }
 
 /// Registers a sprite to be rendered in the current frame.
-/// Dynamically maps the high-level sprite into the next available OAM slot.
+/// Dynamically maps the high-level sprite into the next available OAM slot,
+/// performing camera-aware frustum culling and coordinate transformation when a camera is active.
 pub fn drawSprite(spr: anytype) void {
     const T = @TypeOf(spr);
     const PtrInfo = @typeInfo(T);
@@ -115,6 +116,31 @@ pub fn drawSprite(spr: anytype) void {
     }
 
     if (sprite_count >= 128) return; // GBA hardware limit
+
+    if (active_camera) |cam| {
+        const spr_aabb: ?physics.AABB = if (@hasField(TargetType, "sprite"))
+            spr.sprite.aabb
+        else if (@hasField(TargetType, "aabb"))
+            spr.aabb
+        else if (@hasDecl(TargetType, "getSprite"))
+            spr.getSprite().aabb
+        else
+            null;
+
+        if (spr_aabb) |aabb| {
+            if (!cam.isAABBVisible(aabb)) return;
+            var raw_attr = spr.toOamAttr();
+            const screen_pos = cam.worldToScreen(aabb.x, aabb.y);
+            const screen_y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.y)))) & 0x00FF;
+            const screen_x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.x)))) & 0x01FF;
+            raw_attr.attr0 = (raw_attr.attr0 & 0xFF00) | screen_y_hw;
+            raw_attr.attr1 = (raw_attr.attr1 & 0xFE00) | screen_x_hw;
+            shadow_oam[sprite_count] = raw_attr;
+            sprite_count += 1;
+            return;
+        }
+    }
+
     shadow_oam[sprite_count] = spr.toOamAttr();
     sprite_count += 1;
 }
