@@ -21,9 +21,25 @@ pub const Tile8bpp = tilemap.Tile8bpp;
 pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
 pub const Color = gfx2d.Color;
 
+pub const camera = @import("camera.zig");
+pub const Camera2D = camera.Camera2D;
+pub const CameraLimits = camera.CameraLimits;
+pub const Deadzone = camera.Deadzone;
+
+pub var active_camera: ?*Camera2D = null;
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
 pub var sprite_count: usize = 0;
 pub var is_initialized: bool = false;
+
+/// Sets or unsets the globally active rendering camera.
+pub fn setCamera(cam: ?*Camera2D) void {
+    active_camera = cam;
+}
+
+/// Returns the currently active rendering camera, or null.
+pub fn getCamera() ?*Camera2D {
+    return active_camera;
+}
 
 /// Initializes the global engine state, resets subsystem allocators and queues, and configures hardware display registers.
 pub fn initHardware() void {
@@ -44,6 +60,7 @@ pub fn initHardware() void {
         };
     }
     sprite_count = 0;
+    active_camera = null;
     vram_allocator.reset();
     dma_queue.global_queue.reset();
     is_initialized = true;
@@ -147,6 +164,7 @@ test {
     _ = physics;
     _ = @import("sprite.zig");
     _ = tilemap;
+    _ = camera;
     _ = gfx2d;
     _ = log;
 }
