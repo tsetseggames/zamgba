@@ -136,6 +136,7 @@ Enjoy!
   - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
   - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
   - [ ] TileMap background layer priority configuration (`priority: u2` for foreground/background depth)
+  - [ ] Bitmap Font & Text typography rendering pipeline (8x8 tile fonts, dynamic text boxes, dialogue display)
   - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
   - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
 * **Version 0.5.0**: Capable of writing a game with save data. Supported features:
