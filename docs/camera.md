@@ -69,10 +69,10 @@ pub const CameraLimits = struct {
 };
 ```
 
-### 3.2 `Deadzone`
-Defines a rectangular zone around the camera center where target movement does not cause the camera to scroll:
+### 3.2 `DragMargin`
+Defines a rectangular margin window around the camera center where target movement does not cause the camera to scroll. This is inspired by Godot's `drag_margin` terminology (conceptually equivalent to the "Deadzone" pattern in Unity and traditional 2D game engines):
 ```zig
-pub const Deadzone = struct {
+pub const DragMargin = struct {
     width: u16,
     height: u16,
 };
@@ -96,8 +96,8 @@ pub const Camera2D = struct {
     /// World boundary limits.
     limits: CameraLimits = .{},
 
-    /// Target tracking deadzone.
-    deadzone: ?Deadzone = null,
+    /// Target tracking drag margin.
+    drag_margin: ?DragMargin = null,
 
     /// Smoothing speed for position interpolation. 0 = instant snap.
     smooth_speed: Fixed24_8 = Fixed24_8.zero,

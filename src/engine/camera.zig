@@ -16,28 +16,23 @@ pub const CameraLimits = struct {
     max_x: ?Fixed24_8 = null,
     max_y: ?Fixed24_8 = null,
 
-    /// Clamps given (x, y) coordinates within the defined bounds.
-    pub fn clamp(self: CameraLimits, x: Fixed24_8, y: Fixed24_8) struct { x: Fixed24_8, y: Fixed24_8 } {
-        var cx = x;
-        var cy = y;
-        if (self.min_x) |min_x| {
-            if (cx.raw < min_x.raw) cx = min_x;
-        }
-        if (self.max_x) |max_x| {
-            if (cx.raw > max_x.raw) cx = max_x;
-        }
-        if (self.min_y) |min_y| {
-            if (cy.raw < min_y.raw) cy = min_y;
-        }
-        if (self.max_y) |max_y| {
-            if (cy.raw > max_y.raw) cy = max_y;
-        }
-        return .{ .x = cx, .y = cy };
+    /// Clamps given (x, y) coordinates within the defined bounds using std.math.clamp.
+    fn clamp(self: CameraLimits, x: Fixed24_8, y: Fixed24_8) struct { x: Fixed24_8, y: Fixed24_8 } {
+        var rx = x.raw;
+        var ry = y.raw;
+        if (self.min_x) |min_x| rx = std.math.clamp(rx, min_x.raw, std.math.maxInt(i32));
+        if (self.max_x) |max_x| rx = std.math.clamp(rx, std.math.minInt(i32), max_x.raw);
+        if (self.min_y) |min_y| ry = std.math.clamp(ry, min_y.raw, std.math.maxInt(i32));
+        if (self.max_y) |max_y| ry = std.math.clamp(ry, std.math.minInt(i32), max_y.raw);
+        return .{
+            .x = .{ .raw = rx },
+            .y = .{ .raw = ry },
+        };
     }
 };
 
-/// Deadzone window around the viewport center.
-pub const Deadzone = struct {
+/// Margin window around the viewport center for drag-based target tracking (inspired by Godot Drag Margin).
+pub const DragMargin = struct {
     width: u16,
     height: u16,
 };
@@ -59,8 +54,8 @@ pub const Camera2D = struct {
     /// Optional world boundary limits.
     limits: CameraLimits = .{},
 
-    /// Optional target tracking deadzone.
-    deadzone: ?Deadzone = null,
+    /// Optional target tracking drag margin.
+    drag_margin: ?DragMargin = null,
 
     /// Smoothing factor for position interpolation. 0 = instant snap, >0 = lerp interpolation.
     smooth_speed: Fixed24_8 = Fixed24_8.zero,
@@ -129,7 +124,7 @@ pub const Camera2D = struct {
         _ = target_y;
     }
 
-    /// Tracks a target AABB, respecting deadzone boundaries and limits.
+    /// Tracks a target AABB, respecting drag margin boundaries and limits.
     pub fn follow(self: *Camera2D, target: AABB) void {
         // TDD Red Stub
         _ = self;
@@ -176,6 +171,39 @@ pub const Camera2D = struct {
 // Unit Tests
 // ====================================================================
 
+test "CAM000: CameraLimits bounds clamping logic" {
+    const limits_full = CameraLimits{
+        .min_x = Fixed24_8.fromInt(10),
+        .min_y = Fixed24_8.fromInt(20),
+        .max_x = Fixed24_8.fromInt(100),
+        .max_y = Fixed24_8.fromInt(200),
+    };
+
+    // Within bounds
+    const res1 = limits_full.clamp(Fixed24_8.fromInt(50), Fixed24_8.fromInt(60));
+    try std.testing.expectEqual(Fixed24_8.fromInt(50).raw, res1.x.raw);
+    try std.testing.expectEqual(Fixed24_8.fromInt(60).raw, res1.y.raw);
+
+    // Below minimum
+    const res2 = limits_full.clamp(Fixed24_8.fromInt(-5), Fixed24_8.fromInt(15));
+    try std.testing.expectEqual(Fixed24_8.fromInt(10).raw, res2.x.raw);
+    try std.testing.expectEqual(Fixed24_8.fromInt(20).raw, res2.y.raw);
+
+    // Exceeding maximum
+    const res3 = limits_full.clamp(Fixed24_8.fromInt(150), Fixed24_8.fromInt(250));
+    try std.testing.expectEqual(Fixed24_8.fromInt(100).raw, res3.x.raw);
+    try std.testing.expectEqual(Fixed24_8.fromInt(200).raw, res3.y.raw);
+
+    // Partial bounds (only min_x and max_y)
+    const limits_partial = CameraLimits{
+        .min_x = Fixed24_8.fromInt(0),
+        .max_y = Fixed24_8.fromInt(500),
+    };
+    const res4 = limits_partial.clamp(Fixed24_8.fromInt(-50), Fixed24_8.fromInt(600));
+    try std.testing.expectEqual(Fixed24_8.fromInt(0).raw, res4.x.raw);
+    try std.testing.expectEqual(Fixed24_8.fromInt(500).raw, res4.y.raw);
+}
+
 test "CAM001: Camera2D default initialization and dimensions" {
     const cam = Camera2D.init(Fixed24_8.fromInt(100), Fixed24_8.fromInt(200));
     try std.testing.expectEqual(Fixed24_8.fromInt(100).raw, cam.x.raw);
@@ -185,7 +213,7 @@ test "CAM001: Camera2D default initialization and dimensions" {
     try std.testing.expectEqual(@as(u16, 240), cam.viewport_width);
     try std.testing.expectEqual(@as(u16, 160), cam.viewport_height);
     try std.testing.expect(cam.limits.min_x == null);
-    try std.testing.expect(cam.deadzone == null);
+    try std.testing.expect(cam.drag_margin == null);
 }
 
 test "CAM002: Camera2D world-to-screen and screen-to-world transformations" {
@@ -245,7 +273,7 @@ test "CAM004: Camera2D world boundary limits clamping" {
     try std.testing.expectEqual(Fixed24_8.fromInt(352).raw, cam.y.raw);
 }
 
-test "CAM005: Camera2D target centering and deadzone tracking" {
+test "CAM005: Camera2D target centering and drag margin tracking" {
     var cam = Camera2D.init(Fixed24_8.zero, Fixed24_8.zero);
 
     // Centering on (300, 200) puts top-left at (300 - 120, 200 - 80) = (180, 120)
@@ -253,16 +281,16 @@ test "CAM005: Camera2D target centering and deadzone tracking" {
     try std.testing.expectEqual(Fixed24_8.fromInt(180).raw, cam.x.raw);
     try std.testing.expectEqual(Fixed24_8.fromInt(120).raw, cam.y.raw);
 
-    // Configure 40x40 deadzone
-    cam.deadzone = .{ .width = 40, .height = 40 };
+    // Configure 40x40 drag margin
+    cam.drag_margin = .{ .width = 40, .height = 40 };
 
-    // Target inside deadzone window: moving 5 pixels should NOT scroll camera
+    // Target inside drag margin window: moving 5 pixels should NOT scroll camera
     const small_move_target = AABB.fromInt(305, 205, 16, 16);
     cam.follow(small_move_target);
     try std.testing.expectEqual(Fixed24_8.fromInt(180).raw, cam.x.raw);
     try std.testing.expectEqual(Fixed24_8.fromInt(120).raw, cam.y.raw);
 
-    // Target pushed past right deadzone border (340 > 180 + 120 + 20 = 320)
+    // Target pushed past right drag margin border (340 > 180 + 120 + 20 = 320)
     const large_move_target = AABB.fromInt(340, 200, 16, 16);
     cam.follow(large_move_target);
     try std.testing.expect(cam.x.raw > Fixed24_8.fromInt(180).raw);
