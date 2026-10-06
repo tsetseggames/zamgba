@@ -189,9 +189,7 @@ test "CAM001: Camera2D default initialization and dimensions" {
 }
 
 test "CAM002: Camera2D world-to-screen and screen-to-world transformations" {
-    var cam = Camera2D.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(30));
-    cam.x = Fixed24_8.fromInt(50);
-    cam.y = Fixed24_8.fromInt(30);
+    const cam = Camera2D.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(30));
 
     const screen_pos = cam.worldToScreen(Fixed24_8.fromInt(70), Fixed24_8.fromInt(45));
     try std.testing.expectEqual(@as(i32, 20), screen_pos.x);
@@ -203,9 +201,7 @@ test "CAM002: Camera2D world-to-screen and screen-to-world transformations" {
 }
 
 test "CAM003: Camera2D visible viewport AABB and frustum culling" {
-    var cam = Camera2D.init(Fixed24_8.fromInt(100), Fixed24_8.fromInt(100));
-    cam.x = Fixed24_8.fromInt(100);
-    cam.y = Fixed24_8.fromInt(100);
+    const cam = Camera2D.init(Fixed24_8.fromInt(100), Fixed24_8.fromInt(100));
 
     const vis_box = cam.getVisibleAABB();
     try std.testing.expectEqual(Fixed24_8.fromInt(100).raw, vis_box.x.raw);
@@ -318,8 +314,6 @@ test "CAM007: Camera2D TileMapLayer scroll synchronization and parallax" {
     };
 
     var cam = Camera2D.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(70));
-    cam.x = Fixed24_8.fromInt(50);
-    cam.y = Fixed24_8.fromInt(70);
 
     cam.applyToTileMap(&layer);
     try std.testing.expectEqual(@as(u16, 50), layer.scroll_x);
@@ -335,8 +329,6 @@ test "CAM008: Engine drawSprite camera viewport culling and coordinate offset" {
     engine.initHardware();
 
     var cam = Camera2D.init(Fixed24_8.fromInt(100), Fixed24_8.fromInt(100));
-    cam.x = Fixed24_8.fromInt(100);
-    cam.y = Fixed24_8.fromInt(100);
     engine.setCamera(&cam);
     defer engine.setCamera(null);
 
