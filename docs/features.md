@@ -20,9 +20,11 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] LDtk level editor import & code generation in `zurag` tool (`.ldtk` parser, tile deduplication, IntGrid extraction) - *(v0.3.0)*
 
 2. **UI, HUD & Layer Depth System (v0.4.0)**
-   - [ ] UI / HUD rendering support (screen-space sprites bypassing camera transformations)
+   - [ ] UI / HUD rendering support (screen-space sprites bypassing camera transformations via `engine.drawSpriteUi`)
    - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
    - [ ] TileMap layer priority configuration (foreground vs. background depth composition)
+   - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
+   - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
 
 3. **Architecture Layers (New)**
    - **Tier 1 (HAL):** `zamgba.hal` - Hardware limits, memory, registers.
