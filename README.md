@@ -126,7 +126,8 @@ Enjoy!
   - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
   - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
-  - [ ] Camera support for scrolling backgrounds and viewport tracking
+  - [x] Camera support for scrolling backgrounds and viewport tracking (`Camera2D`, `CameraLimits`, `DragMargin`, frustum culling)
+  - [ ] Camera tracking & scrolling TileMap interactive demo ROM
   - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
