@@ -20,7 +20,7 @@ In Game Boy Advance development, rendering and memory access are governed by str
 ┌─────────────────────────────▼──────────────────────────────┐
 │ 2. VBlank Phase (Scanlines 160..227, ~5.0 ms / 83,776 cyc) │
 │    - engine.nextFrame() triggers during vertical blanking  │
-│    - The ONLY safe window for high-speed VRAM tile writes  │
+│    - The ONLY safe window for high-speed VRAM sprite writes│
 │    - Action: Engine flushes all queued tasks via DMA 3     │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -35,7 +35,7 @@ In Game Boy Advance development, rendering and memory access are governed by str
    - Allocates a static array of fixed tasks (e.g., `[16]DmaTask`, taking $< 256$ bytes).
    - Enqueue and flush operations simply manipulate integer indices (`head`, `tail`, `count`), taking only 1–2 CPU cycles per task.
 2. **Multi-Entity Decoupling**:
-   - Independent game objects (Player, Boss, projectile VFX) advance their animation frames in `tick()` without knowledge of each other. Each entity pushes its frame tile copy task into `DmaQueue.enqueue()`.
+   - Independent game objects (Player, Boss, projectile VFX) advance their animation frames in `tick()` without knowledge of each other. Each entity pushes its sprite frame transfer task into `DmaQueue.enqueue()`.
 3. **Batch Coalescing & VBlank Flush**:
    - In `engine.nextFrame()`, the engine pulls all pending tasks and drives hardware DMA 3 in a tight loop during the vertical blanking interrupt.
 
@@ -102,7 +102,7 @@ pub const DmaQueue = struct {
 Developers can tune the VBlank budget per scene via `setMaxBytesPerVblank()` or `engine.setDmaVblankBudget()`:
 - **Default (4 KB)**: Balanced for standard gameplay with active background scrolling and audio playback.
 - **Heavy Animation (up to 16 KB / `HARDWARE_MAX_SAFE_LIMIT`)**: Suitable for 1v1 fighting games, boss cutscenes, or level transitions where audio and background overhead is minimal.
-- **Heavy Audio / Tile Cycling (1–2 KB)**: Enforces strict limits in scenes with intensive Direct Sound mixing and real-time palette manipulation.
+- **Heavy Audio / Palette Cycling (1–2 KB)**: Enforces strict limits in scenes with intensive Direct Sound mixing and real-time palette manipulation.
 
 ---
 

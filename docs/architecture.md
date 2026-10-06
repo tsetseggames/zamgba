@@ -48,7 +48,7 @@ This is the **Game Engine Layer** (`zamgba.engine`). It is the primary API inter
 *   **`engine.StaticSprite` / `engine.AnimatedSprite`**: Composite renderable entities combining `Sprite` with graphical VRAM descriptors (`tile_index`, `palette_bank`, `bpp`) or frame animation controllers (`SpriteAnimation`). They implement `toOamAttr() hal.oam.ObjAttr` to calculate the GBA's complex shape, size, palette, and tile index bitmasks.
 *   **`engine.Engine`**:
     *   **Shadow OAM**: Manages an internal `shadow_oam: [128]hal.oam.ObjAttr` array to stage sprite data before rendering.
-    *   **`drawSprite(spr)`**: Accepts any renderable entity implementing `toOamAttr() hal.oam.ObjAttr` (enforced with compile-time assertion `@compileError`), dynamically staging it to the next available physical slot (0 to 127) for the current frame.
+    *   **`drawSprite(spr)`**: Accepts a sprite pointer (`*StaticSprite` or `*AnimatedSprite`), dynamically staging it to the next available physical slot (0 to 127) for the current frame with optional camera frustum culling and screen coordinate transformation.
     *   **`nextFrame()`**: Bundles frame timing (`hal.waitForVBlank()`), graphics flushing (copying the shadow buffer to `hal.MemorySections.OAM`), DMA streaming queues, and dynamic sprite slot resets.
     *   **`run(context)`**: The compile-time monomorphized loop runner. It accepts either:
         1.  **Static Namespaces (`@This()` of a file)**: Treating files as implicit singleton structs for easy prototyping (state resides in file-scope variables).
@@ -63,7 +63,7 @@ Provides platform-agnostic, mathematics-based drawing routines for procedural re
 
 ## 3. Key Design Tradeoffs & Benefits
 
-1.  **Zero-Cost Abstractions**: By leveraging Zig generics (`anytype` with compile-time type verification), `Engine.run` and `Engine.drawSprite` resolve completely at compile-time. No virtual tables (vtables) or dynamic pointer dispatches are generated in the compiled machine code, leaving maximum performance for the GBA's 16.78 MHz CPU.
+1.  **Zero-Cost Abstractions**: By leveraging compile-time validation in `Engine.run` and `Engine.drawSprite`, all loops and coordinate transforms resolve with zero runtime dynamic dispatch (no vtables), leaving maximum performance for the GBA's 16.78 MHz CPU.
 2.  **Encapsulation of Workarounds**: Hardware workarounds (like OAM Shadowing and VBlank DMA flushes) are tucked away into the Engine Core, allowing developers to draw sprites smoothly in a standard 60 FPS update-and-render game loop.
 3.  **Strict Boundary**: The division between raw hardware representations (`hal`) and state management/game logic (`engine`) makes the architecture clear and maintainable.
 

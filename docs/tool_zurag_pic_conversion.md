@@ -218,7 +218,7 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
 
 ### Workflow A: Self-Contained Standalone Sprite
 * **Best For**: Isolated particles, standalone UI elements, interactive tech demos, and quick prototyping.
-* **Characteristics**: Every sprite file includes its own self-contained palette, tile stream, duration list, and `SpriteSheet` contract.
+* **Characteristics**: Every sprite file includes its own self-contained palette, sprite tile stream, duration list, and `SpriteSheet` contract.
 * **CLI Command**:
   ```bash
   zurag --png player.png --json player.json --bpp 4 --output player.zig

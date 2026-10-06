@@ -237,7 +237,7 @@ During the design of the collision model, two architectural paradigms were evalu
 **Final Architectural Decision**:
 Collision is **strictly bound to `TileSet.collision_masks`**. `MapLayerData` does not store redundant per-cell collision arrays. The build tool (`zurag`) extracts collision classifications directly into the static ROM `TileSet` asset.
 
-### 4.2 VRAM Streaming & DMA Queue Integration (`docs/tile_loading.md`)
+### 4.2 VRAM Streaming & DMA Queue Integration (`docs/sprite.md`)
 * **Tile Data Loading**:
   Tileset graphics are loaded into the target Charblock using the engine's centralized `DmaQueue` (`dma_queue.global_queue.enqueueBytes(...)`) or synchronized bulk DMA transfer during level initialization.
 * **Dynamic Seam Streaming**:

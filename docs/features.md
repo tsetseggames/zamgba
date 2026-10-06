@@ -18,35 +18,40 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [ ] Camera support for scrolling backgrounds and viewport tracking - *(v0.3.0)*
    - [x] LDtk level editor import & code generation in `zurag` tool (`.ldtk` parser, tile deduplication, IntGrid extraction) - *(v0.3.0)*
 
-2. **Architecture Layers (New)**
+2. **UI, HUD & Layer Depth System (v0.4.0)**
+   - [ ] UI / HUD rendering support (screen-space sprites bypassing camera transformations)
+   - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
+   - [ ] TileMap layer priority configuration (foreground vs. background depth composition)
+
+3. **Architecture Layers (New)**
    - **Tier 1 (HAL):** `zamgba.hal` - Hardware limits, memory, registers.
    - **Tier 2 (ENGINE):** `zamgba.engine` - High-level entities (Sprite, Camera, TileMap, Physics).
 
-3. **Input (v0.1.0)**
+4. **Input (v0.1.0)**
    - [x] Respond to gamepad input
 
-4. **Audio (v0.4.0 & v0.6.0)**
-   - [ ] PSG (Programmable Sound Generator / Chiptune) support
-   - [ ] Direct Sound (PCM / Direct Audio playback) support
+5. **Audio (v0.6.0 & v0.7.0)**
+   - [ ] PSG (Programmable Sound Generator / Chiptune) support - *(v0.6.0)*
+   - [ ] Direct Sound (PCM / Direct Audio playback) support - *(v0.7.0)*
 
-5. **Save System (v0.5.0)**
+6. **Save System (v0.5.0)**
    - [ ] High-level state persistence (Save state read/write API)
    - [ ] Hardware-dependent implementation (relies on external hardware/emulator capabilities like SRAM, Flash, or EEPROM)
 
-6. **Physics & Collision (v0.7.0)**
+7. **Physics & Collision (v0.3.0)**
    - [x] Built-in 2D box (AABB) collision engine (2D collision & detection API)
    - [x] Hardcoded collision detection (Early milestone)
 
-7. **Tooling & Asset Conversion**
+8. **Tooling & Asset Conversion**
    - [x] PNG-sprite-to-code conversion tool (`zurag`)
    - [x] Color palettes conversion tool (`zurag`)
-   - [ ] Chiptune-to-code conversion tool
-   - [ ] Wav file to code conversion tool
+   - [ ] Chiptune-to-code conversion tool - *(v0.6.0)*
+   - [ ] Wav file to code conversion tool - *(v0.7.0)*
 
-8. **Debugging & Diagnostics (v0.3.0)**
+9. **Debugging & Diagnostics (v0.3.0)**
    - [x] mGBA compatible logging (`zamgba.hal.mgba.log` / `zamgba.engine.log`)
    - [x] Custom panic handler
 
-9. **Advanced Game Capabilities (v1.0.0 & v2.0.0)**
+10. **Advanced Game Capabilities (v1.0.0 & v2.0.0)**
    - [ ] 2D platformer game framework capabilities
    - [ ] Pseudo-3D game rendering support

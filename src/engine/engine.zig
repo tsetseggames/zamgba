@@ -111,34 +111,25 @@ pub fn drawSprite(spr: anytype) void {
     const PtrInfo = @typeInfo(T);
     const TargetType = if (PtrInfo == .pointer) PtrInfo.pointer.child else T;
 
-    if (!@hasDecl(TargetType, "toOamAttr")) {
-        @compileError("Type passed to engine.drawSprite must implement 'toOamAttr() hal.oam.ObjAttr'");
-    }
+    const aabb: physics.AABB = switch (TargetType) {
+        StaticSprite => spr.sprite.aabb,
+        AnimatedSprite => spr.getSprite().aabb,
+        else => @compileError("engine.drawSprite only accepts *StaticSprite or *AnimatedSprite, found: " ++ @typeName(TargetType)),
+    };
 
     if (sprite_count >= 128) return; // GBA hardware limit
 
     if (active_camera) |cam| {
-        const spr_aabb: ?physics.AABB = if (@hasField(TargetType, "sprite"))
-            spr.sprite.aabb
-        else if (@hasField(TargetType, "aabb"))
-            spr.aabb
-        else if (@hasDecl(TargetType, "getSprite"))
-            spr.getSprite().aabb
-        else
-            null;
-
-        if (spr_aabb) |aabb| {
-            if (!cam.isAABBVisible(aabb)) return;
-            var raw_attr = spr.toOamAttr();
-            const screen_pos = cam.worldToScreen(aabb.x, aabb.y);
-            const screen_y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.y)))) & 0x00FF;
-            const screen_x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.x)))) & 0x01FF;
-            raw_attr.attr0 = (raw_attr.attr0 & 0xFF00) | screen_y_hw;
-            raw_attr.attr1 = (raw_attr.attr1 & 0xFE00) | screen_x_hw;
-            shadow_oam[sprite_count] = raw_attr;
-            sprite_count += 1;
-            return;
-        }
+        if (!cam.isAABBVisible(aabb)) return;
+        var raw_attr = spr.toOamAttr();
+        const screen_pos = cam.worldToScreen(aabb.x, aabb.y);
+        const screen_y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.y)))) & 0x00FF;
+        const screen_x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.x)))) & 0x01FF;
+        raw_attr.attr0 = (raw_attr.attr0 & 0xFF00) | screen_y_hw;
+        raw_attr.attr1 = (raw_attr.attr1 & 0xFE00) | screen_x_hw;
+        shadow_oam[sprite_count] = raw_attr;
+        sprite_count += 1;
+        return;
     }
 
     shadow_oam[sprite_count] = spr.toOamAttr();
