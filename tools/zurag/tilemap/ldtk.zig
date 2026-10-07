@@ -803,3 +803,102 @@ test "LDT011: Reject level with multiple IntGrid layers" {
     ;
     try std.testing.expectError(error.MultipleIntGridLayersNotSupported, parseJsonHelper(std.testing.allocator, raw_json));
 }
+
+test "LDT012: Reject 1 tiled IntGrid + 4 visual layers exceeding 4 BG limit" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [{ "uid": 1, "pxWid": 128, "pxHei": 128, "tileGridSize": 8 }],
+        \\    "layers": [
+        \\      { "identifier": "TerrainIntGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "TerrainIntGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "__tilesetDefUid": 1,
+        \\          "intGridCsv": [1, 0, 0],
+        \\          "autoLayerTiles": [{ "px": [0, 0], "src": [0, 0], "f": 0, "t": 1, "a": 1.0 }]
+        \\        },
+        \\        { "__identifier": "BG1", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG2", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG3", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG4", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    // 1 tiled IntGrid (1 BG) + 4 AutoLayers (4 BG) = 5 visual BG layers -> TooManyLayers
+    try std.testing.expectError(error.TooManyLayers, parseJsonHelper(std.testing.allocator, raw_json));
+}
+
+test "LDT013: Parse pure IntGrid and Entities without visual BG layers" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "LogicGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_LogicOnly",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "LogicGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 1]
+        \\        },
+        \\        {
+        \\          "__identifier": "Spawns",
+        \\          "__type": "Entities",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "entityInstances": [
+        \\            {
+        \\              "__identifier": "PlayerStart",
+        \\              "__grid": [2, 3],
+        \\              "px": [16, 24],
+        \\              "width": 16,
+        \\              "height": 16
+        \\            }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    const level = project.levels[0];
+    try std.testing.expectEqual(@as(usize, 2), level.layers.len);
+
+    const int_grid_layer = level.layers[0];
+    try std.testing.expectEqual(LayerType.int_grid, int_grid_layer.layer_type);
+    try std.testing.expect(int_grid_layer.collision_masks != null);
+    try std.testing.expectEqual(@as(usize, 0), int_grid_layer.tiles.len);
+
+    const entities_layer = level.layers[1];
+    try std.testing.expectEqual(LayerType.entities, entities_layer.layer_type);
+    try std.testing.expectEqual(@as(usize, 1), entities_layer.entities.len);
+    try std.testing.expectEqualStrings("PlayerStart", entities_layer.entities[0].identifier);
+}
