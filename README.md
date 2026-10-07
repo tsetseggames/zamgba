@@ -126,21 +126,27 @@ Enjoy!
   - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
   - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
-  - [ ] Camera support for scrolling backgrounds and viewport tracking
+  - [x] Camera support for scrolling backgrounds and viewport tracking (`Camera2D`, `CameraLimits`, `DragMargin`, frustum culling)
+  - [ ] Camera tracking & scrolling TileMap interactive demo ROM
   - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
   - [x] Panic handler
-* **Version 0.4.0**: Capable of writing a game with chiptune music. Supported features:
-  - [ ] Chiptune-to-code conversion tool
-  - [ ] Support chiptune playing music
+* **Version 0.4.0**: Capable of writing a game with UI/HUD layers and sprite priority. Supported features:
+  - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
+  - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
+  - [ ] TileMap background layer priority configuration (`priority: u2` for foreground/background depth)
+  - [ ] Bitmap Font & Text typography rendering pipeline (8x8 tile fonts, dynamic text boxes, dialogue display)
+  - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
+  - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
 * **Version 0.5.0**: Capable of writing a game with save data. Supported features:
   - [ ] Save state read/write API
-* **Version 0.6.0**: Capable of playing Direct Audio. Supported features:
+* **Version 0.6.0**: Capable of writing a game with chiptune music. Supported features:
+  - [ ] Chiptune-to-code conversion tool
+  - [ ] Support chiptune playing music (PSG hardware channels)
+* **Version 0.7.0**: Capable of playing Direct Audio. Supported features:
   - [ ] Wav file to code conversion tool
-  - [ ] Direct Audio playback API
-* **Version 0.7.0**: Capable of writing a game with 2D physics. Supported features:
-  - [x] 2D collision & detection API
+  - [ ] Direct Audio playback API (DMA-driven PCM channels)
 * **Version 0.8.0**: Capable of writing a game with affine sprite transformations. Supported features:
   - [ ] Fixed-point Sin/Cos lookup table (LUT)
   - [ ] 32-slot OAM affine matrix allocator

@@ -349,7 +349,7 @@ fn parseLayerInstance(
     px_hei: u32,
     tileset_defs: std.AutoHashMap(i64, TilesetDef),
     bg_layer_count: *usize,
-    parsed_layers_len: usize,
+    int_grid_count: *usize,
 ) types.TilemapError!?ParsedLayer {
     const type_str = getStringField(layer_obj, "__type") orelse return null;
     const layer_type: LayerType = if (std.mem.eql(u8, type_str, "IntGrid"))
@@ -362,6 +362,13 @@ fn parseLayerInstance(
         .entities
     else
         return types.TilemapError.UnsupportedLayerType;
+
+    if (layer_type == .int_grid) {
+        int_grid_count.* += 1;
+        if (int_grid_count.* > 1) {
+            return types.TilemapError.MultipleIntGridLayersNotSupported;
+        }
+    }
 
     const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
     const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
@@ -400,11 +407,6 @@ fn parseLayerInstance(
 
     // Skip empty Entities layers
     if (layer_type == .entities and entities.len == 0) {
-        return null;
-    }
-
-    // Skip empty IntGrid helper layers when visual auto-layers are already present
-    if (layer_type == .int_grid and tiles.len == 0 and parsed_layers_len > 0) {
         return null;
     }
 
@@ -449,6 +451,7 @@ fn parseLevel(
     var parsed_layers: std.ArrayList(ParsedLayer) = .empty;
     defer parsed_layers.deinit(aa);
     var bg_layer_count: usize = 0;
+    var int_grid_count: usize = 0;
 
     if (lvl_obj.get("layerInstances")) |layers_val| {
         if (layers_val == .array) {
@@ -461,7 +464,7 @@ fn parseLevel(
                     px_hei,
                     tileset_defs,
                     &bg_layer_count,
-                    parsed_layers.items.len,
+                    &int_grid_count,
                 )) |layer| {
                     parsed_layers.append(aa, layer) catch return types.TilemapError.OutOfMemory;
                 }
@@ -596,8 +599,8 @@ test "LDT004: Parse multi-layer 4 BG configuration" {
     defer project.deinit();
 
     const level = project.levels[0];
-    // Exactly 4 layers conforming to GBA Mode 0 hardware limit
-    try std.testing.expectEqual(@as(usize, 4), level.layers.len);
+    // 4 visual AutoLayers conforming to GBA Mode 0 hardware limit + 1 IntGrid collision layer
+    try std.testing.expectEqual(@as(usize, 5), level.layers.len);
 }
 
 test "LDT005: Parse and extract level entities" {
@@ -759,4 +762,236 @@ test "LDT010: Reject unsupported tile grid size (e.g. 24x24 or 32x32)" {
         \\}
     ;
     try std.testing.expectError(error.UnsupportedGridSize, parseJsonHelper(std.testing.allocator, raw_json_32));
+}
+
+test "LDT011: Reject level with multiple IntGrid layers" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "Collisions1", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] },
+        \\      { "identifier": "Collisions2", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Collisions1",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 0]
+        \\        },
+        \\        {
+        \\          "__identifier": "Collisions2",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [0, 1, 0]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleIntGridLayersNotSupported, parseJsonHelper(std.testing.allocator, raw_json));
+}
+
+test "LDT012: Reject 1 tiled IntGrid + 4 visual layers exceeding 4 BG limit" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [{ "uid": 1, "pxWid": 128, "pxHei": 128, "tileGridSize": 8 }],
+        \\    "layers": [
+        \\      { "identifier": "TerrainIntGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "TerrainIntGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "__tilesetDefUid": 1,
+        \\          "intGridCsv": [1, 0, 0],
+        \\          "autoLayerTiles": [{ "px": [0, 0], "src": [0, 0], "f": 0, "t": 1, "a": 1.0 }]
+        \\        },
+        \\        { "__identifier": "BG1", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG2", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG3", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] },
+        \\        { "__identifier": "BG4", "__type": "AutoLayer", "__gridSize": 8, "__cWid": 30, "__cHei": 20, "autoLayerTiles": [] }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    // 1 tiled IntGrid (1 BG) + 4 AutoLayers (4 BG) = 5 visual BG layers -> TooManyLayers
+    try std.testing.expectError(error.TooManyLayers, parseJsonHelper(std.testing.allocator, raw_json));
+}
+
+test "LDT013: Parse pure IntGrid and Entities without visual BG layers" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "LogicGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_LogicOnly",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "LogicGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 1]
+        \\        },
+        \\        {
+        \\          "__identifier": "Spawns",
+        \\          "__type": "Entities",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "entityInstances": [
+        \\            {
+        \\              "__identifier": "PlayerStart",
+        \\              "__grid": [2, 3],
+        \\              "px": [16, 24],
+        \\              "width": 16,
+        \\              "height": 16
+        \\            }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    const level = project.levels[0];
+    try std.testing.expectEqual(@as(usize, 2), level.layers.len);
+
+    const int_grid_layer = level.layers[0];
+    try std.testing.expectEqual(LayerType.int_grid, int_grid_layer.layer_type);
+    try std.testing.expect(int_grid_layer.collision_masks != null);
+    try std.testing.expectEqual(@as(usize, 0), int_grid_layer.tiles.len);
+
+    const entities_layer = level.layers[1];
+    try std.testing.expectEqual(LayerType.entities, entities_layer.layer_type);
+    try std.testing.expectEqual(@as(usize, 1), entities_layer.entities.len);
+    try std.testing.expectEqualStrings("PlayerStart", entities_layer.entities[0].identifier);
+}
+
+test "LDT014: End-to-end 16x16 tile layer expansion into four 8x8 subtiles" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [
+        \\      { "uid": 100, "identifier": "World16", "pxWid": 32, "pxHei": 32 }
+        \\    ],
+        \\    "layers": [
+        \\      { "identifier": "Terrain16", "type": "Tiles", "gridSize": 16 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_16x16",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 64, "pxHei": 64,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Terrain16",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 16,
+        \\          "__cWid": 4,
+        \\          "__cHei": 4,
+        \\          "__tilesetDefUid": 100,
+        \\          "gridTiles": [
+        \\            { "px": [16, 0], "src": [0, 0], "f": 0, "t": 0, "d": [1], "a": 1.0 },
+        \\            { "px": [0, 16], "src": [0, 0], "f": 1, "t": 0, "d": [2], "a": 1.0 }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    const level = project.levels[0];
+    try std.testing.expectEqual(@as(usize, 1), level.layers.len);
+
+    const terrain_layer = level.layers[0];
+    try std.testing.expectEqual(LayerType.tiles, terrain_layer.layer_type);
+    // 2 16x16 tiles -> expanded to 8 8x8 subtiles
+    try std.testing.expectEqual(@as(usize, 8), terrain_layer.tiles.len);
+
+    // 1st 16x16 tile at cell (gx=1, gy=0) -> pixel (px=16, py=0) -> 8x8 cells:
+    // Top-Left: (x=2, y=0), tile_id=0, h_flip=false, v_flip=false
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[0].x);
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[0].y);
+    try std.testing.expectEqual(@as(u32, 0), terrain_layer.tiles[0].tile_id);
+    try std.testing.expectEqual(false, terrain_layer.tiles[0].h_flip);
+
+    // Top-Right: (x=3, y=0), tile_id=1
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[1].x);
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[1].y);
+    try std.testing.expectEqual(@as(u32, 1), terrain_layer.tiles[1].tile_id);
+
+    // Bottom-Left: (x=2, y=1), tile_id=4 (since tileset_c_wid_8 = 32 / 8 = 4)
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[2].x);
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[2].y);
+    try std.testing.expectEqual(@as(u32, 4), terrain_layer.tiles[2].tile_id);
+
+    // Bottom-Right: (x=3, y=1), tile_id=5
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[3].x);
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[3].y);
+    try std.testing.expectEqual(@as(u32, 5), terrain_layer.tiles[3].tile_id);
+
+    // 2nd 16x16 tile at cell (gx=0, gy=1) with f=1 (horizontal flip):
+    // Top-Left becomes sub-tile 1 (flipped): (x=0, y=2), tile_id=1, h_flip=true
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[4].x);
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[4].y);
+    try std.testing.expectEqual(@as(u32, 1), terrain_layer.tiles[4].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[4].h_flip);
+
+    // Top-Right becomes sub-tile 0 (flipped): (x=1, y=2), tile_id=0, h_flip=true
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[5].x);
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[5].y);
+    try std.testing.expectEqual(@as(u32, 0), terrain_layer.tiles[5].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[5].h_flip);
+
+    // Bottom-Left becomes sub-tile 3 (flipped): (x=0, y=3), tile_id=5, h_flip=true
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[6].x);
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[6].y);
+    try std.testing.expectEqual(@as(u32, 5), terrain_layer.tiles[6].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[6].h_flip);
+
+    // Bottom-Right becomes sub-tile 2 (flipped): (x=1, y=3), tile_id=4, h_flip=true
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[7].x);
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[7].y);
+    try std.testing.expectEqual(@as(u32, 4), terrain_layer.tiles[7].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[7].h_flip);
 }

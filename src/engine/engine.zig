@@ -21,9 +21,25 @@ pub const Tile8bpp = tilemap.Tile8bpp;
 pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
 pub const Color = gfx2d.Color;
 
+pub const camera = @import("camera.zig");
+pub const Camera2D = camera.Camera2D;
+pub const CameraLimits = camera.CameraLimits;
+pub const DragMargin = camera.DragMargin;
+
+pub var active_camera: ?*Camera2D = null;
 pub var shadow_oam: [128]hal.oam.ObjAttr = undefined;
 pub var sprite_count: usize = 0;
 pub var is_initialized: bool = false;
+
+/// Sets or unsets the globally active rendering camera.
+pub fn setCamera(cam: ?*Camera2D) void {
+    active_camera = cam;
+}
+
+/// Returns the currently active rendering camera, or null.
+pub fn getCamera() ?*Camera2D {
+    return active_camera;
+}
 
 /// Initializes the global engine state, resets subsystem allocators and queues, and configures hardware display registers.
 pub fn initHardware() void {
@@ -44,6 +60,7 @@ pub fn initHardware() void {
         };
     }
     sprite_count = 0;
+    active_camera = null;
     vram_allocator.reset();
     dma_queue.global_queue.reset();
     is_initialized = true;
@@ -87,17 +104,34 @@ pub fn setDmaVblankBudget(bytes: usize) void {
 }
 
 /// Registers a sprite to be rendered in the current frame.
-/// Dynamically maps the high-level sprite into the next available OAM slot.
+/// Dynamically maps the high-level sprite into the next available OAM slot,
+/// performing camera-aware frustum culling and coordinate transformation when a camera is active.
 pub fn drawSprite(spr: anytype) void {
     const T = @TypeOf(spr);
     const PtrInfo = @typeInfo(T);
     const TargetType = if (PtrInfo == .pointer) PtrInfo.pointer.child else T;
 
-    if (!@hasDecl(TargetType, "toOamAttr")) {
-        @compileError("Type passed to engine.drawSprite must implement 'toOamAttr() hal.oam.ObjAttr'");
-    }
+    const aabb: physics.AABB = switch (TargetType) {
+        StaticSprite => spr.sprite.aabb,
+        AnimatedSprite => spr.getSprite().aabb,
+        else => @compileError("engine.drawSprite only accepts *StaticSprite or *AnimatedSprite, found: " ++ @typeName(TargetType)),
+    };
 
     if (sprite_count >= 128) return; // GBA hardware limit
+
+    if (active_camera) |cam| {
+        if (!cam.isAABBVisible(aabb)) return;
+        var raw_attr = spr.toOamAttr();
+        const screen_pos = cam.worldToScreen(aabb.x, aabb.y);
+        const screen_y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.y)))) & 0x00FF;
+        const screen_x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(screen_pos.x)))) & 0x01FF;
+        raw_attr.attr0 = (raw_attr.attr0 & 0xFF00) | screen_y_hw;
+        raw_attr.attr1 = (raw_attr.attr1 & 0xFE00) | screen_x_hw;
+        shadow_oam[sprite_count] = raw_attr;
+        sprite_count += 1;
+        return;
+    }
+
     shadow_oam[sprite_count] = spr.toOamAttr();
     sprite_count += 1;
 }
@@ -147,6 +181,7 @@ test {
     _ = physics;
     _ = @import("sprite.zig");
     _ = tilemap;
+    _ = camera;
     _ = gfx2d;
     _ = log;
 }

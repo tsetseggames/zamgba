@@ -17,6 +17,7 @@ pub const TilemapFormat = enum {
 
 pub const TilemapError = error{
     TooManyLayers,
+    MultipleIntGridLayersNotSupported,
     InvalidMapDimensions,
     MapSizeExceedsLimit,
     IntGridValueOutOfRange,

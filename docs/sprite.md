@@ -126,5 +126,43 @@ GBA display control register (`REG_DISPCNT`) is configured to **1D OBJ Mapping**
 
 1. **VRAM Capacity Overflow**:
    When `VramAllocator.alloc()` cannot find a free buddy block, it returns `error.OutOfVram` with debug assertions reporting requested tile count and active memory footprint.
-2. **DMA Bandwidth Budget Guard**:
-   `DmaQueue` limits total words queued per frame (e.g. max 4 KB per VBlank). If budget is exceeded, non-critical transfers gracefully defer to the subsequent VBlank, preventing screen tearing and emulator crashes.
+129	2. **DMA Bandwidth Budget Guard**:
+   130	   `DmaQueue` limits total words queued per frame (e.g. max 4 KB per VBlank). If budget is exceeded, non-critical transfers gracefully defer to the subsequent VBlank, preventing screen tearing and emulator crashes.
+
+---
+
+## 8. UI/HUD Rendering & Hardware Layer Priority Architecture (Planned v0.4.0)
+
+### A. Architectural Rationale: Unifying Sprite Types vs. Specialized HUD Types
+Unlike modern engines with virtual canvas node hierarchies, GBA hardware provides exactly **128 OAM sprite slots** and **4 background layers (BG0–BG3)**. Creating distinct types like `HudSprite` introduces artificial fragmentation, duplicate animation pipelines, and disjoint asset workflows without hardware benefits.
+
+Instead, ZamGBA maintains a unified sprite model (`StaticSprite` / `AnimatedSprite`) and differentiates world entities from UI elements through rendering space selection:
+1. **World Space Sprites (`drawSprite`)**:
+   - Transformed by active `Camera2D` viewport coordinates: $(X_s, Y_s) = (X_w - C_x, Y_w - C_y)$.
+   - Automatically subject to viewport frustum culling (culled before staging into OAM to preserve hardware slots).
+2. **Screen Space / HUD Sprites (`drawSpriteUi` / `drawSpriteScreen`)**:
+   - Bypasses active camera transformations: coordinate $(X, Y)$ maps directly to screen pixels $(0 \le X < 240, 0 \le Y < 160)$.
+   - Bypasses camera frustum culling.
+   - Reuses existing `StaticSprite` and `AnimatedSprite` instances, animations, streaming VRAM allocations, and DMA queues.
+
+### B. Hardware Depth & Layer Priority (`u2` Priority System)
+GBA graphics hardware computes pixel visibility on a per-scanline basis using a **2-bit priority value** (`0..3`), where `0` is the highest priority (drawn foremost) and `3` is the lowest (drawn furthest behind):
+
+```
+Priority 0 (Foremost): UI/HUD Text, Lifebars, Dialog Boxes, Overlay Sprites
+Priority 1: Foreground Sprites (Player, Enemies, Projectiles), Foreground Tilemap (BG0/BG1)
+Priority 2: Main Playfield Tilemap (BG2)
+Priority 3 (Furthest): Background Parallax Scenery (BG3), Backdrop Color
+```
+
+#### 1. Sprite Hardware Priority
+* GBA OAM `Attr2` bits 10–11 define the 2-bit sprite priority relative to background layers.
+* Planned API additions:
+  - `SpriteOptions.priority: u2 = 0` (defaulting to foremost rendering).
+  - `spr.setPriority(priority: u2)` dynamically updates `Attr2` bits 10–11.
+
+#### 2. Background Layer Priority
+* GBA `REG_BGxCNT` bits 0–1 define the 2-bit background layer priority.
+* Planned API additions:
+  - `TileMapLayer.setPriority(priority: u2)` updates hardware control registers.
+  - Allows interleaving sprites between background layers (e.g., player walking behind foreground trees in BG0 (priority 0) but in front of terrain in BG1 (priority 2)).

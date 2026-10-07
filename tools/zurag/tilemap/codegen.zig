@@ -388,3 +388,71 @@ test "TMC007: Reject invalid or empty tilemap metadata" {
         generateTilemapZigSource(std.testing.allocator, &empty_meta, null, .{}),
     );
 }
+
+test "TMC008: Sanitize identifier replaces spaces, dashes, and special characters" {
+    const raw_name = "Level 1 - Forest Zone! #1";
+    const sanitized = try sanitizeIdentifier(std.testing.allocator, raw_name);
+    defer std.testing.allocator.free(sanitized);
+
+    try std.testing.expectEqualStrings("Level_1___Forest_Zone___1", sanitized);
+
+    const punctuation_name = "layer.bg-sub/v1.0@final";
+    const sanitized_punc = try sanitizeIdentifier(std.testing.allocator, punctuation_name);
+    defer std.testing.allocator.free(sanitized_punc);
+
+    try std.testing.expectEqualStrings("layer_bg_sub_v1_0_final", sanitized_punc);
+
+    // Test codegen output with identifiers containing spaces & symbols
+    var meta = types.TilemapMetadata{
+        .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
+        .levels = &[_]types.ParsedLevel{
+            .{
+                .identifier = "World 1 - Stage 2 (Cave)",
+                .world_x = 0,
+                .world_y = 0,
+                .px_wid = 256,
+                .px_hei = 256,
+                .layers = &[_]types.ParsedLayer{
+                    .{
+                        .identifier = "FG Layer / #1",
+                        .layer_type = .tiles,
+                        .grid_size = 8,
+                        .c_wid = 2,
+                        .c_hei = 2,
+                        .tiles = &[_]types.ParsedTileEntry{
+                            .{ .tile_id = 1, .x = 0, .y = 0, .h_flip = false, .v_flip = false, .alpha = 1.0 },
+                        },
+                    },
+                },
+            },
+        },
+    };
+    defer meta.deinit();
+
+    const out = try generateTilemapZigSource(std.testing.allocator, &meta, null, .{
+        .map_name = "space_map",
+    });
+    defer std.testing.allocator.free(out);
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const World_1___Stage_2__Cave__FG_Layer____1_entries: [") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const World_1___Stage_2__Cave__FG_Layer____1_data: MapLayerData = .{") != null);
+}
+
+test "TMC009: Generate banked 16-bank 4-bpp palettes (4x16) in tilemap source" {
+    const test_assets = @import("test_palettes");
+    const tilemap = @import("../tilemap.zig");
+
+    var meta = try tilemap.parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
+    defer meta.deinit();
+
+    const out = try generateTilemapZigSource(std.testing.allocator, &meta, test_assets.png_pal16, .{
+        .map_name = "banked_map",
+        .bpp = .bpp4x16,
+    });
+    defer std.testing.allocator.free(out);
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette: [256]u16 = [_]u16{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "// Bank 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "// Bank 15") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "pub const palettes: *const [16][16]u16 = @ptrCast(&palette);") != null);
+}
