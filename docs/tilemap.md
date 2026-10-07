@@ -275,6 +275,8 @@ tools/zurag ldtk level.ldtk -o src/assets/level.zig
 Generated Zig Code (ROM-baked, ready for TileMapLayer)
 ```
 
+> **Note on LDtk Import Constraints**: `zurag tilemap` enforces strict hardware-aligned constraints on LDtk projects, including a limit of 0 or at most 1 `IntGrid` collision layer per level, a maximum of 4 visual BG layers, and 8x8 / 16x16 grid sizes. For detailed specifications and architectural rationale, see [docs/tool_zurag_pic_conversion.md (Section 8)](tool_zurag_pic_conversion.md#8-tilemap--ldtk-conversion-constraints-and-design-rationale).
+
 ---
 
 ## 6. Implementation Roadmap

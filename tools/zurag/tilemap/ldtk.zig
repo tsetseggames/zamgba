@@ -349,7 +349,7 @@ fn parseLayerInstance(
     px_hei: u32,
     tileset_defs: std.AutoHashMap(i64, TilesetDef),
     bg_layer_count: *usize,
-    parsed_layers_len: usize,
+    int_grid_count: *usize,
 ) types.TilemapError!?ParsedLayer {
     const type_str = getStringField(layer_obj, "__type") orelse return null;
     const layer_type: LayerType = if (std.mem.eql(u8, type_str, "IntGrid"))
@@ -362,6 +362,13 @@ fn parseLayerInstance(
         .entities
     else
         return types.TilemapError.UnsupportedLayerType;
+
+    if (layer_type == .int_grid) {
+        int_grid_count.* += 1;
+        if (int_grid_count.* > 1) {
+            return types.TilemapError.MultipleIntGridLayersNotSupported;
+        }
+    }
 
     const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
     const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
@@ -400,11 +407,6 @@ fn parseLayerInstance(
 
     // Skip empty Entities layers
     if (layer_type == .entities and entities.len == 0) {
-        return null;
-    }
-
-    // Skip empty IntGrid helper layers when visual auto-layers are already present
-    if (layer_type == .int_grid and tiles.len == 0 and parsed_layers_len > 0) {
         return null;
     }
 
@@ -449,6 +451,7 @@ fn parseLevel(
     var parsed_layers: std.ArrayList(ParsedLayer) = .empty;
     defer parsed_layers.deinit(aa);
     var bg_layer_count: usize = 0;
+    var int_grid_count: usize = 0;
 
     if (lvl_obj.get("layerInstances")) |layers_val| {
         if (layers_val == .array) {
@@ -461,7 +464,7 @@ fn parseLevel(
                     px_hei,
                     tileset_defs,
                     &bg_layer_count,
-                    parsed_layers.items.len,
+                    &int_grid_count,
                 )) |layer| {
                     parsed_layers.append(aa, layer) catch return types.TilemapError.OutOfMemory;
                 }
@@ -596,8 +599,8 @@ test "LDT004: Parse multi-layer 4 BG configuration" {
     defer project.deinit();
 
     const level = project.levels[0];
-    // Exactly 4 layers conforming to GBA Mode 0 hardware limit
-    try std.testing.expectEqual(@as(usize, 4), level.layers.len);
+    // 4 visual AutoLayers conforming to GBA Mode 0 hardware limit + 1 IntGrid collision layer
+    try std.testing.expectEqual(@as(usize, 5), level.layers.len);
 }
 
 test "LDT005: Parse and extract level entities" {
@@ -759,4 +762,44 @@ test "LDT010: Reject unsupported tile grid size (e.g. 24x24 or 32x32)" {
         \\}
     ;
     try std.testing.expectError(error.UnsupportedGridSize, parseJsonHelper(std.testing.allocator, raw_json_32));
+}
+
+test "LDT011: Reject level with multiple IntGrid layers" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "Collisions1", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] },
+        \\      { "identifier": "Collisions2", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Collisions1",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 0]
+        \\        },
+        \\        {
+        \\          "__identifier": "Collisions2",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [0, 1, 0]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleIntGridLayersNotSupported, parseJsonHelper(std.testing.allocator, raw_json));
 }

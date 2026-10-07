@@ -258,3 +258,26 @@ rom_exe.root_module.addImport("player_sprite", player_sprite_mod);
 
   // Render hero using Bank 0, enemy using Bank 1 (zero extra palette ROM overhead!)
   ```
+
+---
+
+## 8. Tilemap & LDtk Conversion Constraints and Design Rationale
+
+When importing LDtk projects into GBA Mode 0 background tilemaps via `zurag tilemap`, the tool enforces specific hardware-aligned constraints:
+
+### A. IntGrid Layer Constraint (0 or at most 1 `IntGrid` per level)
+* **Rule**: A level may contain zero or exactly one `IntGrid` collision layer. Levels containing 2 or more `IntGrid` layers are rejected at conversion time with `error.MultipleIntGridLayersNotSupported`.
+* **Design Rationale**:
+  1. **GBA Memory & Hardware Limits**: GBA games require a compact, single-plane 2D collision representation for performance. Stacking multiple collision layers adds memory overhead without hardware rendering benefits.
+  2. **LDtk Idiomatic Modeling**: In LDtk, diverse collision properties (e.g. `1: Solid`, `2: Platform`, `3: Ladder`, `4: Hazard`, `5: Water`) are best represented as distinct integer values within a single `IntGrid` layer. ZamGBA maps these values directly to bitflags in its 16-bit `CollisionMask` (`1 << (value - 1)`).
+  3. **Zero Ambiguity**: Restricting to at most 1 `IntGrid` eliminates collision priority conflicts and arbitrary layer merge heuristics.
+  4. **Porting Trade-off**: While PC games ported to GBA may need their LDtk project adjusted to consolidate collision layers, this aligns with standard GBA memory optimization practices.
+
+### B. Visual Background Layer Budget (Max 4 BG Layers)
+* **Rule**: Mode 0 hardware provides exactly 4 background layers (BG0–BG3). The total number of visual tile layers (`Tiles`, `AutoLayer`, or an `IntGrid` with visual auto-tiling rules enabled) cannot exceed 4. Exceeding this limit triggers `error.TooManyLayers`.
+
+### C. Grid Size Alignment (8x8 and 16x16)
+* **Rule**: Layer grid sizes must be either 8x8 pixels (native GBA hardware tiles) or 16x16 pixels (automatically quad-sliced into 2x2 8x8 sub-tiles). Other grid sizes (e.g., 24x24 or 32x32) are rejected with `error.UnsupportedGridSize`.
+
+### D. Tile Alpha Transparency Clamping
+* **Rule**: Mode 0 hardware tilemaps render opaque pixels (color 0 is transparent key). Semi-transparent tile placements ($0.0 < \alpha < 1.0$) in LDtk trigger a conversion warning and are clamped to solid 1.0.
