@@ -188,6 +188,7 @@ pub fn build(b: *std.Build) void {
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
     const hal_unit_tests = b.addTest(.{
+        .name = "zamgba-hal-test",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/hal/hal.zig"),
             .optimize = optimize,
@@ -199,6 +200,7 @@ pub fn build(b: *std.Build) void {
     const run_hal_unit_tests = b.addRunArtifact(hal_unit_tests);
 
     const lib_unit_tests = b.addTest(.{
+        .name = "zamgba-engine-test",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/unittest.zig"),
             .optimize = optimize,
@@ -229,6 +231,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const zurag_unit_tests = b.addTest(.{
+        .name = "zurag-test",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/zurag/main.zig"),
             .target = target,
@@ -276,8 +279,6 @@ pub fn build(b: *std.Build) void {
 
         // Run kcov for coverage step
         const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
-        coverage_step.dependOn(&run_kcov_zurag.step);
-        coverage_step.dependOn(&install_unittest_bin.step);
         coverage_step.dependOn(&run_kcov_zurag.step);
         coverage_step.dependOn(&install_unittest_bin.step);
     } else |_| {}
