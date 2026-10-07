@@ -142,10 +142,10 @@ Enjoy!
 * **Version 0.5.0**: Capable of writing a game with save data. Supported features:
   - [ ] Save state read/write API
 * **Version 0.6.0**: Capable of writing a game with chiptune music. Supported features:
-  - [ ] Chiptune-to-code conversion tool
+  - [ ] Chiptune-to-code conversion tool (`duu`)
   - [ ] Support chiptune playing music (PSG hardware channels)
 * **Version 0.7.0**: Capable of playing Direct Audio. Supported features:
-  - [ ] Wav file to code conversion tool
+  - [ ] Wav file to code conversion tool (`duu`)
   - [ ] Direct Audio playback API (DMA-driven PCM channels)
 * **Version 0.8.0**: Capable of writing a game with affine sprite transformations. Supported features:
   - [ ] Fixed-point Sin/Cos lookup table (LUT)
@@ -160,3 +160,5 @@ This repository contains both open-source code for the `zamgba` SDK/engine and p
 * **Art Assets (`assets/`)**: All art assets, including the Sprite files inside the `assets/` directory (e.g., `tsetseg-ride-on-broom-*`), are from the author's original game *["Tsetseg's Adventure"](https://store.steampowered.com/app/2337770/Tsetsegs_Adventure/)*. The copyrights for these assets belong entirely to the author. **All Rights Reserved.** You may use them locally to compile and run the demo ROMs provided in this repository, but you may not redistribute, modify, or use these visual assets in your own projects, open-source or commercial, without explicit permission.
 * **Version 1.0.0**: Capable of writing a 2D platformer game.
 * **Version 2.0.0**: Capable of writing a pseudo-3D game.
+* **Post-1.0.0 Features**:
+  - [ ] Dynamic multi-channel software mixer & real-time Tracker module playback (`.xm`) in `zamgba-engine`.

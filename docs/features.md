@@ -35,8 +35,10 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] Respond to gamepad input
 
 5. **Audio (v0.6.0 & v0.7.0)**
+   5. **Audio (v0.6.0, v0.7.0 & Post-1.0.0)**
    - [ ] PSG (Programmable Sound Generator / Chiptune) support - *(v0.6.0)*
    - [ ] Direct Sound (PCM / Direct Audio playback) support - *(v0.7.0)*
+   - [ ] Multi-channel dynamic software mixer & Tracker (.xm) real-time interpreter - *(Post-1.0.0)*
 
 6. **Save System (v0.5.0)**
    - [ ] High-level state persistence (Save state read/write API)
@@ -49,8 +51,8 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
 8. **Tooling & Asset Conversion**
    - [x] PNG-sprite-to-code conversion tool (`zurag`)
    - [x] Color palettes conversion tool (`zurag`)
-   - [ ] Chiptune-to-code conversion tool - *(v0.6.0)*
-   - [ ] Wav file to code conversion tool - *(v0.7.0)*
+   - [ ] Chiptune-to-code conversion tool (`duu`) - *(v0.6.0)*
+   - [ ] Wav file to code conversion tool (`duu`) - *(v0.7.0)*
 
 9. **Debugging & Diagnostics (v0.3.0)**
    - [x] mGBA compatible logging (`zamgba.hal.mgba.log` / `zamgba.engine.log`)
