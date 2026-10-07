@@ -902,3 +902,96 @@ test "LDT013: Parse pure IntGrid and Entities without visual BG layers" {
     try std.testing.expectEqual(@as(usize, 1), entities_layer.entities.len);
     try std.testing.expectEqualStrings("PlayerStart", entities_layer.entities[0].identifier);
 }
+
+test "LDT014: End-to-end 16x16 tile layer expansion into four 8x8 subtiles" {
+    const raw_json =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [
+        \\      { "uid": 100, "identifier": "World16", "pxWid": 32, "pxHei": 32 }
+        \\    ],
+        \\    "layers": [
+        \\      { "identifier": "Terrain16", "type": "Tiles", "gridSize": 16 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_16x16",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 64, "pxHei": 64,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Terrain16",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 16,
+        \\          "__cWid": 4,
+        \\          "__cHei": 4,
+        \\          "__tilesetDefUid": 100,
+        \\          "gridTiles": [
+        \\            { "px": [16, 0], "src": [0, 0], "f": 0, "t": 0, "d": [1], "a": 1.0 },
+        \\            { "px": [0, 16], "src": [0, 0], "f": 1, "t": 0, "d": [2], "a": 1.0 }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    const level = project.levels[0];
+    try std.testing.expectEqual(@as(usize, 1), level.layers.len);
+
+    const terrain_layer = level.layers[0];
+    try std.testing.expectEqual(LayerType.tiles, terrain_layer.layer_type);
+    // 2 16x16 tiles -> expanded to 8 8x8 subtiles
+    try std.testing.expectEqual(@as(usize, 8), terrain_layer.tiles.len);
+
+    // 1st 16x16 tile at cell (gx=1, gy=0) -> pixel (px=16, py=0) -> 8x8 cells:
+    // Top-Left: (x=2, y=0), tile_id=0, h_flip=false, v_flip=false
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[0].x);
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[0].y);
+    try std.testing.expectEqual(@as(u32, 0), terrain_layer.tiles[0].tile_id);
+    try std.testing.expectEqual(false, terrain_layer.tiles[0].h_flip);
+
+    // Top-Right: (x=3, y=0), tile_id=1
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[1].x);
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[1].y);
+    try std.testing.expectEqual(@as(u32, 1), terrain_layer.tiles[1].tile_id);
+
+    // Bottom-Left: (x=2, y=1), tile_id=4 (since tileset_c_wid_8 = 32 / 8 = 4)
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[2].x);
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[2].y);
+    try std.testing.expectEqual(@as(u32, 4), terrain_layer.tiles[2].tile_id);
+
+    // Bottom-Right: (x=3, y=1), tile_id=5
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[3].x);
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[3].y);
+    try std.testing.expectEqual(@as(u32, 5), terrain_layer.tiles[3].tile_id);
+
+    // 2nd 16x16 tile at cell (gx=0, gy=1) with f=1 (horizontal flip):
+    // Top-Left becomes sub-tile 1 (flipped): (x=0, y=2), tile_id=1, h_flip=true
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[4].x);
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[4].y);
+    try std.testing.expectEqual(@as(u32, 1), terrain_layer.tiles[4].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[4].h_flip);
+
+    // Top-Right becomes sub-tile 0 (flipped): (x=1, y=2), tile_id=0, h_flip=true
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[5].x);
+    try std.testing.expectEqual(@as(u16, 2), terrain_layer.tiles[5].y);
+    try std.testing.expectEqual(@as(u32, 0), terrain_layer.tiles[5].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[5].h_flip);
+
+    // Bottom-Left becomes sub-tile 3 (flipped): (x=0, y=3), tile_id=5, h_flip=true
+    try std.testing.expectEqual(@as(u16, 0), terrain_layer.tiles[6].x);
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[6].y);
+    try std.testing.expectEqual(@as(u32, 5), terrain_layer.tiles[6].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[6].h_flip);
+
+    // Bottom-Right becomes sub-tile 2 (flipped): (x=1, y=3), tile_id=4, h_flip=true
+    try std.testing.expectEqual(@as(u16, 1), terrain_layer.tiles[7].x);
+    try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[7].y);
+    try std.testing.expectEqual(@as(u32, 4), terrain_layer.tiles[7].tile_id);
+    try std.testing.expectEqual(true, terrain_layer.tiles[7].h_flip);
+}
