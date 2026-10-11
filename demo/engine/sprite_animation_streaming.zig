@@ -18,6 +18,8 @@ const Game = struct {
     input: engine.input.InputState = .{},
 
     pub fn init() !Game {
+        engine.log.info("Sprite Animation Streaming Demo: Starting init", .{});
+
         // 1. Load 256-color palette to OBJ Palette RAM (0x05000200)
         const obj_pal = hal.MemorySections.PALRAM + 256;
         for (broom.palette, 0..) |col, i| {
@@ -34,7 +36,9 @@ const Game = struct {
             Fixed24_8.fromInt(64),
         );
 
+        engine.log.info("AnimatedSprite initialized. Setting animation...", .{});
         try anim_spr.setAnimation("flying");
+        engine.log.info("Game init finished successfully. DmaQueue count={d}", .{dma_queue_count()});
 
         return .{
             .anim = anim_spr,
@@ -89,8 +93,15 @@ const Game = struct {
     }
 };
 
+fn dma_queue_count() usize {
+    return engine.dma_queue.global_queue.count();
+}
+
 export fn main() noreturn {
     engine.initHardware();
-    var game = Game.init() catch unreachable;
+    var game = Game.init() catch |err| {
+        engine.log.fatal("Game.init failed: {s}", .{@errorName(err)});
+        while (true) {}
+    };
     engine.run(&game);
 }
