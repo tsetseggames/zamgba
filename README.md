@@ -71,7 +71,7 @@ steps below:
 
 ## Built-In Demo ROMs
 
-Zamgba includes several interactive and instructional demo ROMs categorised by abstraction layers:
+Zamgba includes several interactive and instructional demo ROMs categorised by abstraction layers. For an in-depth breakdown of each demo's capabilities and our long-term plan for the flagship **Durable Showcase Demo** (*Tsetseg's Quest* / ARPG Lite), see **[`docs/demo.md`](docs/demo.md)**.
 
 ### 1. Hardware Abstraction Layer (HAL) Demos
 *   **`mode3_lines`** (`demo/hal/mode3_lines.zig`): Demonstrates basic Mode 3 bitmap graphics. Renders three intersecting colored lines on a bitmap background using low-level, context-agnostic line-drawing algorithms.
