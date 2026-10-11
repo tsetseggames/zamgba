@@ -15,30 +15,56 @@ Zamgba organizes demonstration ROMs into two complementary categories:
 
 ---
 
-## 2. Currently Implemented Demos
+## 2. Complete Demo Catalog & Release Milestones
 
 ### 2.1 Hardware Abstraction Layer (HAL) Demos
 
-| ROM Name | Source Path | Key Capabilities Demonstrated |
-| :--- | :--- | :--- |
-| `mode3_lines` | `demo/hal/mode3_lines.zig` | Mode 3 true-color bitmap rendering ($240 \times 160$, 16-bit BGR555); Bresenham line algorithm (`gfx2d.drawLine`) writing directly to VRAM. |
-| `background_hal` | `demo/hal/background_hal.zig` | Direct Mode 0 register configuration (`REG_DISPCNT`, `REG_BG0CNT`); manual PALRAM and Charblock/Screenblock loading; real-time interactive scrolling via `REG_BG0HOFS`/`REG_BG0VOFS` on D-Pad input. |
-| `sprite_hal` | `demo/hal/sprite_hal.zig` | Direct GBA OAM Object Attribute staging (`ObjAttr`); hardware palette setup in OBJ PALRAM; smooth sprite bounce in a VBlank loop. |
-| `joypad_hal` | `demo/hal/joypad_hal.zig` | Direct polling of `REG_KEYINPUT`; edge detection and bitwise button masking. |
-| `panic_demo` | `demo/hal/panic_demo.zig` | Bare-metal panic handler (`@panic`); CPU register capture, interrupt disablement, diagnostic dispatch to mGBA debug registers, and visual red-backdrop warning. |
-| `mgba_init` | `demo/hal/mgba_init.zig` | Handshake negotiation and zero-cost formatted logging via mGBA debug register I/O (`0x04FF2000`). |
+| Status | ROM Name | Source Path | Milestone | Key Capabilities Demonstrated |
+| :---: | :--- | :--- | :---: | :--- |
+| `[x]` | `mode3_lines` | `demo/hal/mode3_lines.zig` | `v0.1.0` | Mode 3 true-color bitmap rendering ($240 \times 160$, 16-bit BGR555); Bresenham line algorithm (`gfx2d.drawLine`) writing directly to VRAM. |
+| `[x]` | `sprite_hal` | `demo/hal/sprite_hal.zig` | `v0.1.0` | Direct GBA OAM Object Attribute staging (`ObjAttr`); hardware palette setup in OBJ PALRAM; smooth sprite bounce in a VBlank loop. |
+| `[x]` | `joypad_hal` | `demo/hal/joypad_hal.zig` | `v0.1.0` | Direct polling of `REG_KEYINPUT`; edge detection and bitwise button masking. |
+| `[x]` | `background_hal` | `demo/hal/background_hal.zig` | `v0.3.0` | Direct Mode 0 register configuration (`REG_DISPCNT`, `REG_BG0CNT`); manual PALRAM and Charblock/Screenblock loading; real-time interactive scrolling via `REG_BG0HOFS`/`REG_BG0VOFS` on D-Pad input. |
+| `[x]` | `panic_demo` | `demo/hal/panic_demo.zig` | `v0.3.0` | Bare-metal panic handler (`@panic`); CPU register capture, interrupt disablement, diagnostic dispatch to mGBA debug registers, and visual red-backdrop warning. |
+| `[x]` | `mgba_init` | `demo/hal/mgba_init.zig` | `v0.3.0` | Handshake negotiation and zero-cost formatted logging via mGBA debug register I/O (`0x04FF2000`). |
+| `[ ]` | `mode4_pageflip` | `demo/hal/mode4_pageflip.zig` | `v0.3.0` | Mode 4 double-buffered 8-bpp bitmap rendering ($240 \times 160$) with page flipping (`hal.display.flipPage()`) for tear-free animations. |
 
 ### 2.2 High-Level Engine Demos
 
-| ROM Name | Source Path | Key Capabilities Demonstrated |
-| :--- | :--- | :--- |
-| `sprite_engine` | `demo/engine/sprite_engine.zig` | High-level **Static Namespace** game loop (`engine.run(@This())`); automatic dynamic OAM staging, VBlank management, and bounds bouncing. |
-| `sprite_instanced` | `demo/engine/sprite_instanced.zig` | High-level **Pointer-to-Instance** game loop (`engine.run(&game)`); recommended pattern for modular games requiring state serialization. |
-| `joypad_instanced` | `demo/engine/joypad_instanced.zig` | High-level gamepad input (`engine.input.InputState`); dynamic sprite palette bank swapping on boundary collision. |
-| `collision_demo` | `demo/engine/collision_demo.zig` | 2D AABB collision detection, bitmask collision filtering (`Collision.layer`, `Collision.mask`), patrol AI, and collision-triggered state resets. |
-| `flappy_tsetseg` | `demo/engine/flappy_tsetseg.zig` | Multi-frame animated sprite playback using static all-frame VRAM preloading via `AnimatedSprite` and `SpriteSheet`. |
-| `flappy_tsetseg_streaming`| `demo/engine/flappy_tsetseg_streaming.zig`| Dynamic VRAM Streaming sprite animation; buddy VRAM allocation (`VramAllocator`), asynchronous frame streaming from ROM into VRAM via DMA queue (`DmaQueue`) during VBlank. |
-| `pong` | `demo/engine/pong.zig` | Complete, playable classic Pong game; paddle velocity kinematics, AI tracking, wall reflections, score tracking, and ball-paddle collision response. |
+| Status | ROM Name | Source Path | Milestone | Key Capabilities Demonstrated |
+| :---: | :--- | :--- | :---: | :--- |
+| `[x]` | `sprite_engine` | `demo/engine/sprite_engine.zig` | `v0.1.0` | High-level **Static Namespace** game loop (`engine.run(@This())`); automatic dynamic OAM staging, VBlank management, and bounds bouncing. |
+| `[x]` | `sprite_instanced` | `demo/engine/sprite_instanced.zig` | `v0.1.0` | High-level **Pointer-to-Instance** game loop (`engine.run(&game)`); recommended pattern for modular games requiring state serialization. |
+| `[x]` | `joypad_instanced` | `demo/engine/joypad_instanced.zig` | `v0.1.0` | High-level gamepad input (`engine.input.InputState`); dynamic sprite palette bank swapping on boundary collision. |
+| `[x]` | `collision_demo` | `demo/engine/collision_demo.zig` | `v0.1.0` | 2D AABB collision detection, bitmask collision filtering (`Collision.layer`, `Collision.mask`), patrol AI, and collision-triggered state resets. |
+| `[x]` | `pong` | `demo/engine/pong.zig` | `v0.1.0` | Complete, playable classic Pong game; paddle velocity kinematics, AI tracking, wall reflections, score tracking, and ball-paddle collision response. |
+| `[~]` | `flappy_tsetseg` | `demo/engine/flappy_tsetseg.zig` | `v0.2.0` | Multi-frame animated sprite playback using static all-frame VRAM preloading *(deprecated in v0.3.0; superseded by `sprite_animation`)*. |
+| `[~]` | `flappy_tsetseg_streaming`| `demo/engine/flappy_tsetseg_streaming.zig`| `v0.2.0` | Dynamic VRAM Streaming sprite animation via buddy allocator and DMA queue *(deprecated in v0.3.0; API superseded by `sprite_animation`, game context by `tsetseg_quest`)*. |
+| `[ ]` | `sprite_animation` | `demo/engine/sprite_animation.zig` | `v0.3.0` | Focused sprite animation showroom (< 100 lines); demonstrates `AnimatedSprite`, animation switching, horizontal mirroring (`h_flip`), 8-bpp palettes, and streaming vs. preloaded mode. |
+| `[ ]` | `camera_demo` | `demo/engine/camera_demo.zig` | `v0.3.0` | Interactive `Camera2D` showroom; demonstrates target tracking, deadzone (`DragMargin`), bounds clamping (`CameraLimits`), screen shake (`shake`), and frustum culling. |
+| `[ ]` | `parallax_scroll` | `demo/engine/parallax_scroll.zig` | `v0.3.0` | Multi-layer Mode 0 background parallax scrolling (`applyToTileMapWithParallax`) across foreground, midground, and distant background layers. |
+| `[ ]` | `tilemap_collision` | `demo/engine/tilemap_collision.zig` | `v0.3.0` | Continuous sub-pixel physics (`Fixed24_8`) colliding against `TileMapLayer.asCollisionMap()`, demonstrating smooth wall sliding and obstacle resolution. |
+| `[ ]` | `ldtk_minimal` | `demo/engine/ldtk_minimal.zig` | `v0.3.0` | Minimal (< 80 lines) pipeline verification loading `zurag`-generated LDtk level data and panning the viewport. |
+| `[ ]` | `hud_tilemap` | `demo/engine/hud_tilemap.zig` | `v0.4.0` | Static status bar on BG0 overlaying scrolling game world, demonstrating GBA layer priority composition (`priority: u2`). |
+| `[ ]` | `hud_sprite` | `demo/engine/hud_sprite.zig` | `v0.4.0` | Screen-space Sprite UI (hearts, item counters) rendered via `engine.drawSpriteUi` ignoring world camera translation. |
+
+### 2.3 Durable Showcase Demo (Full Game Architecture)
+
+| Status | ROM Name | Source Path | Milestone | Key Capabilities Demonstrated |
+| :---: | :--- | :--- | :---: | :--- |
+| `[ ]` | `tsetseg_quest` | `demo/game/tsetseg_quest.zig` | `v0.3.0`+ | Flagship ARPG Lite game demo unifying TileMap, LDtk, Camera2D, Streaming Animation, AABB Collision, and evolving across future milestones. |
+
+*Legend: `[x]` Implemented and verified; `[ ]` Planned for release; `[~]` Deprecated (scheduled for removal).*
+
+### 2.4 Transition Plan: Retiring Flappy Demos
+
+The two initial sprite animation demos (`flappy_tsetseg` and `flappy_tsetseg_streaming`) are scheduled for retirement in v0.3.0 due to the following rationale:
+1. **Misleading Name**: They are not genuine Flappy Bird gameplay (no gravity curve or pipe-dodging mechanics), which causes user confusion.
+2. **Conflated Concerns**: They mixed sprite animation, ad-hoc red-pillar collision, and arbitrary patrol movement in a single file, obscuring the core animation APIs.
+
+**Replacement Strategy**:
+- **Isolated Animation API Showcase**: `demo/engine/sprite_animation.zig` (< 100 lines) focuses purely on `AnimatedSprite`, testing playback controls, animation tags, `h_flip` mirroring, and VRAM streaming vs. static preloading without any gameplay distraction.
+- **Holistic Game Mechanics**: The multi-direction kinematics, continuous wall collision, and dynamic streaming animation are absorbed by the flagship showcase demo `tsetseg_quest` (`demo/game/tsetseg_quest.zig`).
 
 ---
 
