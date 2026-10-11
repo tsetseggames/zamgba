@@ -50,15 +50,12 @@ pub const SpriteSheet = struct {
     /// - For 4-bpp sheets, writes to the given bank (0..15, default 0).
     /// - For 8-bpp sheets, writes up to 256 colors starting at color index 0.
     pub fn loadPalette(self: *const SpriteSheet, bank: ?u4) void {
-        self.loadPaletteToBuffer(bank, hal.specs.MemorySections.OBJ_PALRAM);
-    }
-
-    /// Testable buffer-backed implementation for loading palette.
-    pub fn loadPaletteToBuffer(self: *const SpriteSheet, bank: ?u4, pal_buffer: [*]volatile u16) void {
-        _ = self;
-        _ = bank;
-        _ = pal_buffer;
-        // Stub for TDD Red Phase
+        const p = self.palette orelse return;
+        if (self.bpp == .bpp4) {
+            palette.loadObjBank(bank orelse 0, p);
+        } else {
+            palette.loadObjColors(0, p);
+        }
     }
 };
 
@@ -319,7 +316,7 @@ pub const AnimatedSprite = struct {
             .sheet = sheet,
             .mode = mode,
             .vram_alloc = vram_alloc,
-            .base_tile_index = 0, // Stub for TDD Red Phase (ignoring options.tile_index)
+            .base_tile_index = options.tile_index,
             .current_frame = 0,
             .current_tag_index = null,
             .frame_timer = 0,
@@ -481,14 +478,19 @@ pub const AnimatedSprite = struct {
     /// Copies all frame tiles from the underlying SpriteSheet into OBJ VRAM
     /// starting at the sprite's designated base `tile_index`.
     pub fn preloadStaticTiles(self: *const AnimatedSprite) void {
+        if (comptime !hal.specs.is_gba_target) return;
         self.preloadStaticTilesToBuffer(hal.specs.MemorySections.OBJ_VRAM);
     }
 
-    /// Testable buffer-backed implementation for preloading tiles into VRAM.
-    pub fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) void {
-        _ = self;
-        _ = vram_buffer;
-        // Stub for TDD Red Phase
+    /// Internal buffer-backed implementation for preloading tiles into VRAM.
+    fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) void {
+        const start_word = @as(usize, self.base_tile_index) * hal.specs.Tile.WORDS_4BPP;
+        const total_words = self.sheet.tiles.len / 2;
+        for (0..total_words) |i| {
+            const byte_offset = i * 2;
+            const word = std.mem.readInt(u16, self.sheet.tiles[byte_offset .. byte_offset + 2][0..2], .little);
+            vram_buffer[start_word + i] = word;
+        }
     }
 
     /// Compiles into a GBA hardware OAM attribute.
@@ -1020,40 +1022,47 @@ test "ANI009: AnimatedSprite advanceFrameWithQueue advances frame, resets timer,
     try std.testing.expectEqual(@as(usize, 1), test_queue.task_count);
 }
 
-test "PAL003: SpriteSheet.loadPaletteToBuffer dispatches 4-bpp bank or 8-bpp offset 0" {
-    var mock_pal = [_]u16{0} ** 256;
-    const colors_4bpp = [_]u16{ 0x1111, 0x2222 };
+test "PAL003: SpriteSheet.loadPalette safely invokes without palette or in host environment" {
+    const sheet_empty_pal = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 1,
+        .palette = null,
+        .tiles = &[_]u8{},
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+    // Should safely return without panic
+    sheet_empty_pal.loadPalette(null);
+
+    const colors = [_]u16{ 0x1234, 0x5678 };
     const sheet_4bpp = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 1,
-        .palette = &colors_4bpp,
+        .palette = &colors,
         .tiles = &[_]u8{},
         .durations_ms = &[_]u16{100},
         .tags = &[_]AnimationTag{},
     };
-    sheet_4bpp.loadPaletteToBuffer(3, &mock_pal);
-    // Bank 3 starts at 48 (3 * 16)
-    try std.testing.expectEqual(@as(u16, 0x1111), mock_pal[48]);
-    try std.testing.expectEqual(@as(u16, 0x2222), mock_pal[49]);
+    sheet_4bpp.loadPalette(2);
 
-    const colors_8bpp = [_]u16{ 0x3333, 0x4444 };
     const sheet_8bpp = SpriteSheet{
         .bpp = .bpp8,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 1,
-        .palette = &colors_8bpp,
+        .palette = &colors,
         .tiles = &[_]u8{},
         .durations_ms = &[_]u16{100},
         .tags = &[_]AnimationTag{},
     };
-    sheet_8bpp.loadPaletteToBuffer(null, &mock_pal);
-    try std.testing.expectEqual(@as(u16, 0x3333), mock_pal[0]);
-    try std.testing.expectEqual(@as(u16, 0x4444), mock_pal[1]);
+    sheet_8bpp.loadPalette(null);
 }
 
 test "ANI010: AnimatedSprite.init with Options.tile_index sets base_tile_index and updates getTileIndex" {

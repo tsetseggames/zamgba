@@ -18,29 +18,21 @@ const Game = struct {
     input: engine.input.InputState = .{},
 
     pub fn init() Game {
-        // 1. Load 256-color palette to OBJ Palette RAM (0x05000200)
-        const obj_pal = hal.MemorySections.OBJ_PALRAM;
-        for (broom.palette, 0..) |col, i| {
-            obj_pal[i] = col;
-        }
+        // 1. Load sprite palette into OBJ Palette RAM (8-bpp uses full palette starting at color 0)
+        broom.sheet.loadPalette(null);
 
-        // 2. Preload all animation frames into OBJ VRAM (0x06010000)
-        // In static mode, all frame tiles reside simultaneously in VRAM.
-        const obj_vram = hal.MemorySections.OBJ_VRAM;
-        const raw_tile_words: [*]const u16 = @ptrCast(@alignCast(broom.raw_tiles.ptr));
-        const total_words = broom.raw_tiles.len / 2;
-        for (0..total_words) |i| {
-            obj_vram[i] = raw_tile_words[i];
-        }
-
-        // 3. Initialize AnimatedSprite in .static mode (positioned at screen center: 104, 64)
+        // 2. Initialize AnimatedSprite in .static mode (positioned at screen center: 104, 64)
+        // Tile index starts at base 0 in OBJ VRAM.
         var anim_spr = engine.AnimatedSprite.init(
             &broom.sheet,
             .static,
             Fixed24_8.fromInt(104),
             Fixed24_8.fromInt(64),
-            .{},
+            .{ .tile_index = 0 },
         ) catch unreachable;
+
+        // 3. Preload all animation frame tiles into OBJ VRAM at anim_spr's base tile_index
+        anim_spr.preloadStaticTiles();
 
         anim_spr.setAnimation("flying") catch {};
 

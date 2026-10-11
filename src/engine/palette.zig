@@ -3,28 +3,34 @@ const hal = @import("zamgba-hal");
 
 /// Loads a 16-color palette slice into a specific 4-bpp OBJ palette bank (0..15).
 pub fn loadObjBank(bank: u4, colors: []const u16) void {
+    if (comptime !hal.specs.is_gba_target) return;
     loadObjBankToBuffer(bank, colors, hal.MemorySections.OBJ_PALRAM);
 }
 
-/// Testable buffer-backed implementation for loading into an OBJ palette bank.
-pub fn loadObjBankToBuffer(bank: u4, colors: []const u16, pal_buffer: [*]volatile u16) void {
-    _ = bank;
-    _ = colors;
-    _ = pal_buffer;
-    // Stub for TDD Red Phase
+/// Internal buffer-backed implementation for loading into an OBJ palette bank.
+fn loadObjBankToBuffer(bank: u4, colors: []const u16, pal_buffer: [*]volatile u16) void {
+    const start_idx = @as(usize, bank) * 16;
+    const count = @min(colors.len, 16);
+    for (0..count) |i| {
+        pal_buffer[start_idx + i] = colors[i];
+    }
 }
 
 /// Loads raw colors into OBJ PALRAM starting at a specific color index offset (0..255).
 pub fn loadObjColors(start_color_index: u9, colors: []const u16) void {
+    if (comptime !hal.specs.is_gba_target) return;
     loadObjColorsToBuffer(start_color_index, colors, hal.MemorySections.OBJ_PALRAM);
 }
 
-/// Testable buffer-backed implementation for loading colors starting at an offset.
-pub fn loadObjColorsToBuffer(start_color_index: u9, colors: []const u16, pal_buffer: [*]volatile u16) void {
-    _ = start_color_index;
-    _ = colors;
-    _ = pal_buffer;
-    // Stub for TDD Red Phase
+/// Internal buffer-backed implementation for loading colors starting at an offset.
+fn loadObjColorsToBuffer(start_color_index: u9, colors: []const u16, pal_buffer: [*]volatile u16) void {
+    const start = @as(usize, start_color_index);
+    if (start >= 256) return;
+    const max_available = 256 - start;
+    const count = @min(colors.len, max_available);
+    for (0..count) |i| {
+        pal_buffer[start + i] = colors[i];
+    }
 }
 
 // ====================================================================
