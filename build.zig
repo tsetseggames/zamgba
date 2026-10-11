@@ -201,6 +201,15 @@ pub fn build(b: *std.Build) void {
     sprite_animation_static_rom.root_module.addImport(LibName, m);
     sprite_animation_static_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
 
+    var sprite_animation_streaming_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "sprite_animation_streaming",
+        .root_source_file = b.path("demo/engine/sprite_animation_streaming.zig"),
+    });
+
+    sprite_animation_streaming_rom.root_module.addImport(LibName, m);
+    sprite_animation_streaming_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.
