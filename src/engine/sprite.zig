@@ -352,7 +352,6 @@ pub const AnimatedSprite = struct {
     }
 
     pub fn advanceFrameWithQueue(self: *AnimatedSprite, custom_queue: ?*dma_queue.DmaQueue) void {
-        _ = custom_queue;
         if (self.current_tag_index) |t_idx| {
             std.debug.assert(t_idx < self.sheet.tags.len);
             const tag = self.sheet.tags[t_idx];
@@ -393,11 +392,13 @@ pub const AnimatedSprite = struct {
                     }
                 },
             }
-            return;
+        } else {
+            // Default: loop all frames forward
+            self.current_frame = (self.current_frame + 1) % self.sheet.frame_count;
         }
 
-        // Default: loop all frames forward
-        self.current_frame = (self.current_frame + 1) % self.sheet.frame_count;
+        self.frame_timer = 0;
+        self.stageCurrentFrameWithQueue(custom_queue);
     }
 
     pub fn stageCurrentFrameWithQueue(self: *AnimatedSprite, custom_queue: ?*dma_queue.DmaQueue) void {
@@ -436,9 +437,7 @@ pub const AnimatedSprite = struct {
         const ticks: u16 = @max(1, @as(u16, @intCast((duration_ms + (MS_PER_TICK_APPROX / 2)) / MS_PER_TICK_APPROX)));
 
         if (self.frame_timer >= ticks) {
-            self.frame_timer = 0;
-            self.advanceFrame();
-            self.stageCurrentFrameWithQueue(custom_queue);
+            self.advanceFrameWithQueue(custom_queue);
         }
     }
 
