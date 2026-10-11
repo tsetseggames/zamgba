@@ -135,6 +135,14 @@ pub fn build(b: *std.Build) void {
 
     background_hal_rom.root_module.addImport(LibName, m);
 
+    var sprite_static_fill_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "sprite_static_fill",
+        .root_source_file = b.path("demo/engine/sprite_static_fill.zig"),
+    });
+
+    sprite_static_fill_rom.root_module.addImport(LibName, m);
+
     // ====================================================================
     // Host Tool: zurag (Aseprite PNG+JSON to GBA converter)
     // ====================================================================
