@@ -34,6 +34,7 @@ const Game = struct {
             .streaming,
             Fixed24_8.fromInt(104),
             Fixed24_8.fromInt(64),
+            .{},
         );
 
         engine.log.info("AnimatedSprite initialized. Setting animation...", .{});

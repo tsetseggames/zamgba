@@ -46,7 +46,7 @@ const Game = struct {
 
         // 1. Initialize Player using AnimatedSprite in streaming mode
         // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
-        var player_anim = try engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y));
+        var player_anim = try engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y), .{});
         try player_anim.setAnimation("flying");
         engine.log.debug("Player streaming sprite initialized (frames: {d})", .{broom.sheet.frame_count});
 

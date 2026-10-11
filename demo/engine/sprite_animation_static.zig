@@ -39,6 +39,7 @@ const Game = struct {
             .static,
             Fixed24_8.fromInt(104),
             Fixed24_8.fromInt(64),
+            .{},
         ) catch unreachable;
 
         anim_spr.setAnimation("flying") catch {};

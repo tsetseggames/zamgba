@@ -11,6 +11,7 @@ const gfx2d = @import("gfx2d/gfx2d.zig");
 const Color = gfx2d.Color;
 const vram_allocator = gfx2d.vram_allocator;
 const dma_queue = gfx2d.dma_queue;
+const palette = @import("palette.zig");
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -44,6 +45,21 @@ pub const SpriteSheet = struct {
     tiles: []const u8,
     durations_ms: []const u16,
     tags: []const AnimationTag,
+
+    /// Loads the sheet's palette into OBJ PALRAM.
+    /// - For 4-bpp sheets, writes to the given bank (0..15, default 0).
+    /// - For 8-bpp sheets, writes up to 256 colors starting at color index 0.
+    pub fn loadPalette(self: *const SpriteSheet, bank: ?u4) void {
+        self.loadPaletteToBuffer(bank, hal.specs.MemorySections.OBJ_PALRAM);
+    }
+
+    /// Testable buffer-backed implementation for loading palette.
+    pub fn loadPaletteToBuffer(self: *const SpriteSheet, bank: ?u4, pal_buffer: [*]volatile u16) void {
+        _ = self;
+        _ = bank;
+        _ = pal_buffer;
+        // Stub for TDD Red Phase
+    }
 };
 
 pub const AnimationMode = enum {
@@ -271,6 +287,7 @@ pub const AnimatedSprite = struct {
     sheet: *const SpriteSheet,
     mode: AnimationMode,
     vram_alloc: ?vram_allocator.VramAllocation = null,
+    base_tile_index: u16 = 0,
 
     current_frame: usize = 0,
     current_tag_index: ?usize = null,
@@ -279,8 +296,13 @@ pub const AnimatedSprite = struct {
     pingpong_reverse: bool = false,
     palette_bank: u4 = 0,
 
+    pub const Options = struct {
+        tile_index: u16 = 0,
+        palette_bank: u4 = 0,
+    };
+
     /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
-    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: Fixed24_8, y: Fixed24_8) SpriteError!AnimatedSprite {
+    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: Fixed24_8, y: Fixed24_8, options: Options) SpriteError!AnimatedSprite {
         if (sheet.frame_count == 0) return error.EmptySheet;
 
         const spr = try Sprite.init(x, y, sheet.width, sheet.height);
@@ -297,12 +319,13 @@ pub const AnimatedSprite = struct {
             .sheet = sheet,
             .mode = mode,
             .vram_alloc = vram_alloc,
+            .base_tile_index = 0, // Stub for TDD Red Phase (ignoring options.tile_index)
             .current_frame = 0,
             .current_tag_index = null,
             .frame_timer = 0,
             .is_playing = true,
             .pingpong_reverse = false,
-            .palette_bank = 0,
+            .palette_bank = options.palette_bank,
         };
 
         self.stageCurrentFrameWithQueue(null);
@@ -451,8 +474,21 @@ pub const AnimatedSprite = struct {
                 self.sheet.tile_count_per_frame
             else
                 self.sheet.tile_count_per_frame * 2;
-            return @as(u16, @intCast(self.current_frame)) * tile_step;
+            return self.base_tile_index + @as(u16, @intCast(self.current_frame)) * tile_step;
         }
+    }
+
+    /// Copies all frame tiles from the underlying SpriteSheet into OBJ VRAM
+    /// starting at the sprite's designated base `tile_index`.
+    pub fn preloadStaticTiles(self: *const AnimatedSprite) void {
+        self.preloadStaticTilesToBuffer(hal.specs.MemorySections.OBJ_VRAM);
+    }
+
+    /// Testable buffer-backed implementation for preloading tiles into VRAM.
+    pub fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) void {
+        _ = self;
+        _ = vram_buffer;
+        // Stub for TDD Red Phase
     }
 
     /// Compiles into a GBA hardware OAM attribute.
@@ -734,7 +770,7 @@ test "ANI001: AnimatedSprite init with streaming mode allocates 1-frame VRAM slo
         .tags = &[_]AnimationTag{},
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
     try std.testing.expect(anim_spr.vram_alloc != null);
@@ -754,7 +790,7 @@ test "ANI002: AnimatedSprite init with static mode uses base tile_index and adva
         .tags = &[_]AnimationTag{},
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
     try std.testing.expect(anim_spr.vram_alloc == null);
@@ -780,7 +816,7 @@ test "ANI003: AnimatedSprite setAnimation and setAnimationByIndex select tag and
         },
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
     try anim_spr.setAnimation("run");
@@ -816,7 +852,7 @@ test "ANI004: AnimatedSprite updateWithQueue advances frame on timer expiration 
         },
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
     try anim_spr.setAnimation("walk");
 
@@ -850,7 +886,7 @@ test "ANI005: AnimatedSprite deinit releases VRAM allocation back to buddy alloc
         .tags = &[_]AnimationTag{},
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     try std.testing.expectEqual(initial_free - 32, vram_allocator.getFreeTileCount());
 
     anim_spr.deinit();
@@ -872,7 +908,7 @@ test "ANI006: pingpong animation direction reverses correctly" {
         },
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
     try anim_spr.setAnimation("ping");
 
@@ -907,7 +943,7 @@ test "ANI007: AnimatedSprite composition and toOamAttr output" {
         },
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30));
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30), .{});
     defer anim_spr.deinit();
 
     try anim_spr.setAnimation("idle");
@@ -940,7 +976,7 @@ test "ANI008: AnimatedSprite without tags loops all frames forward by default" {
         .tags = &[_]AnimationTag{},
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), anim_spr.current_frame);
@@ -970,7 +1006,7 @@ test "ANI009: AnimatedSprite advanceFrameWithQueue advances frame, resets timer,
         },
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
     try anim_spr.setAnimation("walk");
 
@@ -982,4 +1018,92 @@ test "ANI009: AnimatedSprite advanceFrameWithQueue advances frame, resets timer,
     try std.testing.expectEqual(@as(usize, 1), anim_spr.current_frame);
     try std.testing.expectEqual(@as(u16, 0), anim_spr.frame_timer);
     try std.testing.expectEqual(@as(usize, 1), test_queue.task_count);
+}
+
+test "PAL003: SpriteSheet.loadPaletteToBuffer dispatches 4-bpp bank or 8-bpp offset 0" {
+    var mock_pal = [_]u16{0} ** 256;
+    const colors_4bpp = [_]u16{ 0x1111, 0x2222 };
+    const sheet_4bpp = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 1,
+        .palette = &colors_4bpp,
+        .tiles = &[_]u8{},
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+    sheet_4bpp.loadPaletteToBuffer(3, &mock_pal);
+    // Bank 3 starts at 48 (3 * 16)
+    try std.testing.expectEqual(@as(u16, 0x1111), mock_pal[48]);
+    try std.testing.expectEqual(@as(u16, 0x2222), mock_pal[49]);
+
+    const colors_8bpp = [_]u16{ 0x3333, 0x4444 };
+    const sheet_8bpp = SpriteSheet{
+        .bpp = .bpp8,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 1,
+        .palette = &colors_8bpp,
+        .tiles = &[_]u8{},
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+    sheet_8bpp.loadPaletteToBuffer(null, &mock_pal);
+    try std.testing.expectEqual(@as(u16, 0x3333), mock_pal[0]);
+    try std.testing.expectEqual(@as(u16, 0x4444), mock_pal[1]);
+}
+
+test "ANI010: AnimatedSprite.init with Options.tile_index sets base_tile_index and updates getTileIndex" {
+    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 2,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{ 100, 100 },
+        .tags = &[_]AnimationTag{},
+    };
+
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{
+        .tile_index = 64,
+        .palette_bank = 2,
+    });
+    defer anim_spr.deinit();
+
+    try std.testing.expectEqual(@as(u16, 64), anim_spr.base_tile_index);
+    try std.testing.expectEqual(@as(u4, 2), anim_spr.palette_bank);
+    try std.testing.expectEqual(@as(u16, 64), anim_spr.getTileIndex());
+
+    anim_spr.advanceFrame();
+    // Frame 1 in static mode = base 64 + 4 = 68
+    try std.testing.expectEqual(@as(u16, 68), anim_spr.getTileIndex());
+}
+
+test "ANI011: AnimatedSprite.preloadStaticTilesToBuffer copies all sheet frame tiles to designated offset" {
+    var mock_vram = [_]u16{0} ** 2048;
+    const dummy_tiles = [_]u8{ 0x12, 0x34, 0x56, 0x78 };
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 8,
+        .height = 8,
+        .tile_count_per_frame = 1,
+        .frame_count = 1,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+
+    const anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{
+        .tile_index = 10,
+    });
+    anim_spr.preloadStaticTilesToBuffer(&mock_vram);
+
+    // Tile 10 starts at word offset 10 * 16 = 160
+    try std.testing.expectEqual(@as(u16, 0x3412), mock_vram[160]);
+    try std.testing.expectEqual(@as(u16, 0x7856), mock_vram[161]);
 }

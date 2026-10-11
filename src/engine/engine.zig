@@ -9,6 +9,7 @@ pub const AnimationTag = sprite_mod.AnimationTag;
 pub const AnimationDirection = sprite_mod.AnimationDirection;
 pub const AnimationMode = sprite_mod.AnimationMode;
 pub const SpriteError = sprite_mod.SpriteError;
+pub const palette = @import("palette.zig");
 
 pub const tilemap = @import("tilemap.zig");
 pub const ScreenEntry = tilemap.ScreenEntry;
