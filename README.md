@@ -88,6 +88,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`flappy_tsetseg_streaming`** (`demo/engine/flappy_tsetseg_streaming.zig`): Demonstrates high-performance VRAM Streaming sprite animation. Only a single 32x32 frame slot (1 KB) is allocated via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `AnimatedSprite` and `DmaQueue` during VBlank.
 *   **`pong`** (`demo/engine/pong.zig`): A complete, playable classic Pong game built entirely on `zamgba-engine`. Features player paddle D-pad controls, AI paddle tracking, top/bottom wall reflections, AABB paddle-ball collision response, and scoring/resets.
 *   **`sprite_static_fill`** (`demo/engine/sprite_static_fill.zig`): Demonstrates procedural single-color sprite generation via `StaticSprite.fillSolidColor()`. Renders multiple hardware sprite shapes and palette banks, with real-time color cycling on button input.
+*   **`sprite_animation_static`** (`demo/engine/sprite_animation_static.zig`): Demonstrates idiomatic multi-frame sprite animation with all frames preloaded into VRAM using `AnimatedSprite` in `.static` mode. Features D-Pad movement, horizontal mirroring (`h_flip`), and play/pause controls.
 
 ### Can I reference your library as a dependency?
 
