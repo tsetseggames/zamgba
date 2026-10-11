@@ -38,9 +38,11 @@ Zamgba organizes demonstration ROMs into two complementary categories:
 | `[x]` | `joypad_instanced` | `demo/engine/joypad_instanced.zig` | `v0.1.0` | High-level gamepad input (`engine.input.InputState`); dynamic sprite palette bank swapping on boundary collision. |
 | `[x]` | `collision_demo` | `demo/engine/collision_demo.zig` | `v0.1.0` | 2D AABB collision detection, bitmask collision filtering (`Collision.layer`, `Collision.mask`), patrol AI, and collision-triggered state resets. |
 | `[x]` | `pong` | `demo/engine/pong.zig` | `v0.1.0` | Complete, playable classic Pong game; paddle velocity kinematics, AI tracking, wall reflections, score tracking, and ball-paddle collision response. |
-| `[~]` | `flappy_tsetseg` | `demo/engine/flappy_tsetseg.zig` | `v0.2.0` | Multi-frame animated sprite playback using static all-frame VRAM preloading *(deprecated in v0.3.0; superseded by `sprite_animation`)*. |
-| `[~]` | `flappy_tsetseg_streaming`| `demo/engine/flappy_tsetseg_streaming.zig`| `v0.2.0` | Dynamic VRAM Streaming sprite animation via buddy allocator and DMA queue *(deprecated in v0.3.0; API superseded by `sprite_animation`, game context by `tsetseg_quest`)*. |
-| `[ ]` | `sprite_animation` | `demo/engine/sprite_animation.zig` | `v0.3.0` | Focused sprite animation showroom (< 100 lines); demonstrates `AnimatedSprite`, animation switching, horizontal mirroring (`h_flip`), 8-bpp palettes, and streaming vs. preloaded mode. |
+| `[~]` | `flappy_tsetseg` | `demo/engine/flappy_tsetseg.zig` | `v0.2.0` | Multi-frame animated sprite playback using manual VRAM copying and tile index calculation *(deprecated in v0.3.0; anti-pattern superseded by `AnimatedSprite`)*. |
+| `[~]` | `flappy_tsetseg_streaming`| `demo/engine/flappy_tsetseg_streaming.zig`| `v0.2.0` | Dynamic VRAM Streaming sprite animation via buddy allocator and DMA queue *(deprecated in v0.3.0; superseded by `sprite_animation_streaming`)*. |
+| `[ ]` | `sprite_static_fill` | `demo/engine/sprite_static_fill.zig` | `v0.3.0` | Procedural and solid-color sprite generation using `StaticSprite.fillSolidColor()`. |
+| `[ ]` | `sprite_animation_static` | `demo/engine/sprite_animation_static.zig` | `v0.3.0` | High-level multi-frame sprite playback using `AnimatedSprite` in `.static` mode (all frames resident in VRAM, zero DMA overhead during playback). |
+| `[ ]` | `sprite_animation_streaming` | `demo/engine/sprite_animation_streaming.zig` | `v0.3.0` | High-performance VRAM streaming sprite playback using `AnimatedSprite` in `.streaming` mode (`VramAllocator` dynamic slot + `DmaQueue` VBlank transfers). |
 | `[ ]` | `camera_demo` | `demo/engine/camera_demo.zig` | `v0.3.0` | Interactive `Camera2D` showroom; demonstrates target tracking, deadzone (`DragMargin`), bounds clamping (`CameraLimits`), screen shake (`shake`), and frustum culling. |
 | `[ ]` | `parallax_scroll` | `demo/engine/parallax_scroll.zig` | `v0.3.0` | Multi-layer Mode 0 background parallax scrolling (`applyToTileMapWithParallax`) across foreground, midground, and distant background layers. |
 | `[ ]` | `tilemap_collision` | `demo/engine/tilemap_collision.zig` | `v0.3.0` | Continuous sub-pixel physics (`Fixed24_8`) colliding against `TileMapLayer.asCollisionMap()`, demonstrating smooth wall sliding and obstacle resolution. |
@@ -56,15 +58,27 @@ Zamgba organizes demonstration ROMs into two complementary categories:
 
 *Legend: `[x]` Implemented and verified; `[ ]` Planned for release; `[~]` Deprecated (scheduled for removal).*
 
-### 2.4 Transition Plan: Retiring Flappy Demos
+### 2.4 Transition Plan: Retiring Flappy Demos & Anti-Pattern Evaluation
 
 The two initial sprite animation demos (`flappy_tsetseg` and `flappy_tsetseg_streaming`) are scheduled for retirement in v0.3.0 due to the following rationale:
 1. **Misleading Name**: They are not genuine Flappy Bird gameplay (no gravity curve or pipe-dodging mechanics), which causes user confusion.
 2. **Conflated Concerns**: They mixed sprite animation, ad-hoc red-pillar collision, and arbitrary patrol movement in a single file, obscuring the core animation APIs.
 
-**Replacement Strategy**:
-- **Isolated Animation API Showcase**: `demo/engine/sprite_animation.zig` (< 100 lines) focuses purely on `AnimatedSprite`, testing playback controls, animation tags, `h_flip` mirroring, and VRAM streaming vs. static preloading without any gameplay distraction.
-- **Holistic Game Mechanics**: The multi-direction kinematics, continuous wall collision, and dynamic streaming animation are absorbed by the flagship showcase demo `tsetseg_quest` (`demo/game/tsetseg_quest.zig`).
+#### Evaluation of "Animation via Manual StaticSprite" (`sprite_animation_via_static`)
+In `flappy_tsetseg.zig`, multi-frame playback was achieved by manually copying raw tile words to VRAM pointers (`hal.MemorySections.VRAM + 32768`) and incrementing `player.tile_index = anim_frame * TILES_PER_FRAME_8BPP` on a `StaticSprite`.
+
+**Decision: Reject as a dedicated demo.**
+- **Anti-Pattern Risk**: Promoting this approach in an official demo legitimizes a hacky workaround that completely bypasses Zamgba's type-safe `AnimatedSprite` subsystem.
+- **Error-Prone**: It requires developers to manually handle raw pointer casts, tile index math, frame duration ticks, and animation reset logic.
+- **First-Class Alternative Available**: `AnimatedSprite.init(&sheet, .static, ...)` already provides idiomatic, safe all-frame resident animation without any of the manual pointer arithmetic.
+
+#### The Triad of Focused Sprite Demos
+Instead of conflated demos or anti-pattern workarounds, Zamgba provides three clean, focused (< 100 lines) sprite demos:
+1. **`sprite_static_fill.zig`**: Demonstrates procedural tile generation and solid-color sprites using `StaticSprite.fillSolidColor()`.
+2. **`sprite_animation_static.zig`**: Demonstrates idiomatic preloaded animation where all frames reside in VRAM via `AnimatedSprite` in `.static` mode.
+3. **`sprite_animation_streaming.zig`**: Demonstrates dynamic DMA streaming animation where only 1 frame slot is reserved in VRAM via `AnimatedSprite` in `.streaming` mode.
+
+The combined gameplay mechanics (4-direction kinematics, continuous wall collision, camera tracking) are absorbed cleanly by the flagship showcase demo `tsetseg_quest` (`demo/game/tsetseg_quest.zig`).
 
 ---
 
