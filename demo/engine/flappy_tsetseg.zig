@@ -78,13 +78,13 @@ const Game = struct {
         self.enemies[1].sprite.velocity_y = ENEMY_2_SPEED_Y;
 
         // Load 256-color palette to OBJ Palette RAM (0x05000200)
-        const obj_pal = hal.MemorySections.PALRAM + 256;
+        const obj_pal = hal.MemorySections.OBJ_PALRAM;
         for (broom.palette, 0..) |col, i| {
             obj_pal[i] = col;
         }
 
         // Load all 8 animation frames (8KB = 4096 words) to OBJ VRAM (0x06010000)
-        const obj_vram = hal.MemorySections.VRAM + 32768;
+        const obj_vram = hal.MemorySections.OBJ_VRAM;
         const raw_tile_words = @as([*]const u16, @ptrCast(@alignCast(broom.raw_tiles.ptr)));
         const total_words = broom.raw_tiles.len / 2;
         for (0..total_words) |i| {

@@ -21,7 +21,7 @@ const Game = struct {
         engine.log.info("Sprite Animation Streaming Demo: Starting init", .{});
 
         // 1. Load 256-color palette to OBJ Palette RAM (0x05000200)
-        const obj_pal = hal.MemorySections.PALRAM + 256;
+        const obj_pal = hal.MemorySections.OBJ_PALRAM;
         for (broom.palette, 0..) |col, i| {
             obj_pal[i] = col;
         }

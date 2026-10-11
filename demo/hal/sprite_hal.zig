@@ -22,14 +22,12 @@ export fn main() noreturn {
 
     // 2. Setup Palette (PALRAM)
     // Object palette memory starts at 0x05000200.
-    // Our PALRAM pointer is at 0x05000000, so we offset by 256 words (512 bytes).
-    const obj_pal = hal.MemorySections.PALRAM + 256;
+    const obj_pal = hal.MemorySections.OBJ_PALRAM;
     obj_pal[1] = hal.Color.WHITE;
 
     // 3. Setup Graphics (VRAM)
     // Object VRAM starts at 0x06010000.
-    // Our VRAM pointer is at 0x06000000, so we offset by 32768 words (65536 bytes).
-    const obj_vram = hal.MemorySections.VRAM + 32768;
+    const obj_vram = hal.MemorySections.OBJ_VRAM;
 
     // Fill the first 8x8 tile (4 bits per pixel).
     // Each u16 holds 4 pixels, so 16 words = 64 pixels.

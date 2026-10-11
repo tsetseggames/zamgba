@@ -81,7 +81,7 @@ const Game = struct {
         self.enemies[1].sprite.velocity_y = ENEMY_2_SPEED_Y;
 
         // Load 256-color palette to OBJ Palette RAM (0x05000200)
-        const obj_pal = hal.MemorySections.PALRAM + 256;
+        const obj_pal = hal.MemorySections.OBJ_PALRAM;
         for (broom.palette, 0..) |col, i| {
             obj_pal[i] = col;
         }

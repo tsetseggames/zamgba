@@ -19,14 +19,14 @@ const Game = struct {
 
     pub fn init() Game {
         // 1. Load 256-color palette to OBJ Palette RAM (0x05000200)
-        const obj_pal = hal.MemorySections.PALRAM + 256;
+        const obj_pal = hal.MemorySections.OBJ_PALRAM;
         for (broom.palette, 0..) |col, i| {
             obj_pal[i] = col;
         }
 
         // 2. Preload all animation frames into OBJ VRAM (0x06010000)
         // In static mode, all frame tiles reside simultaneously in VRAM.
-        const obj_vram = hal.MemorySections.VRAM + 32768;
+        const obj_vram = hal.MemorySections.OBJ_VRAM;
         const raw_tile_words: [*]const u16 = @ptrCast(@alignCast(broom.raw_tiles.ptr));
         const total_words = broom.raw_tiles.len / 2;
         for (0..total_words) |i| {
