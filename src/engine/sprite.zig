@@ -348,6 +348,11 @@ pub const AnimatedSprite = struct {
     }
 
     pub fn advanceFrame(self: *AnimatedSprite) void {
+        self.advanceFrameWithQueue(null);
+    }
+
+    pub fn advanceFrameWithQueue(self: *AnimatedSprite, custom_queue: ?*dma_queue.DmaQueue) void {
+        _ = custom_queue;
         if (self.current_tag_index) |t_idx| {
             std.debug.assert(t_idx < self.sheet.tags.len);
             const tag = self.sheet.tags[t_idx];
@@ -946,4 +951,36 @@ test "ANI008: AnimatedSprite without tags loops all frames forward by default" {
     try std.testing.expectEqual(@as(usize, 2), anim_spr.current_frame);
     anim_spr.advanceFrame();
     try std.testing.expectEqual(@as(usize, 0), anim_spr.current_frame);
+}
+
+test "ANI009: AnimatedSprite advanceFrameWithQueue advances frame, resets timer, and stages DMA in streaming mode" {
+    vram_allocator.reset();
+    var test_queue = dma_queue.DmaQueue.init();
+
+    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 2,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{ 100, 100 },
+        .tags = &[_]AnimationTag{
+            .{ .name = "walk", .from_frame = 0, .to_frame = 1, .direction = .forward },
+        },
+    };
+
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero);
+    defer anim_spr.deinit();
+    try anim_spr.setAnimation("walk");
+
+    test_queue.flush();
+    anim_spr.frame_timer = 3;
+
+    anim_spr.advanceFrameWithQueue(&test_queue);
+
+    try std.testing.expectEqual(@as(usize, 1), anim_spr.current_frame);
+    try std.testing.expectEqual(@as(u16, 0), anim_spr.frame_timer);
+    try std.testing.expectEqual(@as(usize, 1), test_queue.task_count);
 }
