@@ -18,8 +18,6 @@ const Game = struct {
     input: engine.input.InputState = .{},
 
     pub fn init() !Game {
-        engine.log.info("Sprite Animation Streaming Demo: Starting init", .{});
-
         // 1. Load sprite palette into OBJ Palette RAM
         broom.sheet.loadPalette(null);
 
@@ -34,9 +32,7 @@ const Game = struct {
             .{},
         );
 
-        engine.log.info("AnimatedSprite initialized. Setting animation...", .{});
         try anim_spr.setAnimation("flying");
-        engine.log.info("Game init finished successfully. DmaQueue count={d}", .{dma_queue_count()});
 
         return .{
             .anim = anim_spr,
@@ -90,10 +86,6 @@ const Game = struct {
         engine.drawSprite(&self.anim);
     }
 };
-
-fn dma_queue_count() usize {
-    return engine.dma_queue.global_queue.count();
-}
 
 export fn main() noreturn {
     engine.initHardware();

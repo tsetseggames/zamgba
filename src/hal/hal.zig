@@ -144,7 +144,7 @@ comptime {
                 while (true) {}
             }
 
-            export fn irqHandler() callconv(.naked) void {
+            export fn irqHandler() linksection(".gba.irq") callconv(.naked) void {
                 asm volatile (
                     \\.arm
                     \\.cpu arm7tdmi

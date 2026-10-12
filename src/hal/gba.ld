@@ -48,6 +48,8 @@ SECTIONS
         KEEP(*(.gba.header));
         KEEP(*(.gba.start));
         KEEP(*(.gba.boot));
+        . = ALIGN(4);
+        KEEP(*(.gba.irq));
         KEEP(*(.gba.main));
         *(.text*)
         . = ALIGN(4);
