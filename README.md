@@ -135,6 +135,7 @@ Enjoy!
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
   - [x] Panic handler
+  - [x] **Critical Bugfix**: Enforce 4-byte alignment for GBA BIOS `irqHandler` in linker script to prevent ARM-mode address rotation crash in Debug builds ([#39](https://github.com/tsetseggames/zamgba/issues/39), see [`docs/debug_issue39_irq_handler.md`](docs/debug_issue39_irq_handler.md))
   - [ ] Explicit palette & static sprite tile loading APIs (`SpriteSheet.loadPalette`, `preloadStaticTiles`, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
 * **Version 0.4.0**: Capable of writing a game with UI/HUD layers and sprite priority. Supported features:
   - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
