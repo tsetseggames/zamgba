@@ -369,7 +369,14 @@ pub fn main(init: std.process.Init) !void {
             var meta = tilemap.parseMetadata(allocator, ldtk_data, switch (tm_args.format) {
                 .ldtk => .ldtk,
             }) catch |err| {
-                std.debug.print("Error: failed to parse LDtk metadata '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                switch (err) {
+                    error.MissingTilesetAsset => {
+                        std.debug.print("Error: LDtk project '{s}' contains no tileset asset. Mode 0 background requires a visual tileset.\n", .{input_ldtk_path});
+                    },
+                    else => {
+                        std.debug.print("Error: failed to parse LDtk metadata '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                    },
+                }
                 std.process.exit(1);
             };
             defer meta.deinit();

@@ -34,22 +34,27 @@ pub fn parseMetadata(
 
     const root = parsed.value.object;
 
-    switch (format) {
-        .ldtk => return ldtk.parseLdtkJson(allocator, root),
-        .auto => {
+    var meta = switch (format) {
+        .ldtk => try ldtk.parseLdtkJson(allocator, root),
+        .auto => blk: {
             if (ldtk.detectLdtk(root)) {
-                return ldtk.parseLdtkJson(allocator, root);
+                break :blk try ldtk.parseLdtkJson(allocator, root);
             }
             return TilemapError.UnsupportedJsonFormat;
         },
-    }
+    };
+    errdefer meta.deinit();
+
+    try validateTilemapForGba(&meta);
+    return meta;
 }
 
 /// Validates that a tilemap project satisfies GBA Mode 0 background hardware requirements.
 /// Mode 0 backgrounds require a visual tileset to populate Charblock tile VRAM.
-pub fn validateTilemapForGba(metadata: *const TilemapMetadata) TilemapError!void {
-    _ = metadata;
-    return error.Unimplemented;
+fn validateTilemapForGba(metadata: *const TilemapMetadata) TilemapError!void {
+    if (metadata.tileset_rel_path == null) {
+        return TilemapError.MissingTilesetAsset;
+    }
 }
 
 // ====================================================================
@@ -85,18 +90,42 @@ test "TLM002: parseMetadata reject invalid and unsupported JSON" {
     try std.testing.expectError(error.UnsupportedJsonFormat, parseMetadata(std.testing.allocator, foreign_json, .auto));
 }
 
-test "TLM003: validateTilemapForGba rejects project lacking tileset asset" {
+test "TLM003: parseMetadata rejects project lacking tileset asset for GBA Mode 0" {
     const test_assets = @import("test_palettes");
 
-    // Valid project with tileset
+    // Valid project with tileset parses successfully
     var meta_valid = try parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
     defer meta_valid.deinit();
-    try validateTilemapForGba(&meta_valid);
 
     // Invalid project without tileset (pure IntGrid / Entities without visual tileset)
-    var meta_no_tileset = try parseMetadata(std.testing.allocator, test_assets.ldtk_t04_entities, .auto);
-    defer meta_no_tileset.deinit();
-    try std.testing.expectError(error.MissingTilesetAsset, validateTilemapForGba(&meta_no_tileset));
+    const json_no_tileset =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "LogicGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_LogicOnly",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "LogicGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 1]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MissingTilesetAsset, parseMetadata(std.testing.allocator, json_no_tileset, .auto));
 }
 
 test {
