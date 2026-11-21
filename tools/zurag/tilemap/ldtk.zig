@@ -1035,3 +1035,79 @@ test "LDT015: Extract tileset relPath from defs or layer instances" {
     try std.testing.expect(project.tileset_rel_path != null);
     try std.testing.expectEqualStrings("tileset-8x8-dirt.png", project.tileset_rel_path.?);
 }
+
+test "LDT016: Reject LDtk project defining multiple tileset assets" {
+    const json_multi_tilesets =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [
+        \\      { "uid": 1, "identifier": "TilesetA", "relPath": "tileset_a.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 },
+        \\      { "uid": 2, "identifier": "TilesetB", "relPath": "tileset_b.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 }
+        \\    ],
+        \\    "layers": [
+        \\      { "identifier": "Terrain", "type": "Tiles", "gridSize": 8 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Terrain",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 32,
+        \\          "__cHei": 32,
+        \\          "gridTiles": []
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleTilesetsNotSupported, parseJsonHelper(std.testing.allocator, json_multi_tilesets));
+}
+
+test "LDT017: Reject LDtk project where layer instances reference different tileset assets" {
+    const json_diff_layer_tilesets =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "Layer1", "type": "Tiles", "gridSize": 8 },
+        \\      { "identifier": "Layer2", "type": "Tiles", "gridSize": 8 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Layer1",
+        \\          "__type": "Tiles",
+        \\          "__tilesetRelPath": "tileset_1.png",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 32,
+        \\          "__cHei": 32,
+        \\          "gridTiles": []
+        \\        },
+        \\        {
+        \\          "__identifier": "Layer2",
+        \\          "__type": "Tiles",
+        \\          "__tilesetRelPath": "tileset_2.png",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 32,
+        \\          "__cHei": 32,
+        \\          "gridTiles": []
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleTilesetsNotSupported, parseJsonHelper(std.testing.allocator, json_diff_layer_tilesets));
+}

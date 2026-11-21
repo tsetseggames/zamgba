@@ -128,6 +128,40 @@ test "TLM003: parseMetadata rejects project lacking tileset asset for GBA Mode 0
     try std.testing.expectError(error.MissingTilesetAsset, parseMetadata(std.testing.allocator, json_no_tileset, .auto));
 }
 
+test "TLM004: parseMetadata rejects project defining multiple tileset assets" {
+    const json_multi_tilesets =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [
+        \\      { "uid": 1, "identifier": "TilesetA", "relPath": "tileset_a.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 },
+        \\      { "uid": 2, "identifier": "TilesetB", "relPath": "tileset_b.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 }
+        \\    ],
+        \\    "layers": [
+        \\      { "identifier": "Terrain", "type": "Tiles", "gridSize": 8 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Terrain",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 32,
+        \\          "__cHei": 32,
+        \\          "gridTiles": []
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleTilesetsNotSupported, parseMetadata(std.testing.allocator, json_multi_tilesets, .auto));
+}
+
 test {
     _ = ldtk;
     _ = codegen;
