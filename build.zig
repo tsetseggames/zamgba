@@ -210,6 +210,32 @@ pub fn build(b: *std.Build) void {
     sprite_animation_streaming_rom.root_module.addImport(LibName, m);
     sprite_animation_streaming_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
 
+    // Build step: Automatically convert large dirt map LDtk asset to Zig
+    const convert_large_dirt_map = b.addRunArtifact(zurag_exe);
+    convert_large_dirt_map.addArg("tilemap");
+    convert_large_dirt_map.addArg("--input");
+    convert_large_dirt_map.addFileArg(b.path("assets/tileset/T06-large-map-512-512.ldtk"));
+    convert_large_dirt_map.addArg("--png");
+    convert_large_dirt_map.addFileArg(b.path("assets/tileset/tileset-8x8-dirt.png"));
+    convert_large_dirt_map.addArg("--output");
+    const large_dirt_map_zig = convert_large_dirt_map.addOutputFileArg("large_dirt_map.zig");
+
+    const large_dirt_map_mod = b.createModule(.{
+        .root_source_file = large_dirt_map_zig,
+    });
+    large_dirt_map_mod.addImport("zamgba-engine", engine_module);
+    large_dirt_map_mod.addImport("zamgba-hal", hal_module);
+
+    var camera_demo_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "camera_demo",
+        .root_source_file = b.path("demo/engine/camera_demo.zig"),
+    });
+
+    camera_demo_rom.root_module.addImport(LibName, m);
+    camera_demo_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+    camera_demo_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.

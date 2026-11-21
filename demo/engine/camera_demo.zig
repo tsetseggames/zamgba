@@ -1,0 +1,179 @@
+const gba = @import("zamgba");
+const hal = gba.hal;
+const engine = gba.engine;
+const broom = @import("tsetseg_broom");
+const large_dirt_map = @import("large_dirt_map");
+
+const Fixed24_8 = engine.physics.Fixed24_8;
+
+// The standard ROM header for the GBA BIOS
+export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
+    "CAMERADEMO",
+    "ACMD",
+    "00",
+    0,
+);
+
+const Game = struct {
+    player: engine.AnimatedSprite,
+    npc1: engine.AnimatedSprite,
+    npc2: engine.AnimatedSprite,
+    camera: engine.Camera2D,
+    bg_layer: engine.TileMapLayer,
+    input: engine.input.InputState = .{},
+    use_smoothing: bool = true,
+    use_drag_margin: bool = true,
+
+    pub fn init() !Game {
+        engine.log.info("Camera Demo: Starting init", .{});
+
+        // 1. Load sprite palette into OBJ Palette RAM
+        broom.sheet.loadPalette(null);
+
+        // 2. Configure Mode 0 Background layer (512x512 text tilemap = 64x64 tiles)
+        // Charblock 0 holds tileset tile data; Screenblock 28..31 holds map entries.
+        var bg = engine.TileMapLayer{
+            .bg_id = .bg0,
+            .charblock = 0,
+            .screenblock = 28,
+            .size = .size_64x64,
+            .data = &large_dirt_map.Level_0_Background_data,
+            .priority = 1,
+        };
+        bg.initHardware();
+
+        // 3. Initialize player AnimatedSprite in .static mode
+        var player_spr = try engine.AnimatedSprite.init(
+            &broom.sheet,
+            .static,
+            Fixed24_8.fromInt(120),
+            Fixed24_8.fromInt(100),
+            .{ .tile_index = 0 },
+        );
+        player_spr.preloadStaticTiles();
+        try player_spr.setAnimation("flying");
+
+        // 4. Initialize decorative NPCs at distant world positions to demonstrate frustum culling
+        // They share the preloaded static tiles in OBJ VRAM
+        var npc1_spr = try engine.AnimatedSprite.init(
+            &broom.sheet,
+            .static,
+            Fixed24_8.fromInt(60),
+            Fixed24_8.fromInt(380),
+            .{ .tile_index = 0 },
+        );
+        try npc1_spr.setAnimation("flying");
+        npc1_spr.sprite.h_flip = true;
+
+        var npc2_spr = try engine.AnimatedSprite.init(
+            &broom.sheet,
+            .static,
+            Fixed24_8.fromInt(380),
+            Fixed24_8.fromInt(80),
+            .{ .tile_index = 0 },
+        );
+        try npc2_spr.setAnimation("flying");
+
+        // 5. Initialize Camera2D with 512x512 world limits, smooth lerping, and drag margin
+        var cam = engine.Camera2D.init(Fixed24_8.zero, Fixed24_8.zero);
+        cam.limits = .{
+            .min_x = Fixed24_8.zero,
+            .min_y = Fixed24_8.zero,
+            .max_x = Fixed24_8.fromInt(512 - 240),
+            .max_y = Fixed24_8.fromInt(512 - 160),
+        };
+        cam.smooth_speed = Fixed24_8.fromFloat(0.125);
+        cam.drag_margin = .{
+            .width = 64,
+            .height = 48,
+        };
+        cam.centerOn(player_spr.sprite.aabb.x, player_spr.sprite.aabb.y);
+
+        engine.log.info("Camera Demo: Init finished successfully", .{});
+
+        return .{
+            .player = player_spr,
+            .npc1 = npc1_spr,
+            .npc2 = npc2_spr,
+            .camera = cam,
+            .bg_layer = bg,
+        };
+    }
+
+    pub fn tick(self: *@This()) void {
+        self.input.update();
+
+        // 1. Move player using D-Pad
+        const speed: i32 = 2;
+        var x = self.player.sprite.aabb.x.toInt();
+        var y = self.player.sprite.aabb.y.toInt();
+
+        if (self.input.isPressed(.Left)) {
+            x -= speed;
+            self.player.sprite.h_flip = true;
+        }
+        if (self.input.isPressed(.Right)) {
+            x += speed;
+            self.player.sprite.h_flip = false;
+        }
+        if (self.input.isPressed(.Up)) y -= speed;
+        if (self.input.isPressed(.Down)) y += speed;
+
+        // Screen / world boundary clamping (512x512 world, 32x32 sprite)
+        const max_x: i32 = 512 - @as(i32, @intCast(self.player.sprite.aabb.width));
+        const max_y: i32 = 512 - @as(i32, @intCast(self.player.sprite.aabb.height));
+        if (x < 0) x = 0;
+        if (x > max_x) x = max_x;
+        if (y < 0) y = 0;
+        if (y > max_y) y = max_y;
+
+        self.player.sprite.aabb.x = Fixed24_8.fromInt(x);
+        self.player.sprite.aabb.y = Fixed24_8.fromInt(y);
+
+        // 2. Button A: Trigger camera screen shake
+        if (self.input.isJustPressed(.A)) {
+            self.camera.shake(Fixed24_8.fromInt(6), Fixed24_8.fromFloat(0.85));
+        }
+
+        // 3. Button B: Toggle position smoothing (Lerp vs Instant Snap)
+        if (self.input.isJustPressed(.B)) {
+            self.use_smoothing = !self.use_smoothing;
+            self.camera.smooth_speed = if (self.use_smoothing) Fixed24_8.fromFloat(0.125) else Fixed24_8.zero;
+        }
+
+        // 4. Button Select: Toggle deadzone / drag margin
+        if (self.input.isJustPressed(.Select)) {
+            self.use_drag_margin = !self.use_drag_margin;
+            self.camera.drag_margin = if (self.use_drag_margin) .{ .width = 64, .height = 48 } else null;
+        }
+
+        // 5. Update target tracking and camera interpolation
+        self.camera.follow(self.player.sprite.aabb);
+        self.camera.update();
+
+        // 6. Synchronize camera viewport with background scroll registers
+        self.camera.applyToTileMap(&self.bg_layer);
+
+        // 7. Update sprite animations
+        self.player.update();
+        self.npc1.update();
+        self.npc2.update();
+
+        // 8. Register active camera for automatic frustum culling and world-to-screen coordinate translation
+        engine.setCamera(&self.camera);
+
+        // 9. Draw sprites (engine automatically culls offscreen sprites)
+        engine.drawSprite(&self.player);
+        engine.drawSprite(&self.npc1);
+        engine.drawSprite(&self.npc2);
+    }
+};
+
+export fn main() noreturn {
+    engine.initHardware();
+    var game = Game.init() catch |err| {
+        engine.log.fatal("Game.init failed: {s}", .{@errorName(err)});
+        while (true) {}
+    };
+    engine.run(&game);
+}

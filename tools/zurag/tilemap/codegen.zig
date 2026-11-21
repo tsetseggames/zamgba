@@ -68,7 +68,7 @@ fn writeTilesetData(
 ) TilemapCodegenError!void {
     const is_8bpp = (bpp == .bpp8);
     const words_per_tile: usize = if (is_8bpp) 16 else 8;
-    const type_name = if (is_8bpp) "engine.gfx2d.Tile8bpp" else "engine.gfx2d.Tile4bpp";
+    const type_name = if (is_8bpp) "engine.Tile8bpp" else "engine.Tile4bpp";
     const bytes_per_tile: usize = words_per_tile * @sizeOf(u32);
 
     writer.print("pub const tileset_tiles: [{}]{s} = [_]{s}{{\n", .{ tile_count, type_name, type_name }) catch return error.WriteError;

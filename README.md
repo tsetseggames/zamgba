@@ -90,6 +90,7 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`sprite_static_fill`** (`demo/engine/sprite_static_fill.zig`): Demonstrates procedural single-color sprite generation via `StaticSprite.fillSolidColor()`. Renders multiple hardware sprite shapes and palette banks, with real-time color cycling on button input.
 *   **`sprite_animation_static`** (`demo/engine/sprite_animation_static.zig`): Demonstrates idiomatic multi-frame sprite animation with all frames preloaded into VRAM using `AnimatedSprite` in `.static` mode. Features D-Pad movement, horizontal mirroring (`h_flip`), and play/pause controls.
 *   **`sprite_animation_streaming`** (`demo/engine/sprite_animation_streaming.zig`): Demonstrates high-performance dynamic VRAM streaming sprite animation using `AnimatedSprite` in `.streaming` mode. Only a single frame slot is allocated dynamically via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `DmaQueue` during VBlank.
+*   **`camera_demo`** (`demo/engine/camera_demo.zig`): Demonstrates 2D Camera viewport management in a large 512x512 scrolling Mode 0 tiled world. Features target tracking, position smoothing (lerp), deadzone (`DragMargin`), world bounds clamping (`CameraLimits`), screen shake, and automatic off-screen sprite frustum culling.
 
 ### Can I reference your library as a dependency?
 
@@ -130,7 +131,7 @@ Enjoy!
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
   - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
   - [x] Camera support for scrolling backgrounds and viewport tracking (`Camera2D`, `CameraLimits`, `DragMargin`, frustum culling)
-  - [ ] Camera tracking & scrolling TileMap interactive demo ROM
+  - [x] Camera tracking & scrolling TileMap interactive demo ROM (`camera_demo`)
   - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
