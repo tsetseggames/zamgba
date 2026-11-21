@@ -16,10 +16,8 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 
 const Game = struct {
     player: engine.AnimatedSprite,
-    npc1: engine.AnimatedSprite,
-    npc2: engine.AnimatedSprite,
     camera: engine.Camera2D,
-    bg_layer: engine.TileMapLayer,
+    bg_layers: [4]engine.TileMapLayer,
     input: engine.input.InputState = .{},
     use_smoothing: bool = true,
     use_drag_margin: bool = true,
@@ -30,17 +28,48 @@ const Game = struct {
         // 1. Load sprite palette into OBJ Palette RAM
         broom.sheet.loadPalette(null);
 
-        // 2. Configure Mode 0 Background layer (512x512 text tilemap = 64x64 tiles)
-        // Charblock 0 holds tileset tile data; Screenblock 28..31 holds map entries.
-        var bg = engine.TileMapLayer{
+        // 2. Configure Mode 0 Background layers (512x512 text tilemaps = 64x64 tiles)
+        // All layers share Charblock 0 for tileset graphics.
+        // Each 64x64 layer occupies 4 Screenblocks (2 KB * 4 = 8 KB).
+        var bg_backdrop = engine.TileMapLayer{
+            .bg_id = .bg3,
+            .charblock = 0,
+            .screenblock = 16,
+            .size = .size_64x64,
+            .data = &large_dirt_map.Level_0_Background_data,
+            .priority = 3,
+        };
+        bg_backdrop.initHardware();
+
+        var bg_dirt = engine.TileMapLayer{
+            .bg_id = .bg2,
+            .charblock = 0,
+            .screenblock = 20,
+            .size = .size_64x64,
+            .data = &large_dirt_map.Level_0_Dirt_data,
+            .priority = 2,
+        };
+        bg_dirt.initHardware();
+
+        var bg_rock = engine.TileMapLayer{
+            .bg_id = .bg1,
+            .charblock = 0,
+            .screenblock = 24,
+            .size = .size_64x64,
+            .data = &large_dirt_map.Level_0_BigRock_data,
+            .priority = 1,
+        };
+        bg_rock.initHardware();
+
+        var bg_grass = engine.TileMapLayer{
             .bg_id = .bg0,
             .charblock = 0,
             .screenblock = 28,
             .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Background_data,
-            .priority = 1,
+            .data = &large_dirt_map.Level_0_Grass_data,
+            .priority = 0,
         };
-        bg.initHardware();
+        bg_grass.initHardware();
 
         // 3. Initialize player AnimatedSprite in .static mode
         var player_spr = try engine.AnimatedSprite.init(
@@ -53,28 +82,7 @@ const Game = struct {
         player_spr.preloadStaticTiles();
         try player_spr.setAnimation("flying");
 
-        // 4. Initialize decorative NPCs at distant world positions to demonstrate frustum culling
-        // They share the preloaded static tiles in OBJ VRAM
-        var npc1_spr = try engine.AnimatedSprite.init(
-            &broom.sheet,
-            .static,
-            Fixed24_8.fromInt(60),
-            Fixed24_8.fromInt(380),
-            .{ .tile_index = 0 },
-        );
-        try npc1_spr.setAnimation("flying");
-        npc1_spr.sprite.h_flip = true;
-
-        var npc2_spr = try engine.AnimatedSprite.init(
-            &broom.sheet,
-            .static,
-            Fixed24_8.fromInt(380),
-            Fixed24_8.fromInt(80),
-            .{ .tile_index = 0 },
-        );
-        try npc2_spr.setAnimation("flying");
-
-        // 5. Initialize Camera2D with 512x512 world limits, smooth lerping, and drag margin
+        // 4. Initialize Camera2D with 512x512 world limits, smooth lerping, and drag margin
         var cam = engine.Camera2D.init(Fixed24_8.zero, Fixed24_8.zero);
         cam.limits = .{
             .min_x = Fixed24_8.zero,
@@ -93,10 +101,8 @@ const Game = struct {
 
         return .{
             .player = player_spr,
-            .npc1 = npc1_spr,
-            .npc2 = npc2_spr,
             .camera = cam,
-            .bg_layer = bg,
+            .bg_layers = .{ bg_grass, bg_rock, bg_dirt, bg_backdrop },
         };
     }
 
@@ -152,20 +158,18 @@ const Game = struct {
         self.camera.update();
 
         // 6. Synchronize camera viewport with background scroll registers
-        self.camera.applyToTileMap(&self.bg_layer);
+        for (&self.bg_layers) |*layer| {
+            self.camera.applyToTileMap(layer);
+        }
 
         // 7. Update sprite animations
         self.player.update();
-        self.npc1.update();
-        self.npc2.update();
 
         // 8. Register active camera for automatic frustum culling and world-to-screen coordinate translation
         engine.setCamera(&self.camera);
 
         // 9. Draw sprites (engine automatically culls offscreen sprites)
         engine.drawSprite(&self.player);
-        engine.drawSprite(&self.npc1);
-        engine.drawSprite(&self.npc2);
     }
 };
 

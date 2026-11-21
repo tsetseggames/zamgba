@@ -71,7 +71,17 @@ fn writeTilesetData(
     const type_name = if (is_8bpp) "engine.Tile8bpp" else "engine.Tile4bpp";
     const bytes_per_tile: usize = words_per_tile * @sizeOf(u32);
 
-    writer.print("pub const tileset_tiles: [{}]{s} = [_]{s}{{\n", .{ tile_count, type_name, type_name }) catch return error.WriteError;
+    // Prepend a blank (transparent) tile at index 0 so empty cells in sparse layers reference index 0.
+    const total_tiles = tile_count + 1;
+    writer.print("pub const tileset_tiles: [{}]{s} = [_]{s}{{\n", .{ total_tiles, type_name, type_name }) catch return error.WriteError;
+
+    // Tile 0: all words zero (Palette Index 0 for all pixels = hardware transparent)
+    writer.writeAll("    [_]u32{ ") catch return error.WriteError;
+    for (0..words_per_tile) |_| {
+        writer.writeAll("0x00000000, ") catch return error.WriteError;
+    }
+    writer.writeAll("},\n") catch return error.WriteError;
+
     for (0..tile_count) |t_idx| {
         const tile_slice = sliced_bytes[t_idx * bytes_per_tile .. (t_idx + 1) * bytes_per_tile];
         writer.writeAll("    [_]u32{ ") catch return error.WriteError;
@@ -224,19 +234,10 @@ pub fn generateTilemapZigSource(
 
             if (lyr.layer_type == .auto_layer or lyr.layer_type == .tiles or lyr.tiles.len > 0) {
                 const total_cells = lyr.c_wid * lyr.c_hei;
-                const entries = allocator.alloc(types.ParsedTileEntry, total_cells) catch return error.OutOfMemory;
+                const entries = allocator.alloc(?types.ParsedTileEntry, total_cells) catch return error.OutOfMemory;
                 defer allocator.free(entries);
 
-                for (entries) |*e| {
-                    e.* = .{
-                        .tile_id = 0,
-                        .x = 0,
-                        .y = 0,
-                        .h_flip = false,
-                        .v_flip = false,
-                        .alpha = 1.0,
-                    };
-                }
+                @memset(entries, null);
 
                 for (lyr.tiles) |t| {
                     if (t.x < lyr.c_wid and t.y < lyr.c_hei) {
@@ -246,12 +247,16 @@ pub fn generateTilemapZigSource(
                 }
 
                 writer.print("pub const {s}_{s}_entries: [{}]ScreenEntry = [_]ScreenEntry{{\n", .{ lvl_ident, lyr_ident, total_cells }) catch return error.WriteError;
-                for (entries) |entry| {
-                    writer.print("    .{{ .tile_index = {}, .h_flip = {}, .v_flip = {}, .palette_bank = 0 }},\n", .{
-                        entry.tile_id,
-                        entry.h_flip,
-                        entry.v_flip,
-                    }) catch return error.WriteError;
+                for (entries) |entry_opt| {
+                    if (entry_opt) |entry| {
+                        writer.print("    .{{ .tile_index = {}, .h_flip = {}, .v_flip = {}, .palette_bank = 0 }},\n", .{
+                            entry.tile_id + 1,
+                            entry.h_flip,
+                            entry.v_flip,
+                        }) catch return error.WriteError;
+                    } else {
+                        writer.writeAll("    .{ .tile_index = 0, .h_flip = false, .v_flip = false, .palette_bank = 0 },\n") catch return error.WriteError;
+                    }
                 }
                 writer.writeAll("};\n\n") catch return error.WriteError;
 
@@ -461,4 +466,50 @@ test "TMC009: Generate banked 16-bank 4-bpp palettes (4x16) in tilemap source" {
     try std.testing.expect(std.mem.indexOf(u8, out, "// Bank 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "// Bank 15") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "pub const palettes: *const [16][16]u16 = @ptrCast(&palette);") != null);
+}
+
+test "TMC010: Empty layer cells must reference transparent blank tile at index 0 and offset tileset" {
+    const test_assets = @import("test_palettes");
+
+    // 2x1 layer: cell (0, 0) has placed tile_id = 0, cell (1, 0) is empty
+    var meta = types.TilemapMetadata{
+        .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
+        .levels = &[_]types.ParsedLevel{
+            .{
+                .identifier = "Level_0",
+                .world_x = 0,
+                .world_y = 0,
+                .px_wid = 16,
+                .px_hei = 8,
+                .layers = &[_]types.ParsedLayer{
+                    .{
+                        .identifier = "Grass",
+                        .layer_type = .tiles,
+                        .grid_size = 8,
+                        .c_wid = 2,
+                        .c_hei = 1,
+                        .tiles = &[_]types.ParsedTileEntry{
+                            .{ .tile_id = 0, .x = 0, .y = 0, .h_flip = false, .v_flip = false, .alpha = 1.0 },
+                        },
+                    },
+                },
+            },
+        },
+    };
+    defer meta.deinit();
+
+    const out = try generateTilemapZigSource(std.testing.allocator, &meta, test_assets.png_pal16, .{
+        .map_name = "test_blank_map",
+        .bpp = .bpp4,
+    });
+    defer std.testing.allocator.free(out);
+
+    // 1. Tileset must have blank tile (all zeros) at index 0
+    try std.testing.expect(std.mem.indexOf(u8, out, "[_]u32{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, },") != null);
+
+    // 2. Placed tile (tile_id 0) must be shifted by 1 to index 1
+    try std.testing.expect(std.mem.indexOf(u8, out, ".tile_index = 1, .h_flip = false, .v_flip = false, .palette_bank = 0") != null);
+
+    // 3. Empty cell must reference blank tile index 0
+    try std.testing.expect(std.mem.indexOf(u8, out, ".tile_index = 0, .h_flip = false, .v_flip = false, .palette_bank = 0") != null);
 }
