@@ -26,6 +26,14 @@ pub const ScreenEntry = packed struct(u16) {
     }
 };
 
+/// Maps 2D tile coordinates (x, y) into the GBA hardware Screenblock VRAM halfword index according to BgSize.
+pub fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
+    _ = size;
+    _ = x;
+    _ = y;
+    return 0;
+}
+
 /// 4-bpp 8x8 Tile (32 bytes = 8 u32 words).
 pub const Tile4bpp = [8]u32;
 
@@ -476,4 +484,40 @@ test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
     try std.testing.expectEqual(@as(usize, 1), data_8bpp.tileCount());
     try std.testing.expectEqual(@as(usize, 64), data_8bpp.byteSize());
     try std.testing.expectEqual(@as(usize, 16), data_8bpp.wordCount());
+}
+
+test "TLM007: getScreenEntryVramIndex multi-screenblock address calculation" {
+    // 32x32: single SBB, linear row-major (y * 32 + x)
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_32x32, 0, 0));
+    try std.testing.expectEqual(@as(usize, 31), getScreenEntryVramIndex(.size_32x32, 31, 0));
+    try std.testing.expectEqual(@as(usize, 32), getScreenEntryVramIndex(.size_32x32, 0, 1));
+    try std.testing.expectEqual(@as(usize, 1023), getScreenEntryVramIndex(.size_32x32, 31, 31));
+
+    // 64x32: 2 SBBs horizontally
+    // Left SBB (x < 32): y * 32 + x
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_64x32, 0, 0));
+    try std.testing.expectEqual(@as(usize, 31), getScreenEntryVramIndex(.size_64x32, 31, 0));
+    // Right SBB (x >= 32): 1024 + y * 32 + (x - 32)
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_64x32, 32, 0));
+    try std.testing.expectEqual(@as(usize, 1024 + 31), getScreenEntryVramIndex(.size_64x32, 63, 0));
+
+    // 32x64: 2 SBBs vertically
+    // Top SBB (y < 32): y * 32 + x
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_32x64, 0, 0));
+    // Bottom SBB (y >= 32): 1024 + (y - 32) * 32 + x
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_32x64, 0, 32));
+
+    // 64x64: 4 SBBs (2x2)
+    // SBB 0 (top-left): (0, 0) -> 0, (31, 31) -> 1023
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_64x64, 0, 0));
+    try std.testing.expectEqual(@as(usize, 1023), getScreenEntryVramIndex(.size_64x64, 31, 31));
+    // SBB 1 (top-right): (32, 0) -> 1024, (63, 31) -> 2047
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_64x64, 32, 0));
+    try std.testing.expectEqual(@as(usize, 2047), getScreenEntryVramIndex(.size_64x64, 63, 31));
+    // SBB 2 (bottom-left): (0, 32) -> 2048, (31, 63) -> 3071
+    try std.testing.expectEqual(@as(usize, 2048), getScreenEntryVramIndex(.size_64x64, 0, 32));
+    try std.testing.expectEqual(@as(usize, 3071), getScreenEntryVramIndex(.size_64x64, 31, 63));
+    // SBB 3 (bottom-right): (32, 32) -> 3072, (63, 63) -> 4095
+    try std.testing.expectEqual(@as(usize, 3072), getScreenEntryVramIndex(.size_64x64, 32, 32));
+    try std.testing.expectEqual(@as(usize, 4095), getScreenEntryVramIndex(.size_64x64, 63, 63));
 }

@@ -62,6 +62,7 @@ pub const SpriteCliArgs = struct {
 
 pub const TilemapCliArgs = struct {
     input_path: ?[]const u8 = null,
+    png_path: ?[]const u8 = null,
     format: TilemapFormat = .ldtk,
     output_path: ?[]const u8 = null,
     bpp: BppMode = .auto,
@@ -551,6 +552,15 @@ test "CLI011: parseCli tilemap with --color-adjust, --no-palette, and --bpp 4x16
     try std.testing.expect(parsed.tilemap.no_palette);
     try std.testing.expectEqual(BppMode.bpp4x16, parsed.tilemap.bpp);
     try std.testing.expect(!parsed.tilemap.show_help);
+}
+
+test "CLI012: parseCli tilemap with optional --png tileset argument" {
+    const raw_args = [_][]const u8{ "tilemap", "-i", "world.ldtk", "--png", "tileset.png", "-o", "world.zig" };
+    const parsed = try CliArgs.parseCli(&raw_args);
+    try std.testing.expectEqual(ParsedCli.tilemap, std.meta.activeTag(parsed));
+    try std.testing.expectEqualStrings("world.ldtk", parsed.tilemap.input_path.?);
+    try std.testing.expectEqualStrings("tileset.png", parsed.tilemap.png_path.?);
+    try std.testing.expectEqualStrings("world.zig", parsed.tilemap.output_path.?);
 }
 
 test {
