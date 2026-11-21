@@ -27,7 +27,7 @@ pub const ScreenEntry = packed struct(u16) {
 };
 
 /// Maps 2D tile coordinates (x, y) into the GBA hardware Screenblock VRAM halfword index according to BgSize.
-pub fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
+fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
     const SBB_ENTRIES: usize = 1024;
     return switch (size) {
         .size_32x32 => y * 32 + x,
