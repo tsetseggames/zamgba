@@ -25,6 +25,7 @@ pub const TilemapError = error{
     UnsupportedGridSize,
     InvalidTilesetDefinition,
     MissingLevelData,
+    MissingTilesetAsset,
     InvalidJson,
     InvalidJsonSchema,
     UnsupportedJsonFormat,
@@ -87,6 +88,7 @@ pub const ParsedLevel = struct {
 pub const TilemapMetadata = struct {
     arena: std.heap.ArenaAllocator,
     levels: []const ParsedLevel,
+    tileset_rel_path: ?[]const u8 = null,
 
     pub fn deinit(self: *TilemapMetadata) void {
         self.arena.deinit();

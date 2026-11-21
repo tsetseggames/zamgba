@@ -509,9 +509,40 @@ pub fn parseLdtkJson(
         parsed_levels.append(aa, level) catch return types.TilemapError.OutOfMemory;
     }
 
+    var tileset_rel_path: ?[]const u8 = null;
+    if (root.get("defs")) |defs_val| {
+        if (defs_val == .object) {
+            if (defs_val.object.get("tilesets")) |ts_val| {
+                if (ts_val == .array) {
+                    for (ts_val.array.items) |ts_item| {
+                        if (ts_item == .object) {
+                            if (getStringField(ts_item.object, "relPath")) |rp| {
+                                tileset_rel_path = aa.dupe(u8, rp) catch return types.TilemapError.OutOfMemory;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (tileset_rel_path == null) {
+        for (parsed_levels.items) |lvl| {
+            for (lvl.layers) |lyr| {
+                if (lyr.tileset_rel_path) |rp| {
+                    tileset_rel_path = rp;
+                    break;
+                }
+            }
+            if (tileset_rel_path != null) break;
+        }
+    }
+
     return TilemapMetadata{
         .arena = arena,
         .levels = parsed_levels.toOwnedSlice(aa) catch return types.TilemapError.OutOfMemory,
+        .tileset_rel_path = tileset_rel_path,
     };
 }
 
@@ -994,4 +1025,13 @@ test "LDT014: End-to-end 16x16 tile layer expansion into four 8x8 subtiles" {
     try std.testing.expectEqual(@as(u16, 3), terrain_layer.tiles[7].y);
     try std.testing.expectEqual(@as(u32, 4), terrain_layer.tiles[7].tile_id);
     try std.testing.expectEqual(true, terrain_layer.tiles[7].h_flip);
+}
+
+test "LDT015: Extract tileset relPath from defs or layer instances" {
+    const raw_json = test_assets.ldtk_t01_intgrid;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    try std.testing.expect(project.tileset_rel_path != null);
+    try std.testing.expectEqualStrings("tileset-8x8-dirt.png", project.tileset_rel_path.?);
 }

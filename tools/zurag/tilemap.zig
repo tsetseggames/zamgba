@@ -45,6 +45,13 @@ pub fn parseMetadata(
     }
 }
 
+/// Validates that a tilemap project satisfies GBA Mode 0 background hardware requirements.
+/// Mode 0 backgrounds require a visual tileset to populate Charblock tile VRAM.
+pub fn validateTilemapForGba(metadata: *const TilemapMetadata) TilemapError!void {
+    _ = metadata;
+    return error.Unimplemented;
+}
+
 // ====================================================================
 // Unit Tests for Tilemap Metadata Dispatcher (TDD Red Phase)
 // ====================================================================
@@ -76,6 +83,20 @@ test "TLM002: parseMetadata reject invalid and unsupported JSON" {
         \\}
     ;
     try std.testing.expectError(error.UnsupportedJsonFormat, parseMetadata(std.testing.allocator, foreign_json, .auto));
+}
+
+test "TLM003: validateTilemapForGba rejects project lacking tileset asset" {
+    const test_assets = @import("test_palettes");
+
+    // Valid project with tileset
+    var meta_valid = try parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
+    defer meta_valid.deinit();
+    try validateTilemapForGba(&meta_valid);
+
+    // Invalid project without tileset (pure IntGrid / Entities without visual tileset)
+    var meta_no_tileset = try parseMetadata(std.testing.allocator, test_assets.ldtk_t04_entities, .auto);
+    defer meta_no_tileset.deinit();
+    try std.testing.expectError(error.MissingTilesetAsset, validateTilemapForGba(&meta_no_tileset));
 }
 
 test {

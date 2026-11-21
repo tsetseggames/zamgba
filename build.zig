@@ -211,12 +211,13 @@ pub fn build(b: *std.Build) void {
     sprite_animation_streaming_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
 
     // Build step: Automatically convert large dirt map LDtk asset to Zig
+    const large_dirt_tileset_png = b.path("assets/tileset/tileset-8x8-dirt.png");
+
     const convert_large_dirt_map = b.addRunArtifact(zurag_exe);
     convert_large_dirt_map.addArg("tilemap");
     convert_large_dirt_map.addArg("--input");
     convert_large_dirt_map.addFileArg(b.path("assets/tileset/T06-large-map-512-512.ldtk"));
-    convert_large_dirt_map.addArg("--png");
-    convert_large_dirt_map.addFileArg(b.path("assets/tileset/tileset-8x8-dirt.png"));
+    convert_large_dirt_map.addFileInput(large_dirt_tileset_png);
     convert_large_dirt_map.addArg("--output");
     const large_dirt_map_zig = convert_large_dirt_map.addOutputFileArg("large_dirt_map.zig");
 
