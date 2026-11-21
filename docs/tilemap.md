@@ -350,7 +350,17 @@ tools/zurag ldtk level.ldtk -o src/assets/level.zig
 Generated Zig Code (ROM-baked, ready for TileMapLayer)
 ```
 
-> **Note on LDtk Import Constraints**: `zurag tilemap` enforces strict hardware-aligned constraints on LDtk projects, including a limit of 0 or at most 1 `IntGrid` collision layer per level, a maximum of 4 visual BG layers, and 8x8 / 16x16 grid sizes. For detailed specifications and architectural rationale, see [docs/tool_zurag_pic_conversion.md (Section 8)](tool_zurag_pic_conversion.md#8-tilemap--ldtk-conversion-constraints-and-design-rationale).
+### 5.3 Recommended LDtk Workflow for GBA Games
+
+To balance LDtk's modern desktop level-editing capabilities with GBA hardware constraints, ZamGBA recommends the following 5 workflow rules for all projects:
+
+1. **One LDtk Project per Game**: Maintain a single central `.ldtk` project file per game repository (e.g. `assets/world.ldtk`), keeping asset paths and level structures unified.
+2. **Multi-Level Definition**: Define one or more levels within the project. `zurag tilemap` converts the entire project into a single Zig asset file, exporting a shared global `TileSet` alongside individual level descriptors (`Level0`, `Level1`, etc.).
+3. **Single Tileset PNG Asset**: All visual layers and definitions must share exactly one common tileset PNG image. Multiple tileset PNG references are strictly rejected at conversion time (`error.MultipleTilesetsNotSupported`). Interactive entities (items, enemies, NPCs) should be marked as LDtk Entities; their sprite graphics are loaded separately through the engine's sprite system.
+4. **Hardware-Aligned Layer Budget**: Each level may define at most 4 visual tile layers (mapping directly to GBA Mode 0 background layers `BG0`–`BG3`) and at most 1 `IntGrid` collision layer (mapping to a unified 16-bit `CollisionMask`).
+5. **Bounded Map Dimensions**: Maximum map dimension is capped at 4096 × 4096 pixels (`512 × 512` 8x8 tiles). Maps exceeding this limit trigger `error.MapTooLarge`. Large worlds within this budget stream visible chunks into hardware Screenblocks dynamically via the Camera and TileMap streaming systems.
+
+> **Note on LDtk Import Constraints**: For detailed specifications and architectural rationale on these constraints, see [docs/tool_zurag_pic_conversion.md (Section 8)](tool_zurag_pic_conversion.md#8-tilemap--ldtk-conversion-constraints-and-design-rationale).
 
 ---
 

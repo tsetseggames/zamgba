@@ -373,6 +373,9 @@ pub fn main(init: std.process.Init) !void {
                     error.MissingTilesetAsset => {
                         std.debug.print("Error: LDtk project '{s}' contains no tileset asset. Mode 0 background requires a visual tileset.\n", .{input_ldtk_path});
                     },
+                    error.MultipleTilesetsNotSupported => {
+                        std.debug.print("Error: LDtk project '{s}' defines multiple tileset assets. Zamgba currently supports only one tileset PNG per project.\n", .{input_ldtk_path});
+                    },
                     else => {
                         std.debug.print("Error: failed to parse LDtk metadata '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
                     },

@@ -517,8 +517,13 @@ pub fn parseLdtkJson(
                     for (ts_val.array.items) |ts_item| {
                         if (ts_item == .object) {
                             if (getStringField(ts_item.object, "relPath")) |rp| {
-                                tileset_rel_path = aa.dupe(u8, rp) catch return types.TilemapError.OutOfMemory;
-                                break;
+                                if (tileset_rel_path) |existing| {
+                                    if (!std.mem.eql(u8, existing, rp)) {
+                                        return types.TilemapError.MultipleTilesetsNotSupported;
+                                    }
+                                } else {
+                                    tileset_rel_path = aa.dupe(u8, rp) catch return types.TilemapError.OutOfMemory;
+                                }
                             }
                         }
                     }
@@ -527,15 +532,17 @@ pub fn parseLdtkJson(
         }
     }
 
-    if (tileset_rel_path == null) {
-        for (parsed_levels.items) |lvl| {
-            for (lvl.layers) |lyr| {
-                if (lyr.tileset_rel_path) |rp| {
+    for (parsed_levels.items) |lvl| {
+        for (lvl.layers) |lyr| {
+            if (lyr.tileset_rel_path) |rp| {
+                if (tileset_rel_path) |existing| {
+                    if (!std.mem.eql(u8, existing, rp)) {
+                        return types.TilemapError.MultipleTilesetsNotSupported;
+                    }
+                } else {
                     tileset_rel_path = rp;
-                    break;
                 }
             }
-            if (tileset_rel_path != null) break;
         }
     }
 

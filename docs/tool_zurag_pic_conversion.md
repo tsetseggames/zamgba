@@ -281,3 +281,16 @@ When importing LDtk projects into GBA Mode 0 background tilemaps via `zurag tile
 
 ### D. Tile Alpha Transparency Clamping
 * **Rule**: Mode 0 hardware tilemaps render opaque pixels (color 0 is transparent key). Semi-transparent tile placements ($0.0 < \alpha < 1.0$) in LDtk trigger a conversion warning and are clamped to solid 1.0.
+
+### E. Single Tileset PNG Constraint (One Tileset PNG per Project)
+* **Rule**: An LDtk project must reference exactly one tileset PNG image across all definitions and visual layers. Projects referencing multiple distinct tileset image files are rejected at conversion time with `error.MultipleTilesetsNotSupported`.
+* **Design Rationale**:
+  1. **GBA Charblock & Palette Budget**: GBA Mode 0 background tile graphics reside in 16 KB Character Blocks (Charblocks) with a shared 16-bank / 256-color palette. Consolidating all background tiles into a single atlas maximizes tile sharing, prevents palette fragmentation, and eliminates redundant VRAM transfers.
+  2. **Deterministic Data Layout**: A single global tileset guarantees uniform tile indexing across all levels and layers without requiring runtime tileset bank switching or dynamic slot relocation.
+  3. **Entities Assets Separation**: Interactive objects (items, enemies, spawn points) placed as LDtk Entities are extracted as positional and typed metadata (`LevelEntities`), not as background tile graphics. Their visual graphics must be authored and loaded separately through ZamGBA's Engine Sprite and OAM subsystems.
+
+### F. Maximum Map Dimension Budget (4096 × 4096 px)
+* **Rule**: Level dimensions must not exceed 4096 × 4096 pixels (`Limits.MAX_MAP_DIMENSION_PX = 4096`, corresponding to 512 × 512 8x8 tiles). Levels exceeding this boundary are rejected with `error.MapTooLarge`.
+* **Design Rationale**:
+  1. **Safety Boundary**: 4096 × 4096 px provides immense room for large, sprawling GBA metroidvania/adventure stages while preventing accidental infinite or degenerate canvas exports from exhausting ROM or host RAM during conversion.
+  2. **Streaming Alignment**: ZamGBA's tilemap streaming engine streams visible chunks dynamically into 32×32 or 64×64 hardware Screenblocks. The 4096 px limit ensures coordinate arithmetic and row-major array indices remain safely within bounded integer limits.
