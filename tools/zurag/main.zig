@@ -196,6 +196,10 @@ pub const CliArgs = struct {
                 result.color_adjust = true;
             } else if (std.mem.eql(u8, arg, "-N") or std.mem.eql(u8, arg, "--no-palette")) {
                 result.no_palette = true;
+            } else if (std.mem.eql(u8, arg, "-p") or std.mem.eql(u8, arg, "--png")) {
+                i += 1;
+                if (i >= args.len) return error.MissingValue;
+                result.png_path = args[i];
             } else if (std.mem.eql(u8, arg, "-i") or std.mem.eql(u8, arg, "--input")) {
                 i += 1;
                 if (i >= args.len) return error.MissingValue;
@@ -267,10 +271,11 @@ fn printTilemapUsage(io: std.Io, program_name: []const u8) void {
     var buf: [2048]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf,
         \\Usage:
-        \\  {s} tilemap --input <project.ldtk> [options]
+        \\  {s} tilemap --input <project.ldtk> [--png <tileset.png>] [options]
         \\
         \\Options:
         \\  -i, --input <path>      Path to input LDtk project file (Required)
+        \\  -p, --png <path>        Path to input Indexed-color PNG tileset
         \\      --format <fmt>      Tilemap format: ldtk (default: ldtk)
         \\  -o, --output <path>     Path to output generated Zig file (default: stdout)
         \\      --bpp <mode>        Bits-per-pixel mode: 4, 4x16, 8, auto (default: auto)
@@ -354,8 +359,56 @@ pub fn main(init: std.process.Init) !void {
                 printTilemapUsage(init.io, program_name);
                 std.process.exit(0);
             }
-            std.debug.print("Tilemap subcommand is under construction.\n", .{});
-            std.process.exit(0);
+
+            const input_ldtk_path = tm_args.input_path orelse {
+                std.debug.print("Error: missing required argument --input <project.ldtk>\n", .{});
+                std.process.exit(1);
+            };
+            const output_zig_path = tm_args.output_path;
+
+            // Step 1: Open and read LDtk JSON
+            const ldtk_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_ldtk_path, allocator, .unlimited) catch |err| {
+                std.debug.print("Error: unable to read input LDtk project '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                std.process.exit(1);
+            };
+
+            var meta = tilemap.parseMetadata(allocator, ldtk_data, switch (tm_args.format) {
+                .ldtk => .ldtk,
+            }) catch |err| {
+                std.debug.print("Error: failed to parse LDtk metadata '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                std.process.exit(1);
+            };
+            defer meta.deinit();
+
+            // Step 2: Open optional tileset PNG
+            var png_data: ?[]const u8 = null;
+            if (tm_args.png_path) |png_path| {
+                png_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, png_path, allocator, .unlimited) catch |err| {
+                    std.debug.print("Error: unable to read tileset image '{s}': {s}\n", .{ png_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+            }
+
+            // Step 3: Generate Zig Source Code
+            const zig_source = tilemap.generateTilemapZigSource(allocator, &meta, png_data, .{
+                .bpp = tm_args.bpp,
+                .color_adjust = tm_args.color_adjust,
+                .no_palette = tm_args.no_palette,
+            }) catch |err| {
+                std.debug.print("Error: tilemap code generation failed: {s}\n", .{@errorName(err)});
+                std.process.exit(1);
+            };
+            defer allocator.free(zig_source);
+
+            // Step 4: Output to file or stdout
+            if (output_zig_path) |out_path| {
+                writeOutputFile(init.io, out_path, zig_source) catch |err| {
+                    std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+            } else {
+                std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+            }
         },
         .sprite => |sprite_args| {
             if (sprite_args.show_help) {

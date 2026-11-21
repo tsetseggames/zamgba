@@ -28,10 +28,18 @@ pub const ScreenEntry = packed struct(u16) {
 
 /// Maps 2D tile coordinates (x, y) into the GBA hardware Screenblock VRAM halfword index according to BgSize.
 pub fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
-    _ = size;
-    _ = x;
-    _ = y;
-    return 0;
+    const SBB_ENTRIES: usize = 1024;
+    return switch (size) {
+        .size_32x32 => y * 32 + x,
+        .size_64x32 => (if (x < 32) 0 else SBB_ENTRIES) + y * 32 + (x % 32),
+        .size_32x64 => (if (y < 32) 0 else SBB_ENTRIES) + (y % 32) * 32 + x,
+        .size_64x64 => {
+            const sbb_x: usize = if (x < 32) 0 else 1;
+            const sbb_y: usize = if (y < 32) 0 else 1;
+            const sbb_idx = sbb_y * 2 + sbb_x;
+            return sbb_idx * SBB_ENTRIES + (y % 32) * 32 + (x % 32);
+        },
+    };
 }
 
 /// 4-bpp 8x8 Tile (32 bytes = 8 u32 words).
@@ -146,12 +154,19 @@ pub const TileMapLayer = struct {
                 }
             }
 
-            // Copy screenblock entries to designated Screenblock
+            // Copy screenblock entries to designated Screenblock(s)
             const sbb_ptr = hal.specs.MemorySections.VRAM + (@as(usize, self.screenblock) * hal.specs.MemorySections.SCREENBLOCK_SIZE_WORDS);
             const entries = self.data.entries;
-            for (entries, 0..) |entry, i| {
-                if (i >= @as(usize, self.size.screenblocksCount()) * hal.specs.MemorySections.SCREENBLOCK_SIZE_WORDS) break;
-                sbb_ptr[i] = entry.raw();
+            const max_x = @min(@as(usize, self.data.width), @as(usize, self.size.tileWidth()));
+            const max_y = @min(@as(usize, self.data.height), @as(usize, self.size.tileHeight()));
+            for (0..max_y) |y| {
+                for (0..max_x) |x| {
+                    const src_idx = y * @as(usize, self.data.width) + x;
+                    if (src_idx < entries.len) {
+                        const dest_idx = getScreenEntryVramIndex(self.size, x, y);
+                        sbb_ptr[dest_idx] = entries[src_idx].raw();
+                    }
+                }
             }
 
             self.setScroll(self.scroll_x, self.scroll_y);

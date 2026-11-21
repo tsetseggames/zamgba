@@ -154,6 +154,12 @@ pub fn generateTilemapZigSource(
             try writePaletteResult(writer, pal_res);
         }
 
+        const effective_bpp: png.BppMode = switch (pal_res) {
+            .bpp4 => .bpp4,
+            .bpp4x16 => .bpp4x16,
+            .bpp8 => .bpp8,
+        };
+
         var img = png.decompressIndexedPixels(allocator, png_bytes) catch return error.ImageDecodeError;
         defer img.deinit();
 
@@ -162,12 +168,12 @@ pub fn generateTilemapZigSource(
             .y = 0,
             .w = img.width,
             .h = img.height,
-        }, options.bpp) catch return error.TileSliceError;
+        }, effective_bpp) catch return error.TileSliceError;
         defer sliced.deinit();
 
-        try writeTilesetData(writer, sliced.bytes, sliced.tile_count, options.bpp);
+        try writeTilesetData(writer, sliced.bytes, sliced.tile_count, effective_bpp);
 
-        const bpp_union_field = if (options.bpp == .bpp8) "bpp8" else "bpp4";
+        const bpp_union_field = if (effective_bpp == .bpp8) "bpp8" else "bpp4";
         const pal_ref = if (!options.no_palette) "@ptrCast(&palette)" else "&.{}";
         writer.writeAll("pub const tileset: engine.TileSet = .{\n") catch return error.WriteError;
         writer.print("    .tiles = .{{ .{s} = &tileset_tiles }},\n", .{bpp_union_field}) catch return error.WriteError;
