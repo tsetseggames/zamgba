@@ -78,43 +78,36 @@ impl SpriteSheet {
 }
 ```
 
-### 4.2 Static Sprite Tile Preloading APIs
+### 4.2 Static Sprite Tile Preloading in `init`
 
+When initializing an `AnimatedSprite` in `.static` mode, tiles are preloaded into OBJ VRAM automatically by default:
 ```zig
-impl AnimatedSprite {
-    /// Copies all frame tiles from the underlying SpriteSheet into OBJ VRAM
-    /// starting at the sprite's designated base `tile_index`.
-    pub fn preloadStaticTiles(self: *const AnimatedSprite) void;
-}
-```
-
-When initializing an `AnimatedSprite` in `.static` mode, an optional `tile_index` can be provided in options:
-```zig
-pub const StaticOptions = struct {
+pub const Options = struct {
     tile_index: u16 = 0,
     palette_bank: u4 = 0,
+    auto_preload: bool = true,
 };
 ```
+If `auto_preload` is `true` (default), `AnimatedSprite.init` calls internal tile loading to write all frames into OBJ VRAM starting at `options.tile_index`.
 
 ### 4.3 Stage 1 Usage Example in Demos
 
 ```zig
-// Load 256-color palette for 8-bpp animated sprite:
+// 1. Load 256-color palette for 8-bpp animated sprite:
 broom.sheet.loadPalette(null);
 
 // Or load into 4-bpp Bank 1:
 // enemy_sheet.loadPalette(1);
 
-// Initialize static animated sprite with explicit tile offset:
+// 2. Initialize static animated sprite with explicit tile offset:
+// (tiles are automatically preloaded into OBJ VRAM by default)
 var hero = try engine.AnimatedSprite.init(&hero_sheet, .static, x, y, .{
     .tile_index = 0,
 });
-hero.preloadStaticTiles(); // Automatically writes to OBJ_VRAM starting at tile 0
 
 var enemy = try engine.AnimatedSprite.init(&enemy_sheet, .static, x, y, .{
     .tile_index = 64, // Sequential offset to avoid overwriting hero tiles
 });
-enemy.preloadStaticTiles(); // Writes to OBJ_VRAM starting at tile 64
 ```
 
 ---

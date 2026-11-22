@@ -31,9 +31,6 @@ const Game = struct {
             .{ .tile_index = 0 },
         );
 
-        // 3. Preload all animation frame tiles into OBJ VRAM at anim_spr's base tile_index
-        try anim_spr.preloadStaticTiles();
-
         try anim_spr.setAnimation("flying");
 
         return .{

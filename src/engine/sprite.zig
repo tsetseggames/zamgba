@@ -326,8 +326,12 @@ pub const AnimatedSprite = struct {
             .is_playing = true,
             .pingpong_reverse = false,
             .palette_bank = options.palette_bank,
-            .is_preloaded = false,
+            .is_preloaded = (mode == .streaming),
         };
+
+        if (mode == .static and options.auto_preload) {
+            self.preloadStaticTiles();
+        }
 
         self.stageCurrentFrameWithQueue(null);
         return self;
