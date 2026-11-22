@@ -18,7 +18,7 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] Camera support for scrolling backgrounds and viewport tracking - *(v0.3.0)*
    - [x] Camera tracking & scrolling TileMap interactive demo ROM - *(v0.3.0)*
    - [x] LDtk level editor import & code generation in `zurag` tool (`.ldtk` parser, tile deduplication, IntGrid extraction) - *(v0.3.0)*
-   - [ ] Explicit palette & static sprite tile loading APIs (`loadPalette`, `preloadStaticTiles`) - *(v0.3.0, see [Palette and Sprite Tile Loading Architecture](palette_and_sprite_loading.md))*
+   - [x] Explicit palette & static sprite tile loading APIs (`loadPalette`, `preloadStaticTiles`) - *(v0.3.0, see [Palette and Sprite Tile Loading Architecture](palette_and_sprite_loading.md))*
 
 2. **UI, HUD & Resource Management (v0.4.0)**
    - [ ] UI / HUD rendering support (screen-space sprites bypassing camera transformations via `engine.drawSpriteUi`)

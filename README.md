@@ -91,6 +91,9 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`sprite_animation_static`** (`demo/engine/sprite_animation_static.zig`): Demonstrates idiomatic multi-frame sprite animation with all frames preloaded into VRAM using `AnimatedSprite` in `.static` mode. Features D-Pad movement, horizontal mirroring (`h_flip`), and play/pause controls.
 *   **`sprite_animation_streaming`** (`demo/engine/sprite_animation_streaming.zig`): Demonstrates high-performance dynamic VRAM streaming sprite animation using `AnimatedSprite` in `.streaming` mode. Only a single frame slot is allocated dynamically via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `DmaQueue` during VBlank.
 *   **`camera_demo`** (`demo/engine/camera_demo.zig`): Demonstrates 2D Camera viewport management in a large 512x512 scrolling Mode 0 tiled world. Features target tracking, position smoothing (lerp), deadzone (`DragMargin`), world bounds clamping (`CameraLimits`), screen shake, and automatic off-screen sprite frustum culling.
+*   **`tilemap_collision`** (`demo/engine/tilemap_collision.zig`): Demonstrates 2D box/tilemap collision against Mode 0 background tile layers (dirt and rock layers) using `moveAndCollide` with player sprite physics and camera viewport tracking.
+*   **`ldtk_minimal`** (`demo/engine/ldtk_minimal.zig`): Demonstrates standalone minimal Mode 0 TileMap rendering directly loaded from an LDtk-exported auto-layer tilemap without player entities or physics.
+*   **`parallax_scroll`** (`demo/engine/parallax_scroll.zig`): Demonstrates multi-layer parallax scrolling using independent background layer scroll speeds across 4 Mode 0 text background layers (Sky backdrop, Dirt hills, Rock foreground, Grass overlay).
 
 ### Can I reference your library as a dependency?
 
@@ -137,7 +140,7 @@ Enjoy!
   - [x] mGBA compatible logging
   - [x] Panic handler
   - [x] **Critical Bugfix**: Enforce 4-byte alignment for GBA BIOS `irqHandler` in linker script to prevent ARM-mode address rotation crash in Debug builds ([#39](https://github.com/tsetseggames/zamgba/issues/39), see [`docs/debug_issue39_irq_handler.md`](docs/debug_issue39_irq_handler.md))
-  - [ ] Explicit palette & static sprite tile loading APIs (`SpriteSheet.loadPalette`, `preloadStaticTiles`, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
+  - [x] Explicit palette & static sprite tile loading APIs (`SpriteSheet.loadPalette`, `preloadStaticTiles`, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
 * **Version 0.4.0**: Capable of writing a game with UI/HUD layers and sprite priority. Supported features:
   - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
   - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
