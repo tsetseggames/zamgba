@@ -480,12 +480,14 @@ pub const AnimatedSprite = struct {
     /// starting at the sprite's designated base `tile_index`.
     /// Returns `error.InvalidAnimationMode` if invoked on an AnimatedSprite in `.streaming` mode.
     pub fn preloadStaticTiles(self: *const AnimatedSprite) SpriteError!void {
+        if (self.mode != .static) return error.InvalidAnimationMode;
         if (comptime !hal.specs.is_gba_target) return;
         try self.preloadStaticTilesToBuffer(hal.specs.MemorySections.OBJ_VRAM);
     }
 
     /// Internal buffer-backed implementation for preloading tiles into VRAM.
     fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) SpriteError!void {
+        if (self.mode != .static) return error.InvalidAnimationMode;
         const start_word = @as(usize, self.base_tile_index) * hal.specs.Tile.WORDS_4BPP;
         const total_words = self.sheet.tiles.len / 2;
         for (0..total_words) |i| {
@@ -1138,5 +1140,6 @@ test "ANI012: preloadStaticTiles returns error.InvalidAnimationMode when sprite 
     var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
+    try std.testing.expectError(error.InvalidAnimationMode, anim_spr.preloadStaticTiles());
     try std.testing.expectError(error.InvalidAnimationMode, anim_spr.preloadStaticTilesToBuffer(&mock_vram));
 }
