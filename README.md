@@ -33,8 +33,18 @@ Zamgba bridges the gap between low-level bare-metal hardware programming and mod
 
 ### Showcase
 
-<!-- TODO: Add gameplay video / GIF demonstration here -->
-> *Visual showcase demonstration coming soon.*
+Watch Zamgba in action — from source code and cross-compilation to running the interactive `tilemap_collision` demo in mGBA:
+
+<p align="center">
+  <a href="https://youtu.be/6hRcTL-eEYA" target="_blank"><img src="https://img.shields.io/badge/YouTube-Watch%20Showcase%20(20s)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Showcase" /></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.bilibili.com/video/BV12PyjzSEzS/" target="_blank"><img src="https://img.shields.io/badge/Bilibili-观看演示视频%20(20秒)-00A1D6?style=for-the-badge&logo=bilibili&logoColor=white" alt="Bilibili Showcase" /></a>
+</p>
+
+> **Video Highlights (20s):**
+> 1. Cross-compiling the `tilemap_collision` demo with [Zig](https://ziglang.org) via `zig build`.
+> 2. Booting the compiled `.gba` binary inside the [mGBA](https://mgba.io/) emulator.
+> 3. Real-time character movement, sub-pixel physics (`Fixed24_8`), and AABB collision resolution against LDtk tilemap boundaries.
 
 ---
 
