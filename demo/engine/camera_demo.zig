@@ -48,7 +48,7 @@ const Game = struct {
             Fixed24_8.fromInt(100),
             .{ .tile_index = 0 },
         );
-        player_spr.preloadStaticTiles();
+        try player_spr.preloadStaticTiles();
         try player_spr.setAnimation("flying");
 
         // 4. Initialize Camera2D with 512x512 world limits, smooth lerping, and drag margin

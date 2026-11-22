@@ -17,24 +17,24 @@ const Game = struct {
     anim: engine.AnimatedSprite,
     input: engine.input.InputState = .{},
 
-    pub fn init() Game {
+    pub fn init() !Game {
         // 1. Load sprite palette into OBJ Palette RAM (8-bpp uses full palette starting at color 0)
         broom.sheet.loadPalette(null);
 
         // 2. Initialize AnimatedSprite in .static mode (positioned at screen center: 104, 64)
         // Tile index starts at base 0 in OBJ VRAM.
-        var anim_spr = engine.AnimatedSprite.init(
+        var anim_spr = try engine.AnimatedSprite.init(
             &broom.sheet,
             .static,
             Fixed24_8.fromInt(104),
             Fixed24_8.fromInt(64),
             .{ .tile_index = 0 },
-        ) catch unreachable;
+        );
 
         // 3. Preload all animation frame tiles into OBJ VRAM at anim_spr's base tile_index
-        anim_spr.preloadStaticTiles();
+        try anim_spr.preloadStaticTiles();
 
-        anim_spr.setAnimation("flying") catch {};
+        try anim_spr.setAnimation("flying");
 
         return .{
             .anim = anim_spr,
@@ -91,6 +91,9 @@ const Game = struct {
 
 export fn main() noreturn {
     engine.initHardware();
-    var game = Game.init();
+    var game = Game.init() catch |err| {
+        engine.log.fatal("Game.init failed: {s}", .{@errorName(err)});
+        while (true) {}
+    };
     engine.run(&game);
 }
