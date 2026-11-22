@@ -9,10 +9,13 @@ pub const Collision = physics.Collision;
 /// Hardware 15-bit BGR555 color format.
 pub const Bgr555 = gfx2d.Bgr555;
 
+/// Reserved tile index representing an empty, transparent tile in GBA text background maps.
+pub const EMPTY_TILE_INDEX: u16 = 0;
+
 /// Hardware-aligned 16-bit packed Screen Entry for GBA Text Backgrounds.
 /// The definition is here: https://gbadev.net/tonc/regbg.html#sec-map
 pub const ScreenEntry = packed struct(u16) {
-    tile_index: u10 = 0,
+    tile_index: u10 = EMPTY_TILE_INDEX,
     h_flip: bool = false,
     v_flip: bool = false,
     palette_bank: u4 = 0,
@@ -25,6 +28,22 @@ pub const ScreenEntry = packed struct(u16) {
         return @bitCast(val);
     }
 };
+
+/// Maps 2D tile coordinates (x, y) into the GBA hardware Screenblock VRAM halfword index according to BgSize.
+fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
+    const SBB_ENTRIES: usize = 1024;
+    return switch (size) {
+        .size_32x32 => y * 32 + x,
+        .size_64x32 => (if (x < 32) 0 else SBB_ENTRIES) + y * 32 + (x % 32),
+        .size_32x64 => (if (y < 32) 0 else SBB_ENTRIES) + (y % 32) * 32 + x,
+        .size_64x64 => {
+            const sbb_x: usize = if (x < 32) 0 else 1;
+            const sbb_y: usize = if (y < 32) 0 else 1;
+            const sbb_idx = sbb_y * 2 + sbb_x;
+            return sbb_idx * SBB_ENTRIES + (y % 32) * 32 + (x % 32);
+        },
+    };
+}
 
 /// 4-bpp 8x8 Tile (32 bytes = 8 u32 words).
 pub const Tile4bpp = [8]u32;
@@ -138,12 +157,19 @@ pub const TileMapLayer = struct {
                 }
             }
 
-            // Copy screenblock entries to designated Screenblock
+            // Copy screenblock entries to designated Screenblock(s)
             const sbb_ptr = hal.specs.MemorySections.VRAM + (@as(usize, self.screenblock) * hal.specs.MemorySections.SCREENBLOCK_SIZE_WORDS);
             const entries = self.data.entries;
-            for (entries, 0..) |entry, i| {
-                if (i >= @as(usize, self.size.screenblocksCount()) * hal.specs.MemorySections.SCREENBLOCK_SIZE_WORDS) break;
-                sbb_ptr[i] = entry.raw();
+            const max_x = @min(@as(usize, self.data.width), @as(usize, self.size.tileWidth()));
+            const max_y = @min(@as(usize, self.data.height), @as(usize, self.size.tileHeight()));
+            for (0..max_y) |y| {
+                for (0..max_x) |x| {
+                    const src_idx = y * @as(usize, self.data.width) + x;
+                    if (src_idx < entries.len) {
+                        const dest_idx = getScreenEntryVramIndex(self.size, x, y);
+                        sbb_ptr[dest_idx] = entries[src_idx].raw();
+                    }
+                }
             }
 
             self.setScroll(self.scroll_x, self.scroll_y);
@@ -244,8 +270,8 @@ test "TLM001: ScreenEntry packed encoding and decoding" {
 }
 
 test "TLM002: MapLayerData cell entry resolution and dimensions" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     const dummy_coll = [_]CollisionMask{ 0, Collision.layer(0), Collision.layer(1), 0 };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
@@ -256,7 +282,7 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
     const entries = [_]ScreenEntry{
         .{ .tile_index = 1 },
         .{ .tile_index = 2 },
-        .{ .tile_index = 0 },
+        .{ .tile_index = EMPTY_TILE_INDEX },
         .{ .tile_index = 1, .palette_bank = 1 },
     };
 
@@ -276,8 +302,8 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
 }
 
 test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundary safety" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     // Tile 0: Passable (NONE), Tile 1: Solid (Layer 0), Tile 2: Hazard/Water (Layer 1)
     const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(1) };
     const tileset = TileSet{
@@ -292,10 +318,10 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
     // [0, 0, 1, 1]
     // [2, 0, 0, 0]
     const entries = [_]ScreenEntry{
-        .{ .tile_index = 0 }, .{ .tile_index = 1 }, .{ .tile_index = 0 }, .{ .tile_index = 2 },
-        .{ .tile_index = 1 }, .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 0 },
-        .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 1 }, .{ .tile_index = 1 },
-        .{ .tile_index = 2 }, .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 0 },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 2 },
+        .{ .tile_index = 1 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },                .{ .tile_index = 1 },
+        .{ .tile_index = 2 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX },
     };
 
     const layer_data = MapLayerData{
@@ -339,8 +365,8 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
 }
 
 test "TLM004: TileMapLayer collision handling with empty or partial TileSet collision masks" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     // TileSet provides collision mask only for Tile 0 (NONE) and Tile 1 (Layer 0)
     const partial_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0) };
     const tileset_partial = TileSet{
@@ -351,8 +377,8 @@ test "TLM004: TileMapLayer collision handling with empty or partial TileSet coll
 
     // 2x2 map referencing Tile 0, Tile 1, Tile 2 (out of collision_masks bounds), Tile 3
     const entries = [_]ScreenEntry{
-        .{ .tile_index = 0 }, .{ .tile_index = 1 },
-        .{ .tile_index = 2 }, .{ .tile_index = 3 },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },
+        .{ .tile_index = 2 },                .{ .tile_index = 3 },
     };
 
     const layer_data = MapLayerData{
@@ -402,8 +428,8 @@ test "TLM004: TileMapLayer collision handling with empty or partial TileSet coll
 }
 
 test "TLM005: TileMapLayer.asCollisionMap physics integration" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(2) };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
@@ -412,7 +438,7 @@ test "TLM005: TileMapLayer.asCollisionMap physics integration" {
     };
 
     // 32x32 tiles map with a wall at (2, 2) [Layer 0] and water at (4, 4) [Layer 2]
-    var entries = [_]ScreenEntry{.{}} ** (32 * 32);
+    var entries: [32 * 32]ScreenEntry = @splat(.{});
     entries[2 * 32 + 2] = .{ .tile_index = 1 }; // Tile 1 at (2, 2)
     entries[4 * 32 + 4] = .{ .tile_index = 2 }; // Tile 2 at (4, 4)
 
@@ -459,8 +485,8 @@ test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
 
     // 2. TileData tagged union operations
     const tiles_4bpp = [_]Tile4bpp{
-        [_]u32{0} ** 8,
-        [_]u32{0x11111111} ** 8,
+        @splat(0),
+        @splat(0x11111111),
     };
     const data_4bpp = TileData{ .bpp4 = &tiles_4bpp };
     try std.testing.expect(!data_4bpp.is8bpp());
@@ -469,11 +495,53 @@ test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
     try std.testing.expectEqual(@as(usize, 16), data_4bpp.wordCount());
 
     const tiles_8bpp = [_]Tile8bpp{
-        [_]u32{0} ** 16,
+        @splat(0),
     };
     const data_8bpp = TileData{ .bpp8 = &tiles_8bpp };
     try std.testing.expect(data_8bpp.is8bpp());
     try std.testing.expectEqual(@as(usize, 1), data_8bpp.tileCount());
     try std.testing.expectEqual(@as(usize, 64), data_8bpp.byteSize());
     try std.testing.expectEqual(@as(usize, 16), data_8bpp.wordCount());
+}
+
+test "TLM007: getScreenEntryVramIndex multi-screenblock address calculation" {
+    // 32x32: single SBB, linear row-major (y * 32 + x)
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_32x32, 0, 0));
+    try std.testing.expectEqual(@as(usize, 31), getScreenEntryVramIndex(.size_32x32, 31, 0));
+    try std.testing.expectEqual(@as(usize, 32), getScreenEntryVramIndex(.size_32x32, 0, 1));
+    try std.testing.expectEqual(@as(usize, 1023), getScreenEntryVramIndex(.size_32x32, 31, 31));
+
+    // 64x32: 2 SBBs horizontally
+    // Left SBB (x < 32): y * 32 + x
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_64x32, 0, 0));
+    try std.testing.expectEqual(@as(usize, 31), getScreenEntryVramIndex(.size_64x32, 31, 0));
+    // Right SBB (x >= 32): 1024 + y * 32 + (x - 32)
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_64x32, 32, 0));
+    try std.testing.expectEqual(@as(usize, 1024 + 31), getScreenEntryVramIndex(.size_64x32, 63, 0));
+
+    // 32x64: 2 SBBs vertically
+    // Top SBB (y < 32): y * 32 + x
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_32x64, 0, 0));
+    // Bottom SBB (y >= 32): 1024 + (y - 32) * 32 + x
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_32x64, 0, 32));
+
+    // 64x64: 4 SBBs (2x2)
+    // SBB 0 (top-left): (0, 0) -> 0, (31, 31) -> 1023
+    try std.testing.expectEqual(@as(usize, 0), getScreenEntryVramIndex(.size_64x64, 0, 0));
+    try std.testing.expectEqual(@as(usize, 1023), getScreenEntryVramIndex(.size_64x64, 31, 31));
+    // SBB 1 (top-right): (32, 0) -> 1024, (63, 31) -> 2047
+    try std.testing.expectEqual(@as(usize, 1024), getScreenEntryVramIndex(.size_64x64, 32, 0));
+    try std.testing.expectEqual(@as(usize, 2047), getScreenEntryVramIndex(.size_64x64, 63, 31));
+    // SBB 2 (bottom-left): (0, 32) -> 2048, (31, 63) -> 3071
+    try std.testing.expectEqual(@as(usize, 2048), getScreenEntryVramIndex(.size_64x64, 0, 32));
+    try std.testing.expectEqual(@as(usize, 3071), getScreenEntryVramIndex(.size_64x64, 31, 63));
+    // SBB 3 (bottom-right): (32, 32) -> 3072, (63, 63) -> 4095
+    try std.testing.expectEqual(@as(usize, 3072), getScreenEntryVramIndex(.size_64x64, 32, 32));
+    try std.testing.expectEqual(@as(usize, 4095), getScreenEntryVramIndex(.size_64x64, 63, 63));
+}
+
+test "TLM008: EMPTY_TILE_INDEX constant represents reserved transparent tile" {
+    try std.testing.expectEqual(@as(u16, 0), EMPTY_TILE_INDEX);
+    const default_entry = ScreenEntry{};
+    try std.testing.expectEqual(EMPTY_TILE_INDEX, default_entry.tile_index);
 }

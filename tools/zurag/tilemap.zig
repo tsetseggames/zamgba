@@ -34,14 +34,26 @@ pub fn parseMetadata(
 
     const root = parsed.value.object;
 
-    switch (format) {
-        .ldtk => return ldtk.parseLdtkJson(allocator, root),
-        .auto => {
+    var meta = switch (format) {
+        .ldtk => try ldtk.parseLdtkJson(allocator, root),
+        .auto => blk: {
             if (ldtk.detectLdtk(root)) {
-                return ldtk.parseLdtkJson(allocator, root);
+                break :blk try ldtk.parseLdtkJson(allocator, root);
             }
             return TilemapError.UnsupportedJsonFormat;
         },
+    };
+    errdefer meta.deinit();
+
+    try validateTilemapForGba(&meta);
+    return meta;
+}
+
+/// Validates that a tilemap project satisfies GBA Mode 0 background hardware requirements.
+/// Mode 0 backgrounds require a visual tileset to populate Charblock tile VRAM.
+fn validateTilemapForGba(metadata: *const TilemapMetadata) TilemapError!void {
+    if (metadata.tileset_rel_path == null) {
+        return TilemapError.MissingTilesetAsset;
     }
 }
 
@@ -76,6 +88,78 @@ test "TLM002: parseMetadata reject invalid and unsupported JSON" {
         \\}
     ;
     try std.testing.expectError(error.UnsupportedJsonFormat, parseMetadata(std.testing.allocator, foreign_json, .auto));
+}
+
+test "TLM003: parseMetadata rejects project lacking tileset asset for GBA Mode 0" {
+    const test_assets = @import("test_palettes");
+
+    // Valid project with tileset parses successfully
+    var meta_valid = try parseMetadata(std.testing.allocator, test_assets.ldtk_t01_intgrid, .auto);
+    defer meta_valid.deinit();
+
+    // Invalid project without tileset (pure IntGrid / Entities without visual tileset)
+    const json_no_tileset =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [],
+        \\    "layers": [
+        \\      { "identifier": "LogicGrid", "type": "IntGrid", "gridSize": 8, "intGridValues": [{ "value": 1, "identifier": "Solid" }] }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_LogicOnly",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 240, "pxHei": 160,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "LogicGrid",
+        \\          "__type": "IntGrid",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 30,
+        \\          "__cHei": 20,
+        \\          "intGridCsv": [1, 0, 1]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MissingTilesetAsset, parseMetadata(std.testing.allocator, json_no_tileset, .auto));
+}
+
+test "TLM004: parseMetadata rejects project defining multiple tileset assets" {
+    const json_multi_tilesets =
+        \\{
+        \\  "jsonVersion": "1.5.3",
+        \\  "defs": {
+        \\    "tilesets": [
+        \\      { "uid": 1, "identifier": "TilesetA", "relPath": "tileset_a.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 },
+        \\      { "uid": 2, "identifier": "TilesetB", "relPath": "tileset_b.png", "pxWid": 128, "pxHei": 128, "tileGridSize": 8 }
+        \\    ],
+        \\    "layers": [
+        \\      { "identifier": "Terrain", "type": "Tiles", "gridSize": 8 }
+        \\    ]
+        \\  },
+        \\  "levels": [
+        \\    {
+        \\      "identifier": "Level_0",
+        \\      "worldX": 0, "worldY": 0, "pxWid": 256, "pxHei": 256,
+        \\      "layerInstances": [
+        \\        {
+        \\          "__identifier": "Terrain",
+        \\          "__type": "Tiles",
+        \\          "__gridSize": 8,
+        \\          "__cWid": 32,
+        \\          "__cHei": 32,
+        \\          "gridTiles": []
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+    try std.testing.expectError(error.MultipleTilesetsNotSupported, parseMetadata(std.testing.allocator, json_multi_tilesets, .auto));
 }
 
 test {

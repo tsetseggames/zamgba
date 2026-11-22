@@ -16,14 +16,17 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
      - [x] Engine `ScreenEntry`, `TileSet`, `MapLayerData`, and `TileMapLayer` - *(v0.3.0)*
      - [x] Integration of `TileMapLayer` with `CollisionMap` (`moveAndCollide`) - *(v0.3.0)*
    - [x] Camera support for scrolling backgrounds and viewport tracking - *(v0.3.0)*
-   - [ ] Camera tracking & scrolling TileMap interactive demo ROM - *(v0.3.0)*
+   - [x] Camera tracking & scrolling TileMap interactive demo ROM - *(v0.3.0)*
    - [x] LDtk level editor import & code generation in `zurag` tool (`.ldtk` parser, tile deduplication, IntGrid extraction) - *(v0.3.0)*
+   - [x] Explicit palette & static sprite tile loading APIs (`loadPalette`, `preloadStaticTiles`) - *(v0.3.0, see [Palette and Sprite Tile Loading Architecture](palette_and_sprite_loading.md))*
 
-2. **UI, HUD & Layer Depth System (v0.4.0)**
+2. **UI, HUD & Resource Management (v0.4.0)**
    - [ ] UI / HUD rendering support (screen-space sprites bypassing camera transformations via `engine.drawSpriteUi`)
    - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
    - [ ] TileMap layer priority configuration (foreground vs. background depth composition)
    - [ ] Bitmap Font & Text typography rendering pipeline (8x8 tile fonts, dynamic text boxes, dialogue display)
+   - [ ] Automated palette bank allocation (`PaletteAllocator` leasing 4-bpp banks dynamically, see [Palette and Sprite Tile Loading Architecture](palette_and_sprite_loading.md))
+   - [ ] Automated static VRAM slot allocation via `VramAllocator` for `.static` sprites
    - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
    - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
 
@@ -35,8 +38,10 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
    - [x] Respond to gamepad input
 
 5. **Audio (v0.6.0 & v0.7.0)**
+   5. **Audio (v0.6.0, v0.7.0 & Post-1.0.0)**
    - [ ] PSG (Programmable Sound Generator / Chiptune) support - *(v0.6.0)*
    - [ ] Direct Sound (PCM / Direct Audio playback) support - *(v0.7.0)*
+   - [ ] Multi-channel dynamic software mixer & Tracker (.xm) real-time interpreter - *(Post-1.0.0)*
 
 6. **Save System (v0.5.0)**
    - [ ] High-level state persistence (Save state read/write API)
@@ -49,8 +54,8 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
 8. **Tooling & Asset Conversion**
    - [x] PNG-sprite-to-code conversion tool (`zurag`)
    - [x] Color palettes conversion tool (`zurag`)
-   - [ ] Chiptune-to-code conversion tool - *(v0.6.0)*
-   - [ ] Wav file to code conversion tool - *(v0.7.0)*
+   - [ ] Chiptune-to-code conversion tool (`duu`) - *(v0.6.0)*
+   - [ ] Wav file to code conversion tool (`duu`) - *(v0.7.0)*
 
 9. **Debugging & Diagnostics (v0.3.0)**
    - [x] mGBA compatible logging (`zamgba.hal.mgba.log` / `zamgba.engine.log`)

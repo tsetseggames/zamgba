@@ -4,6 +4,7 @@ test {
     _ = @import("zamgba-hal");
     _ = @import("engine/gfx2d/vram_allocator.zig");
     _ = @import("engine/gfx2d/dma_queue.zig");
+    _ = @import("engine/palette.zig");
     _ = @import("engine/tilemap.zig");
     _ = @import("engine/camera.zig");
     _ = @import("engine/gfx2d/gfx2d.zig");

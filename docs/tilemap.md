@@ -31,14 +31,89 @@ Every cell in a text screenblock is a single 16-bit packed integer:
 * **Bit 11**: `v_flip` (Vertical tile mirroring).
 * **Bits 12–15**: `palette_bank` (0–15, selecting the 16-color palette bank in 4-bpp mode).
 
-### 1.3 Map Sizing: Fit-in-SBB vs. Streaming Large Maps
+### 1.3 Map Sizing & Hardware Multi-Screenblock Quadrant Layout
 The GBA hardware text background engine natively supports 4 base layouts controlled by `REG_BGxCNT.screen_size`:
 * **32×32 tiles (256×256 px)**: 1 SBB (2 KB) — Ideal for UI/HUD, fixed menus, minigames.
 * **64×32 tiles (512×256 px)**: 2 contiguous SBBs (4 KB) — Horizontal scrolling rooms.
 * **32×64 tiles (256×512 px)**: 2 contiguous SBBs (4 KB) — Vertical scrolling shafts.
 * **64×64 tiles (512×512 px)**: 4 contiguous SBBs (8 KB) — Medium exploration arenas.
 
-For larger levels (e.g. 2048×1024 platformers or infinite scrolling stages), VRAM cannot hold the whole map at once. A **streaming ring buffer** is used: VRAM holds only the 32×32 or 64×64 visible window, and as the camera moves past tile boundaries, newly revealed seams (rows/columns) are streamed into VRAM during VBlank via DMA.
+#### The Multi-Screenblock Quadrant Pitfall
+
+A crucial hardware characteristic of the GBA is that **multi-Screenblock layouts are NOT stored as flat row-major arrays in VRAM**. 
+Instead, each Screenblock always represents an autonomous 32×32 tile block (1,024 halfwords = 2,048 bytes). Larger map sizes are formed by stitching contiguous 32×32 SBBs together in a fixed quadrant topology:
+
+```
+1. size_32x32 (1 SBB: SBB 0)
+   +-----------+
+   |   SBB 0   |
+   | (32 x 32) |
+   +-----------+
+
+2. size_64x32 (2 SBBs: SBB 0, SBB 1)
+   +-----------+-----------+
+   |   SBB 0   |   SBB 1   |
+   | (32 x 32) | (32 x 32) |
+   +-----------+-----------+
+
+3. size_32x64 (2 SBBs: SBB 0, SBB 1)
+   +-----------+
+   |   SBB 0   |
+   | (32 x 32) |
+   +-----------+
+   |   SBB 1   |
+   | (32 x 32) |
+   +-----------+
+
+4. size_64x64 (4 SBBs: SBB 0, SBB 1, SBB 2, SBB 3)
+   +-----------+-----------+
+   |   SBB 0   |   SBB 1   |
+   | (Top-Left)|(Top-Right)|
+   +-----------+-----------+
+   |   SBB 2   |   SBB 3   |
+   |(Btm-Left) |(Btm-Right)|
+   +-----------+-----------+
+```
+
+#### Linear Source Data vs. Quadrant VRAM Addressing
+
+In standard game asset pipelines (including LDtk export via `zurag`), level map data is exported in standard row-major order:
+$$\text{src\_index} = y \times \text{width} + x$$
+
+If a 64×64 map were copied linearly into VRAM, row 0 (64 tiles) would spill into SBB 0 (first 32 tiles) and SBB 1 (second 32 tiles). However, the GBA PPU hardware expects SBB 0 to contain rows 0–31 of the top-left quadrant! A direct linear copy results in severe vertical row shearing and visual scrambling.
+
+To place entries into VRAM correctly, `TileMapLayer.initHardware()` translates coordinates $(x, y)$ into the target SBB halfword offset:
+
+```zig
+fn getScreenEntryVramIndex(size: hal.display.BgSize, x: usize, y: usize) usize {
+    const SBB_ENTRIES: usize = 1024;
+    return switch (size) {
+        .size_32x32 => y * 32 + x,
+        .size_64x32 => (if (x < 32) 0 else SBB_ENTRIES) + y * 32 + (x % 32),
+        .size_32x64 => (if (y < 32) 0 else SBB_ENTRIES) + (y % 32) * 32 + x,
+        .size_64x64 => {
+            const sbb_x: usize = if (x < 32) 0 else 1;
+            const sbb_y: usize = if (y < 32) 0 else 1;
+            const sbb_idx = sbb_y * 2 + sbb_x;
+            return sbb_idx * SBB_ENTRIES + (y % 32) * 32 + (x % 32);
+        },
+    };
+}
+```
+
+#### VRAM Memory Overlap: Charblocks vs. Screenblocks
+
+Each Screenblock is 2 KB, while each Charblock (CBB) is 16 KB (the equivalent of 8 Screenblocks).
+* `CBB 0`: SBB 0 – 7 (0x06000000 – 0x06003FFF)
+* `CBB 1`: SBB 8 – 15 (0x06004000 – 0x06007FFF)
+* `CBB 2`: SBB 16 – 23 (0x06008000 – 0x0600BFFF)
+* `CBB 3`: SBB 24 – 31 (0x0600C000 – 0x0600FFFF)
+
+When using Charblock 0 for tile graphics, multi-Screenblock maps should be allocated in high Screenblocks (e.g. SBB 28–31 at `0x0600E000` for a 64×64 map) to prevent tile graphics from corrupting map entries or vice versa.
+
+#### Streaming for Extra-Large Maps
+
+For levels larger than 64×64 (e.g. 2048×1024 platformers or infinite scrolling stages), VRAM cannot hold the whole map at once. A **streaming ring buffer** is used: VRAM holds only the 32×32 or 64×64 visible window, and as the camera moves past tile boundaries, newly revealed seams (rows/columns) are streamed into VRAM during VBlank via DMA.
 
 ### 1.4 Video Mode Analysis & Why Engine v0.3.0 Exclusively Targets Mode 0
 
@@ -275,7 +350,17 @@ tools/zurag ldtk level.ldtk -o src/assets/level.zig
 Generated Zig Code (ROM-baked, ready for TileMapLayer)
 ```
 
-> **Note on LDtk Import Constraints**: `zurag tilemap` enforces strict hardware-aligned constraints on LDtk projects, including a limit of 0 or at most 1 `IntGrid` collision layer per level, a maximum of 4 visual BG layers, and 8x8 / 16x16 grid sizes. For detailed specifications and architectural rationale, see [docs/tool_zurag_pic_conversion.md (Section 8)](tool_zurag_pic_conversion.md#8-tilemap--ldtk-conversion-constraints-and-design-rationale).
+### 5.3 Recommended LDtk Workflow for GBA Games
+
+To balance LDtk's modern desktop level-editing capabilities with GBA hardware constraints, ZamGBA recommends the following 5 workflow rules for all projects:
+
+1. **One LDtk Project per Game**: Maintain a single central `.ldtk` project file per game repository (e.g. `assets/world.ldtk`), keeping asset paths and level structures unified.
+2. **Multi-Level Definition**: Define one or more levels within the project. `zurag tilemap` converts the entire project into a single Zig asset file, exporting a shared global `TileSet` alongside individual level descriptors (`Level0`, `Level1`, etc.).
+3. **Single Tileset PNG Asset**: All visual layers and definitions must share exactly one common tileset PNG image. Multiple tileset PNG references are strictly rejected at conversion time (`error.MultipleTilesetsNotSupported`). Interactive entities (items, enemies, NPCs) should be marked as LDtk Entities; their sprite graphics are loaded separately through the engine's sprite system.
+4. **Hardware-Aligned Layer Budget**: Each level may define at most 4 visual tile layers (mapping directly to GBA Mode 0 background layers `BG0`–`BG3`) and at most 1 `IntGrid` collision layer (mapping to a unified 16-bit `CollisionMask`).
+5. **Bounded Map Dimensions**: Maximum map dimension is capped at 4096 × 4096 pixels (`512 × 512` 8x8 tiles). Maps exceeding this limit trigger `error.MapTooLarge`. Large worlds within this budget stream visible chunks into hardware Screenblocks dynamically via the Camera and TileMap streaming systems.
+
+> **Note on LDtk Import Constraints**: For detailed specifications and architectural rationale on these constraints, see [docs/tool_zurag_pic_conversion.md (Section 8)](tool_zurag_pic_conversion.md#8-tilemap--ldtk-conversion-constraints-and-design-rationale).
 
 ---
 

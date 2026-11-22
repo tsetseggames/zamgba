@@ -71,7 +71,7 @@ steps below:
 
 ## Built-In Demo ROMs
 
-Zamgba includes several interactive and instructional demo ROMs categorised by abstraction layers:
+Zamgba includes several interactive and instructional demo ROMs categorised by abstraction layers. For an in-depth breakdown of each demo's capabilities and our long-term plan for the flagship **Durable Showcase Demo** (*Tsetseg's Quest* / ARPG Lite), see **[`docs/demo.md`](docs/demo.md)**.
 
 ### 1. Hardware Abstraction Layer (HAL) Demos
 *   **`mode3_lines`** (`demo/hal/mode3_lines.zig`): Demonstrates basic Mode 3 bitmap graphics. Renders three intersecting colored lines on a bitmap background using low-level, context-agnostic line-drawing algorithms.
@@ -87,6 +87,13 @@ Zamgba includes several interactive and instructional demo ROMs categorised by a
 *   **`flappy_tsetseg`** (`demo/engine/flappy_tsetseg.zig`): Demonstrates animated multi-frame 8-bpp sprite playback with static all-frame VRAM preloading.
 *   **`flappy_tsetseg_streaming`** (`demo/engine/flappy_tsetseg_streaming.zig`): Demonstrates high-performance VRAM Streaming sprite animation. Only a single 32x32 frame slot (1 KB) is allocated via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `AnimatedSprite` and `DmaQueue` during VBlank.
 *   **`pong`** (`demo/engine/pong.zig`): A complete, playable classic Pong game built entirely on `zamgba-engine`. Features player paddle D-pad controls, AI paddle tracking, top/bottom wall reflections, AABB paddle-ball collision response, and scoring/resets.
+*   **`sprite_static_fill`** (`demo/engine/sprite_static_fill.zig`): Demonstrates procedural single-color sprite generation via `StaticSprite.fillSolidColor()`. Renders multiple hardware sprite shapes and palette banks, with real-time color cycling on button input.
+*   **`sprite_animation_static`** (`demo/engine/sprite_animation_static.zig`): Demonstrates idiomatic multi-frame sprite animation with all frames preloaded into VRAM using `AnimatedSprite` in `.static` mode. Features D-Pad movement, horizontal mirroring (`h_flip`), and play/pause controls.
+*   **`sprite_animation_streaming`** (`demo/engine/sprite_animation_streaming.zig`): Demonstrates high-performance dynamic VRAM streaming sprite animation using `AnimatedSprite` in `.streaming` mode. Only a single frame slot is allocated dynamically via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `DmaQueue` during VBlank.
+*   **`camera_demo`** (`demo/engine/camera_demo.zig`): Demonstrates 2D Camera viewport management in a large 512x512 scrolling Mode 0 tiled world. Features target tracking, position smoothing (lerp), deadzone (`DragMargin`), world bounds clamping (`CameraLimits`), screen shake, and automatic off-screen sprite frustum culling.
+*   **`tilemap_collision`** (`demo/engine/tilemap_collision.zig`): Demonstrates 2D box/tilemap collision against Mode 0 background tile layers (dirt and rock layers) using `moveAndCollide` with player sprite physics and camera viewport tracking.
+*   **`ldtk_minimal`** (`demo/engine/ldtk_minimal.zig`): Demonstrates standalone minimal Mode 0 TileMap rendering directly loaded from an LDtk-exported auto-layer tilemap without player entities or physics.
+*   **`parallax_scroll`** (`demo/engine/parallax_scroll.zig`): Demonstrates multi-layer parallax scrolling using independent background layer scroll speeds across 4 Mode 0 text background layers (Sky backdrop, Dirt hills, Rock foreground, Grass overlay).
 
 ### Can I reference your library as a dependency?
 
@@ -121,31 +128,35 @@ Enjoy!
   - [x] PNG-sprite-to-code conversion tool (`zurag`)
   - [x] Color palettes conversion tool (`zurag`)
   - [x] Engine-level streaming sprite loader & VBlank DMA manager
-* **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
+* **Version 0.3.0** (2026-11-22): Capable of writing a game with rich sprites and scrolling background. Supported features:
   - [x] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
   - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
   - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
   - [x] Camera support for scrolling backgrounds and viewport tracking (`Camera2D`, `CameraLimits`, `DragMargin`, frustum culling)
-  - [ ] Camera tracking & scrolling TileMap interactive demo ROM
+  - [x] Camera tracking & scrolling TileMap interactive demo ROM (`camera_demo`)
   - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
   - [x] True color background, via mode 3, 4, 5
   - [x] mGBA compatible logging
   - [x] Panic handler
+  - [x] **Critical Bugfix**: Enforce 4-byte alignment for GBA BIOS `irqHandler` in linker script to prevent ARM-mode address rotation crash in Debug builds ([#39](https://github.com/tsetseggames/zamgba/issues/39), see [`docs/debug_issue39_irq_handler.md`](docs/debug_issue39_irq_handler.md))
+  - [x] Explicit palette & static sprite tile loading APIs (`SpriteSheet.loadPalette`, `preloadStaticTiles`, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
 * **Version 0.4.0**: Capable of writing a game with UI/HUD layers and sprite priority. Supported features:
   - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
   - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
   - [ ] TileMap background layer priority configuration (`priority: u2` for foreground/background depth)
   - [ ] Bitmap Font & Text typography rendering pipeline (8x8 tile fonts, dynamic text boxes, dialogue display)
+  - [ ] Automated palette bank allocation (`PaletteAllocator` leasing 4-bpp banks dynamically, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
+  - [ ] Automated static VRAM slot allocation via `VramAllocator` for `.static` sprites
   - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
   - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
 * **Version 0.5.0**: Capable of writing a game with save data. Supported features:
   - [ ] Save state read/write API
 * **Version 0.6.0**: Capable of writing a game with chiptune music. Supported features:
-  - [ ] Chiptune-to-code conversion tool
+  - [ ] Chiptune-to-code conversion tool (`duu`)
   - [ ] Support chiptune playing music (PSG hardware channels)
 * **Version 0.7.0**: Capable of playing Direct Audio. Supported features:
-  - [ ] Wav file to code conversion tool
+  - [ ] Wav file to code conversion tool (`duu`)
   - [ ] Direct Audio playback API (DMA-driven PCM channels)
 * **Version 0.8.0**: Capable of writing a game with affine sprite transformations. Supported features:
   - [ ] Fixed-point Sin/Cos lookup table (LUT)
@@ -160,3 +171,5 @@ This repository contains both open-source code for the `zamgba` SDK/engine and p
 * **Art Assets (`assets/`)**: All art assets, including the Sprite files inside the `assets/` directory (e.g., `tsetseg-ride-on-broom-*`), are from the author's original game *["Tsetseg's Adventure"](https://store.steampowered.com/app/2337770/Tsetsegs_Adventure/)*. The copyrights for these assets belong entirely to the author. **All Rights Reserved.** You may use them locally to compile and run the demo ROMs provided in this repository, but you may not redistribute, modify, or use these visual assets in your own projects, open-source or commercial, without explicit permission.
 * **Version 1.0.0**: Capable of writing a 2D platformer game.
 * **Version 2.0.0**: Capable of writing a pseudo-3D game.
+* **Post-1.0.0 Features**:
+  - [ ] Dynamic multi-channel software mixer & real-time Tracker module playback (`.xm`) in `zamgba-engine`.

@@ -101,7 +101,7 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
      - `MAT001`, `ABB001`, `MAP001`, `LAY001`, `OVL001`: Physics sub-engine tests
      - `LDT001`: LDtk JSON parser and tilemap converter tests (`tools/zurag/ldtk.zig`)
    - Run `zig build test` to prove that the new tests fail (Red state) without breaking existing tests.
-   - Commit the Red state.
+   - **DO NOT** commit the Red state, until the user have confirmed.
 
 2. **Step 2: Review Phase (Post-Red Review)**
    - Follow the **Interactive Review Mode** rules below.
@@ -111,6 +111,7 @@ Every new feature, tool, and algorithm implementation MUST strictly adhere to th
    - Implement the concrete function logic one step at a time.
    - Run `zig build test` to verify that all target unit tests transition from Red to Green.
    - Refactor: Clean up magic numbers (replace with named constants) and enforce the Principle of Least Visibility.
+   - **DO NOT** commit, until the user have confirmed.
 
 4. **Step 4: Review Phase (Post-Green Review)**
    - Follow the **Interactive Review Mode** rules below.

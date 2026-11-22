@@ -353,8 +353,106 @@ pub fn main(init: std.process.Init) !void {
                 printTilemapUsage(init.io, program_name);
                 std.process.exit(0);
             }
-            std.debug.print("Tilemap subcommand is under construction.\n", .{});
-            std.process.exit(0);
+
+            const input_ldtk_path = tm_args.input_path orelse {
+                std.debug.print("Error: missing required argument --input <project.ldtk>\n", .{});
+                std.process.exit(1);
+            };
+            const output_zig_path = tm_args.output_path;
+
+            // Step 1: Open and read LDtk JSON
+            const ldtk_data = std.Io.Dir.readFileAlloc(.cwd(), init.io, input_ldtk_path, allocator, .unlimited) catch |err| {
+                std.debug.print("Error: unable to read input LDtk project '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                std.process.exit(1);
+            };
+
+            var meta = tilemap.parseMetadata(allocator, ldtk_data, switch (tm_args.format) {
+                .ldtk => .ldtk,
+            }) catch |err| {
+                switch (err) {
+                    error.MissingTilesetAsset => {
+                        std.debug.print("Error: LDtk project '{s}' contains no tileset asset. Mode 0 background requires a visual tileset.\n", .{input_ldtk_path});
+                    },
+                    error.MultipleTilesetsNotSupported => {
+                        std.debug.print("Error: LDtk project '{s}' defines multiple tileset assets. Zamgba currently supports only one tileset PNG per project.\n", .{input_ldtk_path});
+                    },
+                    else => {
+                        std.debug.print("Error: failed to parse LDtk metadata '{s}': {s}\n", .{ input_ldtk_path, @errorName(err) });
+                    },
+                }
+                std.process.exit(1);
+            };
+            defer meta.deinit();
+
+            // Step 2: Open and process tileset PNG derived from LDtk project
+            var png_data: ?[]const u8 = null;
+            if (meta.tileset_rel_path) |rel_path| {
+                const cleaned_rel_path = try allocator.dupe(u8, rel_path);
+                defer allocator.free(cleaned_rel_path);
+                for (cleaned_rel_path) |*b| {
+                    if (b.* == '\\') b.* = '/';
+                }
+
+                const ldtk_dir = std.fs.path.dirname(input_ldtk_path);
+                const resolved_png_path = if (ldtk_dir) |dir|
+                    try std.fs.path.join(allocator, &[_][]const u8{ dir, cleaned_rel_path })
+                else
+                    try allocator.dupe(u8, cleaned_rel_path);
+                defer allocator.free(resolved_png_path);
+
+                const loaded_png = std.Io.Dir.readFileAlloc(.cwd(), init.io, resolved_png_path, allocator, .unlimited) catch |err| {
+                    std.debug.print("Error: unable to read tileset PNG '{s}' referenced by LDtk project '{s}': {s}\n", .{ resolved_png_path, input_ldtk_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+
+                _ = png.parseHeader(loaded_png) catch |err| {
+                    switch (err) {
+                        error.NotIndexedColor => {
+                            std.debug.print("Error: tileset PNG '{s}' referenced by LDtk project '{s}' is not an indexed-color PNG.\nHint: in Aseprite or your image editor, export using Color Mode -> Indexed.\n", .{ resolved_png_path, input_ldtk_path });
+                        },
+                        error.InvalidPngSignature, error.InvalidIhdrChunk, error.TruncatedHeader => {
+                            std.debug.print("Error: tileset PNG '{s}' referenced by LDtk project '{s}' is not a valid PNG file.\n", .{ resolved_png_path, input_ldtk_path });
+                        },
+                        error.UnsupportedBitDepth => {
+                            std.debug.print("Error: tileset PNG '{s}' referenced by LDtk project '{s}' has an unsupported bit depth.\n", .{ resolved_png_path, input_ldtk_path });
+                        },
+                    }
+                    std.process.exit(1);
+                };
+
+                var img = png.decompressIndexedPixels(allocator, loaded_png) catch |err| {
+                    std.debug.print("Error: failed to decompress tileset PNG '{s}' referenced by LDtk project '{s}': {s}\n", .{ resolved_png_path, input_ldtk_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+                img.deinit();
+
+                png_data = loaded_png;
+            }
+
+            // Step 3: Generate Zig Source Code
+            const zig_source = tilemap.generateTilemapZigSource(allocator, &meta, png_data, .{
+                .bpp = tm_args.bpp,
+                .color_adjust = tm_args.color_adjust,
+                .no_palette = tm_args.no_palette,
+            }) catch |err| {
+                if (meta.tileset_rel_path) |rel_path| {
+                    std.debug.print("Error: failed to convert tileset PNG '{s}' referenced by LDtk project '{s}' during tilemap generation: {s}\n", .{ rel_path, input_ldtk_path, @errorName(err) });
+                } else {
+                    std.debug.print("Error: tilemap code generation failed: {s}\n", .{@errorName(err)});
+                }
+                std.process.exit(1);
+            };
+            defer allocator.free(zig_source);
+
+            // Step 4: Output to file or stdout
+            if (output_zig_path) |out_path| {
+                writeOutputFile(init.io, out_path, zig_source) catch |err| {
+                    std.debug.print("Error: unable to write output file '{s}': {s}\n", .{ out_path, @errorName(err) });
+                    std.process.exit(1);
+                };
+            } else {
+                std.Io.File.writeStreamingAll(.stdout(), init.io, zig_source) catch {};
+            }
         },
         .sprite => |sprite_args| {
             if (sprite_args.show_help) {
@@ -551,6 +649,11 @@ test "CLI011: parseCli tilemap with --color-adjust, --no-palette, and --bpp 4x16
     try std.testing.expect(parsed.tilemap.no_palette);
     try std.testing.expectEqual(BppMode.bpp4x16, parsed.tilemap.bpp);
     try std.testing.expect(!parsed.tilemap.show_help);
+}
+
+test "CLI012: parseCli tilemap reject unknown --png argument" {
+    const raw_args = [_][]const u8{ "tilemap", "-i", "world.ldtk", "--png", "tileset.png", "-o", "world.zig" };
+    try std.testing.expectError(error.UnknownFlag, CliArgs.parseCli(&raw_args));
 }
 
 test {

@@ -75,3 +75,10 @@ To prevent spaghetti logic and ensure the GBA SDK stays modular and safe, Zamgba
     The high-level `engine` module communicates directly downward through the `hal` abstraction layer. 
 2.  **No Upward Dependency (Acyclic Layering)**:
     A lower-tier module (`hal`) is strictly oblivious to the tiers above it. `hal` cannot depend on `engine`.
+
+---
+
+## 5. Specialized Subsystem Architecture
+
+* **Graphics & Tooling**: See [Aseprite & LDtk Asset Conversion (`zurag`)](tool_zurag_pic_conversion.md)
+* **Audio Subsystem**: See [Audio System Architecture, Tooling (`duu`), & Roadmap](sound.md)
