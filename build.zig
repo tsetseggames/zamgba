@@ -247,6 +247,16 @@ pub fn build(b: *std.Build) void {
     tilemap_collision_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
     tilemap_collision_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
 
+    var parallax_scroll_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "parallax_scroll",
+        .root_source_file = b.path("demo/engine/parallax_scroll.zig"),
+    });
+
+    parallax_scroll_rom.root_module.addImport(LibName, m);
+    parallax_scroll_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+    parallax_scroll_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
+
     // Build step: Automatically convert T01 16x16 auto-split LDtk asset to Zig
     const t01_tileset_png = b.path("assets/tileset/tileset-16x16-dirt.png");
 
