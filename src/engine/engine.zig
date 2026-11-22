@@ -20,6 +20,7 @@ pub const TileData = tilemap.TileData;
 pub const Tile4bpp = tilemap.Tile4bpp;
 pub const Tile8bpp = tilemap.Tile8bpp;
 pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
+pub const EMPTY_TILE_INDEX = tilemap.EMPTY_TILE_INDEX;
 pub const Color = gfx2d.Color;
 
 pub const camera = @import("camera.zig");

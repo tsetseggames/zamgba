@@ -9,10 +9,13 @@ pub const Collision = physics.Collision;
 /// Hardware 15-bit BGR555 color format.
 pub const Bgr555 = gfx2d.Bgr555;
 
+/// Reserved tile index representing an empty, transparent tile in GBA text background maps.
+pub const EMPTY_TILE_INDEX: u16 = 0;
+
 /// Hardware-aligned 16-bit packed Screen Entry for GBA Text Backgrounds.
 /// The definition is here: https://gbadev.net/tonc/regbg.html#sec-map
 pub const ScreenEntry = packed struct(u16) {
-    tile_index: u10 = 0,
+    tile_index: u10 = EMPTY_TILE_INDEX,
     h_flip: bool = false,
     v_flip: bool = false,
     palette_bank: u4 = 0,
@@ -279,7 +282,7 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
     const entries = [_]ScreenEntry{
         .{ .tile_index = 1 },
         .{ .tile_index = 2 },
-        .{ .tile_index = 0 },
+        .{ .tile_index = EMPTY_TILE_INDEX },
         .{ .tile_index = 1, .palette_bank = 1 },
     };
 
@@ -315,10 +318,10 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
     // [0, 0, 1, 1]
     // [2, 0, 0, 0]
     const entries = [_]ScreenEntry{
-        .{ .tile_index = 0 }, .{ .tile_index = 1 }, .{ .tile_index = 0 }, .{ .tile_index = 2 },
-        .{ .tile_index = 1 }, .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 0 },
-        .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 1 }, .{ .tile_index = 1 },
-        .{ .tile_index = 2 }, .{ .tile_index = 0 }, .{ .tile_index = 0 }, .{ .tile_index = 0 },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 2 },
+        .{ .tile_index = 1 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },                .{ .tile_index = 1 },
+        .{ .tile_index = 2 },                .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = EMPTY_TILE_INDEX },
     };
 
     const layer_data = MapLayerData{
@@ -374,8 +377,8 @@ test "TLM004: TileMapLayer collision handling with empty or partial TileSet coll
 
     // 2x2 map referencing Tile 0, Tile 1, Tile 2 (out of collision_masks bounds), Tile 3
     const entries = [_]ScreenEntry{
-        .{ .tile_index = 0 }, .{ .tile_index = 1 },
-        .{ .tile_index = 2 }, .{ .tile_index = 3 },
+        .{ .tile_index = EMPTY_TILE_INDEX }, .{ .tile_index = 1 },
+        .{ .tile_index = 2 },                .{ .tile_index = 3 },
     };
 
     const layer_data = MapLayerData{
@@ -535,4 +538,10 @@ test "TLM007: getScreenEntryVramIndex multi-screenblock address calculation" {
     // SBB 3 (bottom-right): (32, 32) -> 3072, (63, 63) -> 4095
     try std.testing.expectEqual(@as(usize, 3072), getScreenEntryVramIndex(.size_64x64, 32, 32));
     try std.testing.expectEqual(@as(usize, 4095), getScreenEntryVramIndex(.size_64x64, 63, 63));
+}
+
+test "TLM008: EMPTY_TILE_INDEX constant represents reserved transparent tile" {
+    try std.testing.expectEqual(@as(u16, 0), EMPTY_TILE_INDEX);
+    const default_entry = ScreenEntry{};
+    try std.testing.expectEqual(EMPTY_TILE_INDEX, default_entry.tile_index);
 }

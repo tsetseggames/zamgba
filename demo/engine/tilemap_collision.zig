@@ -15,13 +15,17 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
     0,
 );
 
+/// Map dimensions in tiles (512x512 pixels / 8x8 pixels per tile = 64x64 tiles).
+const MAP_WIDTH_TILES: u16 = large_dirt_map.Level_0_Dirt_data.width;
+const MAP_HEIGHT_TILES: u16 = large_dirt_map.Level_0_Dirt_data.height;
+
 /// Checks whether a tile cell in the 64x64 grid is solid.
 /// Dirt and BigRock layers are solid obstacles for the player.
 fn isTileSolid(tx: u16, ty: u16) bool {
-    if (tx >= 64 or ty >= 64) return true;
-    const idx = @as(usize, ty) * 64 + tx;
-    return large_dirt_map.Level_0_Dirt_entries[idx].tile_index != 0 or
-        large_dirt_map.Level_0_BigRock_entries[idx].tile_index != 0;
+    if (tx >= MAP_WIDTH_TILES or ty >= MAP_HEIGHT_TILES) return true;
+    const idx = @as(usize, ty) * MAP_WIDTH_TILES + tx;
+    return large_dirt_map.Level_0_Dirt_entries[idx].tile_index != engine.EMPTY_TILE_INDEX or
+        large_dirt_map.Level_0_BigRock_entries[idx].tile_index != engine.EMPTY_TILE_INDEX;
 }
 
 const Game = struct {

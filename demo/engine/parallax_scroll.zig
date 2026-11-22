@@ -111,18 +111,18 @@ const Game = struct {
                 },
                 .{
                     .layer = bg_dirt,
-                    .factor_x = Fixed24_8.fromFloat(0.50),
-                    .factor_y = Fixed24_8.fromFloat(0.50),
-                },
-                .{
-                    .layer = bg_rock,
                     .factor_x = Fixed24_8.fromFloat(0.75),
                     .factor_y = Fixed24_8.fromFloat(0.75),
                 },
                 .{
+                    .layer = bg_rock,
+                    .factor_x = Fixed24_8.fromFloat(0.50),
+                    .factor_y = Fixed24_8.fromFloat(0.75), // Same with dirt
+                },
+                .{
                     .layer = bg_grass,
-                    .factor_x = Fixed24_8.fromInt(1),
-                    .factor_y = Fixed24_8.fromInt(1),
+                    .factor_x = Fixed24_8.fromFloat(0.75),
+                    .factor_y = Fixed24_8.fromFloat(0.75),
                 },
             },
         };
