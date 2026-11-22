@@ -113,7 +113,7 @@ test "DMQ001: DmaQueue initial state and capacity" {
 test "DMQ002: DmaQueue enqueue and FIFO flush" {
     var queue = DmaQueue.init();
     const src = [_]u32{ 0x12345678, 0x9ABCDEF0 };
-    var dest = [_]u32{0} ** 2;
+    var dest: [2]u32 = @splat(0);
 
     const task = try hal.dma.DmaTask.initBytes(@ptrCast(&src), @ptrCast(&dest), 8);
     try queue.enqueue(task);
@@ -128,8 +128,8 @@ test "DMQ002: DmaQueue enqueue and FIFO flush" {
 
 test "DMQ003: DmaQueue rejects enqueue when capacity full" {
     var queue = DmaQueue.init();
-    var src = [_]u8{1} ** 32;
-    var dest = [_]u8{0} ** 32;
+    var src: [32]u8 = @splat(1);
+    var dest: [32]u8 = @splat(0);
 
     var i: usize = 0;
     while (i < CAPACITY) : (i += 1) {
@@ -144,8 +144,8 @@ test "DMQ003: DmaQueue rejects enqueue when capacity full" {
 
 test "DMQ004: DmaQueue budget guard rejects tasks exceeding MAX_BYTES_PER_VBLANK" {
     var queue = DmaQueue.init();
-    var src align(4) = [_]u8{0} ** 4096;
-    var dest align(4) = [_]u8{0} ** 4096;
+    var src: [4096]u8 align(4) = @splat(0);
+    var dest: [4096]u8 align(4) = @splat(0);
 
     // Enqueue 4096 bytes (budget reached)
     const task_full = try hal.dma.DmaTask.initBytes(&src, &dest, 4096);
@@ -159,7 +159,7 @@ test "DMQ004: DmaQueue budget guard rejects tasks exceeding MAX_BYTES_PER_VBLANK
 test "DMQ005: enqueueBytes helper and clear" {
     var queue = DmaQueue.init();
     var src align(4) = [_]u8{ 10, 20, 30, 40 };
-    var dest align(4) = [_]u8{0} ** 4;
+    var dest: [4]u8 align(4) = @splat(0);
 
     try queue.enqueueBytes(&src, &dest, 4);
     try std.testing.expectEqual(@as(usize, 1), queue.count());

@@ -346,8 +346,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_zurag_unit_tests.step);
 
     // If kcov is available on the host system, generate HTML coverage report into zig-out/tests/
-    if (b.findProgram(&.{"kcov"}, &.{})) |kcov_path| {
-        const tests_dir = b.getInstallPath(.{ .custom = "tests" }, "");
+    if (b.findProgram(.{ .names = &.{"kcov"} })) |kcov_path| {
+        const tests_dir = b.pathJoin(&.{ "zig-out", "tests" });
 
         // Step 1: Trace hal_unit_tests (src/hal/ tests)
         const run_kcov_hal = b.addSystemCommand(&.{
@@ -380,5 +380,5 @@ pub fn build(b: *std.Build) void {
         const coverage_step = b.step("coverage", "Generate HTML test coverage report with kcov");
         coverage_step.dependOn(&run_kcov_zurag.step);
         coverage_step.dependOn(&install_unittest_bin.step);
-    } else |_| {}
+    }
 }

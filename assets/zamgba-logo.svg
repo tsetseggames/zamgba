@@ -1,0 +1,206 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="60%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#070A12"/>
+    </radialGradient>
+
+    <!-- Console Body Indigo Gradient -->
+    <linearGradient id="gbaBodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="25%" stop-color="#4338CA"/>
+      <stop offset="85%" stop-color="#312E81"/>
+      <stop offset="100%" stop-color="#1E1B4B"/>
+    </linearGradient>
+
+    <!-- Shoulder Bumpers Gradient -->
+    <linearGradient id="bumperGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#3730A3"/>
+    </linearGradient>
+
+    <!-- Screen Bezel Gradient -->
+    <linearGradient id="bezelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0A0E17"/>
+    </linearGradient>
+
+    <!-- LCD Screen Interior Gradient -->
+    <linearGradient id="screenLcdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#071926"/>
+      <stop offset="50%" stop-color="#0B2538"/>
+      <stop offset="100%" stop-color="#04121C"/>
+    </linearGradient>
+
+    <!-- Zig Bolt Orange Gradient -->
+    <linearGradient id="zigOrange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="25%" stop-color="#F59E0B"/>
+      <stop offset="80%" stop-color="#EA580C"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+
+    <!-- Zig Amber Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <!-- Console Drop Shadow Filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Buttons Gradient -->
+    <linearGradient id="btnGradA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#6B21A8"/>
+    </linearGradient>
+    <linearGradient id="btnGradB" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EC4899"/>
+      <stop offset="100%" stop-color="#9D174D"/>
+    </linearGradient>
+
+    <!-- Screen Scanline Pattern -->
+    <pattern id="scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="2" x2="4" y2="2" stroke="#000000" stroke-width="0.8" opacity="0.3"/>
+    </pattern>
+  </defs>
+
+  <!-- App Icon Squircle Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bgGrad)"/>
+  <rect width="508" height="508" x="2" y="2" rx="106" fill="none" stroke="#334155" stroke-width="2" opacity="0.4"/>
+
+  <!-- Subtle Ambient Glow Behind Console -->
+  <ellipse cx="256" cy="225" rx="180" ry="120" fill="#6366F1" opacity="0.12" filter="url(#glow)"/>
+
+  <!-- Left & Right Shoulder Bumpers (L & R) -->
+  <g filter="url(#shadow)">
+    <!-- L Button -->
+    <path d="M 96,140 C 96,124 116,112 144,112 L 176,112 C 182,112 188,118 186,124 L 180,140 Z" fill="url(#bumperGrad)"/>
+    <!-- R Button -->
+    <path d="M 416,140 C 416,124 396,112 368,112 L 336,112 C 330,112 324,118 326,124 L 332,140 Z" fill="url(#bumperGrad)"/>
+
+    <!-- GBA Console Main Body -->
+    <path d="M 120,132 
+             C 72,148 54,196 56,260 
+             C 58,312 86,344 140,344 
+             L 372,344 
+             C 426,344 454,312 456,260 
+             C 458,196 440,148 392,132 
+             C 368,124 144,124 120,132 Z" 
+          fill="url(#gbaBodyGrad)" 
+          stroke="#6366F1" 
+          stroke-width="2.5"/>
+
+    <!-- Console Top Highlight Edge -->
+    <path d="M 126,134 C 150,127 362,127 386,134" stroke="#818CF8" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+  </g>
+
+  <!-- Screen Bezel Outer Frame -->
+  <rect x="156" y="148" width="200" height="152" rx="18" fill="url(#bezelGrad)" stroke="#312E81" stroke-width="2"/>
+
+  <!-- Screen Bezel Inner Border -->
+  <rect x="168" y="158" width="176" height="130" rx="10" fill="#090D16" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- LCD Screen Display (240x160 GBA 3:2 aspect ratio scaled) -->
+  <rect x="172" y="162" width="168" height="116" rx="6" fill="url(#screenLcdGrad)"/>
+  <!-- Scanlines overlay -->
+  <rect x="172" y="162" width="168" height="116" rx="6" fill="url(#scanlines)"/>
+
+  <!-- Screen Glass Glare / Diagonal Reflection -->
+  <path d="M 172,162 L 230,162 L 172,220 Z" fill="#FFFFFF" opacity="0.06"/>
+  <path d="M 242,162 L 310,162 L 172,274 L 172,250 Z" fill="#FFFFFF" opacity="0.03"/>
+
+  <!-- Zig Radiant Lightning 'Z' Emblem on LCD -->
+  <g filter="url(#glow)">
+    <!-- Dynamic Multi-Segment Geometric 'Z' Bolt -->
+    <!-- Top Horizontal Bar -->
+    <polygon points="214,180 298,180 286,196 232,196" fill="url(#zigOrange)"/>
+    <!-- Diagonal Energy Strike -->
+    <polygon points="296,182 300,192 232,258 212,258 274,196" fill="url(#zigOrange)"/>
+    <!-- Central Energy Dart / Notch -->
+    <polygon points="266,212 284,217 260,227" fill="#FEF08A"/>
+    <!-- Bottom Horizontal Bar -->
+    <polygon points="226,244 280,244 268,260 214,260" fill="url(#zigOrange)"/>
+    <!-- Core Bright Highlight -->
+    <polygon points="236,184 290,184 282,192 244,192" fill="#FEF08A" opacity="0.8"/>
+    <polygon points="224,252 262,252 256,257 220,257" fill="#FEF08A" opacity="0.8"/>
+  </g>
+
+  <!-- Left Control: Classic GBA D-Pad -->
+  <g filter="url(#shadow)">
+    <!-- Base D-pad Cross -->
+    <path d="M 98,222 
+             L 110,222 L 110,210 C 110,207 113,204 116,204 L 126,204 C 129,204 132,207 132,210 L 132,222 
+             L 144,222 C 147,222 150,225 150,228 L 150,238 C 150,241 147,244 144,244 
+             L 132,244 L 132,256 C 132,259 129,262 126,262 L 116,262 C 113,262 110,259 110,256 L 110,244 
+             L 98,244 C 95,244 92,241 92,238 L 92,228 C 92,225 95,222 98,222 Z" 
+          fill="#1E293B" 
+          stroke="#0F172A" 
+          stroke-width="1.5"/>
+    <!-- D-pad Direction Indicators / Emboss -->
+    <polygon points="121,208 116,214 126,214" fill="#475569"/>
+    <polygon points="121,258 116,252 126,252" fill="#334155"/>
+    <polygon points="96,233 102,228 102,238" fill="#334155"/>
+    <polygon points="146,233 140,228 140,238" fill="#475569"/>
+    <!-- Center Dimple -->
+    <circle cx="121" cy="233" r="4.5" fill="#0F172A"/>
+  </g>
+
+  <!-- Right Controls: Angled Action Buttons (B & A) -->
+  <g filter="url(#shadow)">
+    <!-- Button B (Lower / Left) -->
+    <circle cx="372" cy="246" r="14" fill="url(#btnGradB)" stroke="#4A044E" stroke-width="1.5"/>
+    <circle cx="370" cy="244" r="11" fill="none" stroke="#F472B6" stroke-width="1" opacity="0.6"/>
+    <!-- Button A (Upper / Right) -->
+    <circle cx="406" cy="224" r="14" fill="url(#btnGradA)" stroke="#3B0764" stroke-width="1.5"/>
+    <circle cx="404" cy="222" r="11" fill="none" stroke="#C084FC" stroke-width="1" opacity="0.6"/>
+  </g>
+
+  <!-- Speaker Grille Holes (Bottom-Right) -->
+  <g fill="#0F172A" opacity="0.75">
+    <circle cx="396" cy="292" r="2.8"/>
+    <circle cx="406" cy="288" r="2.8"/>
+    <circle cx="416" cy="284" r="2.8"/>
+    <circle cx="400" cy="302" r="2.8"/>
+    <circle cx="410" cy="298" r="2.8"/>
+    <circle cx="420" cy="294" r="2.8"/>
+  </g>
+
+  <!-- Center Screen Label: Z A M G B A -->
+  <text x="256" y="291" 
+        text-anchor="middle" 
+        fill="#94A3B8" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" 
+        font-size="10" 
+        font-weight="800" 
+        letter-spacing="3.5">GAME BOY ADVANCE</text>
+
+  <!-- Start / Select Pill Buttons -->
+  <g transform="rotate(-25 190 318)" fill="#1E293B" stroke="#0F172A" stroke-width="1">
+    <rect x="176" y="315" width="22" height="7" rx="3.5"/>
+    <rect x="204" y="315" width="22" height="7" rx="3.5"/>
+  </g>
+
+  <!-- Brand Typography at Bottom of Icon -->
+  <g text-anchor="middle">
+    <!-- Main Title -->
+    <text x="256" y="420" 
+          fill="#F8FAFC" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', Roboto, sans-serif" 
+          font-size="44" 
+          font-weight="900" 
+          letter-spacing="8">ZAMGBA</text>
+
+    <!-- Subtitle with Accent Color -->
+    <text x="256" y="454" 
+          fill="#F59E0B" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+          font-size="14.5" 
+          font-weight="700" 
+          letter-spacing="4">GBA GAME SDK IN ZIG</text>
+  </g>
+</svg>

@@ -11,6 +11,7 @@
 // https://fabiensanglard.net/another_world_polygons_GBA/gbatech.html
 // https://github.com/gbadev-org/gbadoc
 // http://r32.github.io/other/2023-03-22-gba-dev.html
+const std = @import("std");
 const header = @import("header.zig");
 
 pub const specs = @import("specs.zig");
@@ -99,7 +100,7 @@ pub fn setupROMHeader(
         h.softwareVersion = softwareVersion;
         // Clean-room ROM header checksum calculation based on GBATEK spec
         var sum: u8 = 0;
-        const header_bytes = @as([228]u8, @bitCast(h));
+        const header_bytes = std.mem.asBytes(&h);
         for (header_bytes[0xA0..0xBD]) |byte| {
             sum +%= byte;
         }
