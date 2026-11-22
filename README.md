@@ -36,6 +36,10 @@ Zamgba bridges the gap between low-level bare-metal hardware programming and mod
 Watch Zamgba in action — from source code and cross-compilation to running the interactive `tilemap_collision` demo in mGBA:
 
 <p align="center">
+  <img src="assets/showcase-preview.webp" width="85%" alt="Zamgba Showcase Video Preview" />
+</p>
+
+<p align="center">
   <a href="https://youtu.be/6hRcTL-eEYA" target="_blank"><img src="https://img.shields.io/badge/YouTube-Watch%20Showcase%20(20s)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Showcase" /></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://www.bilibili.com/video/BV12PyjzSEzS/" target="_blank"><img src="https://img.shields.io/badge/Bilibili-观看演示视频%20(20秒)-00A1D6?style=for-the-badge&logo=bilibili&logoColor=white" alt="Bilibili Showcase" /></a>
