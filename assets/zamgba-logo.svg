@@ -8,7 +8,7 @@
     </radialGradient>
 
     <!-- Console Body Indigo Gradient -->
-    <linearGradient id="gbaBodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+    <linearGradient id="consoleBodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#4F46E5"/>
       <stop offset="25%" stop-color="#4338CA"/>
       <stop offset="85%" stop-color="#312E81"/>
@@ -83,7 +83,7 @@
     <!-- R Button -->
     <path d="M 416,140 C 416,124 396,112 368,112 L 336,112 C 330,112 324,118 326,124 L 332,140 Z" fill="url(#bumperGrad)"/>
 
-    <!-- GBA Console Main Body -->
+    <!-- Console Main Body -->
     <path d="M 120,132 
              C 72,148 54,196 56,260 
              C 58,312 86,344 140,344 
@@ -91,7 +91,7 @@
              C 426,344 454,312 456,260 
              C 458,196 440,148 392,132 
              C 368,124 144,124 120,132 Z" 
-          fill="url(#gbaBodyGrad)" 
+          fill="url(#consoleBodyGrad)" 
           stroke="#6366F1" 
           stroke-width="2.5"/>
 
@@ -105,7 +105,7 @@
   <!-- Screen Bezel Inner Border -->
   <rect x="168" y="158" width="176" height="130" rx="10" fill="#090D16" stroke="#1E293B" stroke-width="1.5"/>
 
-  <!-- LCD Screen Display (240x160 GBA 3:2 aspect ratio scaled) -->
+  <!-- LCD Screen Display (3:2 aspect ratio scaled) -->
   <rect x="172" y="162" width="168" height="116" rx="6" fill="url(#screenLcdGrad)"/>
   <!-- Scanlines overlay -->
   <rect x="172" y="162" width="168" height="116" rx="6" fill="url(#scanlines)"/>
@@ -130,7 +130,7 @@
     <polygon points="224,252 262,252 256,257 220,257" fill="#FEF08A" opacity="0.8"/>
   </g>
 
-  <!-- Left Control: Classic GBA D-Pad -->
+  <!-- Left Control: Classic D-Pad -->
   <g filter="url(#shadow)">
     <!-- Base D-pad Cross -->
     <path d="M 98,222 
@@ -170,14 +170,7 @@
     <circle cx="420" cy="294" r="2.8"/>
   </g>
 
-  <!-- Center Screen Label: Z A M G B A -->
-  <text x="256" y="291" 
-        text-anchor="middle" 
-        fill="#94A3B8" 
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" 
-        font-size="10" 
-        font-weight="800" 
-        letter-spacing="3.5">GAME BOY ADVANCE</text>
+
 
   <!-- Start / Select Pill Buttons -->
   <g transform="rotate(-25 190 318)" fill="#1E293B" stroke="#0F172A" stroke-width="1">
@@ -201,6 +194,6 @@
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
           font-size="14.5" 
           font-weight="700" 
-          letter-spacing="4">GBA GAME SDK IN ZIG</text>
+          letter-spacing="4">2D GAME SDK IN ZIG</text>
   </g>
 </svg>
