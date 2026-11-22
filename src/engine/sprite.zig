@@ -293,10 +293,12 @@ pub const AnimatedSprite = struct {
     is_playing: bool = true,
     pingpong_reverse: bool = false,
     palette_bank: u4 = 0,
+    is_preloaded: bool = false,
 
     pub const Options = struct {
         tile_index: u16 = 0,
         palette_bank: u4 = 0,
+        auto_preload: bool = true,
     };
 
     /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
@@ -324,6 +326,7 @@ pub const AnimatedSprite = struct {
             .is_playing = true,
             .pingpong_reverse = false,
             .palette_bank = options.palette_bank,
+            .is_preloaded = false,
         };
 
         self.stageCurrentFrameWithQueue(null);
@@ -478,16 +481,17 @@ pub const AnimatedSprite = struct {
 
     /// Copies all frame tiles from the underlying SpriteSheet into OBJ VRAM
     /// starting at the sprite's designated base `tile_index`.
-    /// Returns `error.InvalidAnimationMode` if invoked on an AnimatedSprite in `.streaming` mode.
-    pub fn preloadStaticTiles(self: *const AnimatedSprite) SpriteError!void {
-        if (self.mode != .static) return error.InvalidAnimationMode;
-        if (comptime !hal.specs.is_gba_target) return;
-        try self.preloadStaticTilesToBuffer(hal.specs.MemorySections.OBJ_VRAM);
+    fn preloadStaticTiles(self: *AnimatedSprite) void {
+        if (self.mode != .static) return;
+        if (comptime hal.specs.is_gba_target) {
+            self.preloadStaticTilesToBuffer(hal.specs.MemorySections.OBJ_VRAM);
+        }
+        self.is_preloaded = true;
     }
 
     /// Internal buffer-backed implementation for preloading tiles into VRAM.
-    fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) SpriteError!void {
-        if (self.mode != .static) return error.InvalidAnimationMode;
+    fn preloadStaticTilesToBuffer(self: *const AnimatedSprite, vram_buffer: [*]volatile u16) void {
+        if (self.mode != .static) return;
         const start_word = @as(usize, self.base_tile_index) * hal.specs.Tile.WORDS_4BPP;
         const total_words = self.sheet.tiles.len / 2;
         for (0..total_words) |i| {
@@ -1115,17 +1119,75 @@ test "ANI011: AnimatedSprite.preloadStaticTilesToBuffer copies all sheet frame t
     var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{
         .tile_index = 10,
     });
-    try anim_spr.preloadStaticTilesToBuffer(&mock_vram);
+    anim_spr.preloadStaticTilesToBuffer(&mock_vram);
 
     // Tile 10 starts at word offset 10 * 16 = 160
     try std.testing.expectEqual(@as(u16, 0x3412), mock_vram[160]);
     try std.testing.expectEqual(@as(u16, 0x7856), mock_vram[161]);
 }
 
-test "ANI012: preloadStaticTiles returns error.InvalidAnimationMode when sprite mode is .streaming" {
+test "ANI012: preloadStaticTilesToBuffer is a no-op when sprite mode is .streaming" {
     vram_allocator.reset();
 
     var mock_vram: [2048]u16 = @splat(0);
+    const dummy_tiles: [32]u8 align(4) = @splat(0xFF);
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 8,
+        .height = 8,
+        .tile_count_per_frame = 1,
+        .frame_count = 1,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
+    defer anim_spr.deinit();
+
+    anim_spr.preloadStaticTilesToBuffer(&mock_vram);
+    try std.testing.expectEqual(@as(u16, 0), mock_vram[0]);
+}
+
+test "ANI013: AnimatedSprite.init in .static mode defaults to auto_preload=true and sets is_preloaded=true" {
+    const dummy_tiles: [32]u8 align(4) = @splat(0);
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 8,
+        .height = 8,
+        .tile_count_per_frame = 1,
+        .frame_count = 1,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+
+    const anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{});
+    try std.testing.expect(anim_spr.is_preloaded);
+}
+
+test "ANI014: AnimatedSprite.init in .static mode with auto_preload=false leaves is_preloaded=false" {
+    const dummy_tiles: [32]u8 align(4) = @splat(0);
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 8,
+        .height = 8,
+        .tile_count_per_frame = 1,
+        .frame_count = 1,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{100},
+        .tags = &[_]AnimationTag{},
+    };
+
+    const anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.zero, Fixed24_8.zero, .{
+        .auto_preload = false,
+    });
+    try std.testing.expect(!anim_spr.is_preloaded);
+}
+
+test "ANI015: AnimatedSprite.init in .streaming mode sets is_preloaded=true" {
+    vram_allocator.reset();
+
     const dummy_tiles: [32]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
@@ -1141,6 +1203,5 @@ test "ANI012: preloadStaticTiles returns error.InvalidAnimationMode when sprite 
     var anim_spr = try AnimatedSprite.init(&dummy_sheet, .streaming, Fixed24_8.zero, Fixed24_8.zero, .{});
     defer anim_spr.deinit();
 
-    try std.testing.expectError(error.InvalidAnimationMode, anim_spr.preloadStaticTiles());
-    try std.testing.expectError(error.InvalidAnimationMode, anim_spr.preloadStaticTilesToBuffer(&mock_vram));
+    try std.testing.expect(anim_spr.is_preloaded);
 }
