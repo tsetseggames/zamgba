@@ -38,7 +38,7 @@ fn loadObjColorsToBuffer(start_color_index: u9, colors: []const u16, pal_buffer:
 // ====================================================================
 
 test "PAL001: palette.loadObjBankToBuffer writes 16 colors to target bank" {
-    var mock_pal = [_]u16{0} ** 256;
+    var mock_pal: [256]u16 = @splat(0);
     const colors = [_]u16{
         0x0001, 0x0002, 0x0003, 0x0004,
         0x0005, 0x0006, 0x0007, 0x0008,
@@ -57,7 +57,7 @@ test "PAL001: palette.loadObjBankToBuffer writes 16 colors to target bank" {
 }
 
 test "PAL002: palette.loadObjColorsToBuffer writes slice of colors at starting offset" {
-    var mock_pal = [_]u16{0} ** 256;
+    var mock_pal: [256]u16 = @splat(0);
     const colors = [_]u16{ 0x1234, 0x5678, 0x9ABC };
 
     loadObjColorsToBuffer(100, &colors, &mock_pal);

@@ -3,7 +3,7 @@
 This document provides essential context for AI agents working in the `zamgba` repository.
 
 ## Project Overview
-Zamgba is a self-learning project for Game Boy Advance (GBA) programming using the **Zig** programming language (targeting Zig version **0.16.0** or later). It contains a library SDK (`zamgba`), a Hardware Abstraction Layer (`zamgba-hal`), platform-agnostic 2D graphics helper routines (`zamgba-engine`), and example demo ROMs.
+Zamgba is a self-learning project for Game Boy Advance (GBA) programming using the **Zig** programming language (targeting Zig version **0.17.0** or later). It contains a library SDK (`zamgba`), a Hardware Abstraction Layer (`zamgba-hal`), platform-agnostic 2D graphics helper routines (`zamgba-engine`), and example demo ROMs.
 
 ---
 

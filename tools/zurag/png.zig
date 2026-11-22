@@ -298,7 +298,7 @@ pub fn parseHeader(bytes: []const u8) PngHeaderError!PngHeader {
     const filter_method = bytes[IHDR_FILTER_POS];
     const interlace_method = bytes[IHDR_INTERLACE_POS];
 
-    const color_type: ColorType = @enumFromInt(raw_color_type);
+    const color_type: ColorType = @fromBackingInt(@intCast(raw_color_type));
 
     if (color_type != .indexed) {
         return error.NotIndexedColor;
@@ -347,7 +347,7 @@ test "PNG001: parse valid indexed PNG header from asset bytes" {
 }
 
 test "PNG002: reject invalid signature" {
-    var corrupted = [_]u8{0} ** MIN_PNG_HEADER_LEN;
+    var corrupted: [MIN_PNG_HEADER_LEN]u8 = @splat(0);
     try std.testing.expectError(error.InvalidPngSignature, parseHeader(&corrupted));
 }
 

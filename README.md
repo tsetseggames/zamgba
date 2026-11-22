@@ -1,175 +1,245 @@
-# Introduction
+<p align="center">
+  <img src="assets/zamgba-logo.svg" width="180" alt="Zamgba Logo" />
+</p>
+
+<h1 align="center">Zamgba</h1>
+
+<p align="center">
+  <strong>A type-safe Game Boy Advance (GBA) SDK and 2D Game Engine in pure Zig.</strong>
+</p>
+
+<p align="center">
+  <a href="https://ziglang.org/"><img src="https://img.shields.io/badge/Zig-0.17.0%2B-F7A41D?logo=zig&logoColor=white" alt="Zig Version" /></a>
+  <a href="build.zig.zon"><img src="https://img.shields.io/badge/version-v0.3.1-6366F1" alt="Version v0.3.1" /></a>
+  <a href="https://en.wikipedia.org/wiki/Game_Boy_Advance"><img src="https://img.shields.io/badge/target-ARM7TDMI%20%28GBA%29-312E81" alt="Target GBA" /></a>
+</p>
+
+---
 
 > [!IMPORTANT]
 > **Disclaimer:** Zamgba is an unofficial homebrew development tool. It is not affiliated with, authorized, sponsored, or endorsed by Nintendo Co., Ltd. "Game Boy", "GBA", and "Game Boy Advance" are registered trademarks of Nintendo.
 
+---
 
-[Zamgba](https://github.com/fuzhouch/zamgba) is a project to learn
-how to program for [Game Boy Advance](https://en.wikipedia.org/wiki/Game_Boy_Advance).
-My goal is to use Game Boy Advance as a target platform to
-develop my own video gamed as hobby.
+## Overview
 
-The motivation was brought when I learn [TIC-80](https://tic80.com), a
-popular open source fantasy console. I love the idea behind
-(which was indeed brought by
-[PICO-8](https://www.lexaloffle.com/pico-8.php)), that a fantasy console
-should include all tools needed for development. However, it brings a
-limitation, that it is not easy to make use of modern
-graphics or music composing tools into development workflow, such as
-[Asprite](https://www.aseprite.org)
-or [Famistudio](https://www.famistudio.org/).
-Besides, I would like to program targeting a true hardware with
-low-level concepts (e.g. IRQs.). A high-level
-scripting language used by fantasy console does not allow me do this.
+**Zamgba** is an open-source Software Development Kit (SDK) and 2D game engine for the Game Boy Advance (GBA), written entirely in **Zig**.
 
-[Game Boy Advance](https://en.wikipedia.org/wiki/Game_Boy_Advance) has
-been a popular gaming hardware since I was a kid.
-Though it has reached end-of-life for a long time, there are many
-games available. People play them on real hardwares (GBA, GBA SP,
-Nintendo DS or 3DS), hardware simulator
-([Analogue Pocket](https://www.analogue.co) or emulators
-(either via desktop or many retro handheld devices). Unlike
-fantasy consoles,
-[Game Boy Advance](https://en.wikipedia.org/wiki/Game_Boy_Advance)
-is based on real ARM processor. The knowledge of hardware programming
-is still useful nowadays.
+Zamgba bridges the gap between low-level bare-metal hardware programming and modern game development workflows. It provides a clean, two-layer architecture:
+- **`zamgba.hal`**: A type-safe hardware abstraction layer mapping GBA registers, VRAM, OAM, and display modes without raw pointer arithmetic.
+- **`zamgba.engine`**: A high-level 2D engine featuring camera viewport tracking, parallax scrolling, sub-pixel tilemap physics, and automated VRAM streaming.
 
-Overall, [Game Boy Advance](https://en.wikipedia.org/wiki/Game_Boy_Advance)
-appears to be a better target platform than fantasy console for me to
-create 2D based, retro style game for fun.
+---
 
-## The programming languages
+## Why Zig?
 
-I use [Zig programming language](https://ziglang.org) to construct my
-project. Zig is a low-level language just like C, but it comes with many
-language constructs to prevent memory bugs. Meanwhile, Zig comes with a
-perfect compiler toolchain, which keeps cross-compiling in mind from
-the first day.
+GBA homebrew has traditionally relied on C/C++ toolchains like devkitARM. Zamgba chooses [Zig](https://ziglang.org) as its foundation for several compelling reasons:
 
+1. **Modern Cross-Compilation Toolchain**: Zig provides a self-contained, zero-dependency compiler that cross-compiles out of the box to `thumb-freestanding-eabi` (`arm7tdmi`), eliminating complex external toolchain setups.
+2. **Type-Safe Hardware Registers**: Zig's `packed struct` and distinct integer types (`u1`, `u2`, `u5`, etc.) match GBA memory-mapped I/O (MMIO) registers bit-for-bit, providing compile-time type safety without cumbersome C bitmask macros.
+3. **Zero-Cost Compile-Time Metaprogramming (`comptime`)**: Layout validation, ROM header generation, asset embedding, and math lookup tables are computed at compile time with zero runtime overhead.
+4. **Predictable Bare-Metal Control**: Zig does not have hidden control flow, runtime memory allocations, or a garbage collector. Every instruction and memory layout remains strictly under developer control, which is essential for constrained hardware with 384 KB of RAM.
 
-## How can I (as a reader) use the project
+---
 
-With **v0.1.0**, Zamgba is ready as an early, open-source SDK and lightweight 2D engine for learning and creating Game Boy Advance programs in pure Zig.
+## Standout Feature: Seamless Modern Tooling Integration (`zurag`)
 
-You can use this project to:
-1. **Learn GBA Hardware Programming**: Explore how GBA MMIO registers, VRAM, and OAM can be mapped cleanly into type-safe Zig constructs without fragile C pointer arithmetic.
-2. **Build Your Own GBA Demos & Games**: Use the built-in HAL and engine loop to write your own ROMs, test 2D collisions, and run them on real hardware or emulators like mGBA.
-3. **Reference as a Dependency**: Integrate Zamgba into your own external game repository using git submodules (see `consumezamgba` below).
+The biggest highlight of Zamgba is its integration with modern, industry-standard content creation tools via its built-in companion CLI tool **`zurag`**:
 
-*Note*: As of v0.1.0, this is an early developer preview. It is great for small retro games (like Pong), tech demos, and learning bare-metal development, but not yet intended for full commercial productions. Feedback, suggestions, and PRs are welcome!
+### 1. Aseprite Animation Pipeline
+Instead of manually slicing spritesheets or writing hardcoded frame offsets, `zurag` directly ingests **[Aseprite](https://www.aseprite.org)** JSON metadata and sprite sheets:
+- Automatically packs 8×8 GBA tiles and slices frame tags.
+- Supports both static ROM-to-VRAM preloading and real-time VRAM tile streaming via VBlank DMA.
+- **Explore Demos**:
+  - [`demo/engine/flappy_tsetseg.zig`](demo/engine/flappy_tsetseg.zig) (Static all-frame VRAM preloading)
+  - [`demo/engine/flappy_tsetseg_streaming.zig`](demo/engine/flappy_tsetseg_streaming.zig) (DMA-driven single-slot VRAM streaming)
 
-## ...But I'm a hacker!
+### 2. LDtk Level Editor & TileMap Pipeline
+Level design is performed in **[LDtk](https://ldtk.io)** (2D Level Designer) rather than legacy grid editors:
+- Automatically parses LDtk `.ldtk` project files, extracts tile layers, deduplicates identical 8×8 tiles, and generates packed 16-bit `ScreenEntry` maps.
+- Ingests LDtk `IntGrid` collision layers and integrates them directly into the engine's 2D physics system.
+- **Explore Demos**:
+  - [`demo/engine/ldtk_minimal.zig`](demo/engine/ldtk_minimal.zig) (Minimal standalone LDtk Mode 0 tilemap rendering)
+  - [`demo/engine/camera_demo.zig`](demo/engine/camera_demo.zig) (Large scrolling LDtk world with smooth camera tracking)
+  - [`demo/engine/tilemap_collision.zig`](demo/engine/tilemap_collision.zig) (Continuous sub-pixel box-to-tilemap physics and collision response)
 
-Well, if you are also interested programming GBA in Zig, follow the
-steps below:
+---
 
-1. Install Zig. The codebase is compiled with Zig version **0.16.0** or later.
-2. Clone [Zamgba](https://github.com/fuzhouch/zamgba) source code.
-3. Build with command: `zig build`. You will get the compiled demo ROM binaries inside `zig-out/bin/` (e.g., `zig-out/bin/sprite_engine.gba`).
-4. Run any ROM using an emulator. For example: `mgba ./zig-out/bin/sprite_engine.gba`.
-5. For debugging, use `mgba -d ./zig-out/bin/sprite_engine.gba`. It's a powerful assembly debugging tool to solve a lot of problems.
+## Key Highlights
 
-## Built-In Demo ROMs
+- **Type-Safe Hardware Abstraction (`zamgba.hal`)**: Directly maps GBA physical registers (MMIO), VRAM, PALRAM, and OAM into packed Zig structs, eliminating unsafe pointer arithmetic and brittle C macros. Supports Graphics Modes 0 through 5 and hardware VBlank synchronization.
+- **High-Level 2D Engine (`zamgba.engine`)**: Provides high-level game loop orchestration (`engine.run`), `StaticSprite` and `AnimatedSprite` entities, sub-pixel physics (`Fixed24_8`), and AABB collision detection.
+- **Dynamic VRAM Streaming & DMA**: Features a dynamic VRAM tile allocator (`VramAllocator`) and VBlank DMA queue (`DmaQueue`) to stream multi-frame sprite animations seamlessly from ROM into VRAM without CPU copy stalls.
+- **2D Camera & Parallax Scrolling**: Robust `Camera2D` supporting target tracking, lerp smoothing, deadzone margins, bounds clamping, screen shake, frustum culling, and multi-layer parallax scrolling.
+- **Mode 0 TileMap Engine**: ScreenBlock management, packed 16-bit `ScreenEntry`, and continuous collision resolution against background tile layers (`moveAndCollide`).
+- **Asset Pipeline Tool (`zurag`)**: Offline CLI tool compiling PNG sprites, Aseprite animations, and LDtk tilemap levels into zero-overhead Zig data structures.
+- **Debugging & Diagnostics**: First-class mGBA debug register console logging (`zamgba.hal.mgba`), hardware `@panic` handler, and host-executable unit tests.
 
-Zamgba includes several interactive and instructional demo ROMs categorised by abstraction layers. For an in-depth breakdown of each demo's capabilities and our long-term plan for the flagship **Durable Showcase Demo** (*Tsetseg's Quest* / ARPG Lite), see **[`docs/demo.md`](docs/demo.md)**.
+---
 
-### 1. Hardware Abstraction Layer (HAL) Demos
-*   **`mode3_lines`** (`demo/hal/mode3_lines.zig`): Demonstrates basic Mode 3 bitmap graphics. Renders three intersecting colored lines on a bitmap background using low-level, context-agnostic line-drawing algorithms.
-*   **`background_hal`** (`demo/hal/background_hal.zig`): Demonstrates low-level Mode 0 text tiled background setup and register-level scrolling. Manually populates palette memory (PALRAM), tile image graphics in Charblock 0, 32x32 screen entries in Screenblock 16, and updates `REG_BG0HOFS`/`REG_BG0VOFS` scroll registers interactively via D-Pad in VBlank.
-*   **`sprite_hal`** (`demo/hal/sprite_hal.zig`): Demonstrates direct, register-level sprite setup on the GBA. Manually populates palette memory (PALRAM) and sprite tile memory (VRAM), configures packed `ObjAttr` coordinates, and bounces a single white 8x8 block smoothly left-to-right inside a VBlank-synchronized loop.
-*   **`panic_demo`** (`demo/hal/panic_demo.zig`): Demonstrates bare-metal panic handling. Triggers `@panic`, disables interrupts, outputs formatted fatal diagnostic logs to mGBA's debug port, and sets a red backdrop visual indicator.
+## Quickstart
 
-### 2. High-Level Engine Demos
-*   **`sprite_engine`** (`demo/engine/sprite_engine.zig`): Showcases our high-level **Static Namespace / File** engine loop. State is declared cleanly as file-scope `var` variables, and the loop is started via `engine.run(@This())`. The engine automatically manages VBlank timing, OAM hardware uploads, and dynamic slot allocation.
-*   **`sprite_instanced`** (`demo/engine/sprite_instanced.zig`): Showcases our high-level **Pointer-to-Instance** engine loop. Encapsulates the entire game state inside a type-safe structure (`const Game = struct { ... }`) and passes an instance pointer `engine.run(&game)`. This is the recommended structure for larger, multi-sprite/multi-level modular games requiring state serialization (SRAM/Flash cartridge saving).
-*   **`joypad_instanced`** (`demo/engine/joypad_instanced.zig`): Demonstrates high-level sprite movement via D-pad input using engine-layer APIs. Changes sprite color dynamically upon hitting screen boundaries (Top: Red, Bottom: White, Left: Yellow, Right: Green).
-*   **`collision_demo`** (`demo/engine/collision_demo.zig`): Demonstrates the 2D physics engine, AABB collision detection, and `CollisionMap` streaming. Features a player square responding to D-pad inputs, two bouncing patrol enemies, and game state reset upon collision.
-*   **`flappy_tsetseg`** (`demo/engine/flappy_tsetseg.zig`): Demonstrates animated multi-frame 8-bpp sprite playback with static all-frame VRAM preloading.
-*   **`flappy_tsetseg_streaming`** (`demo/engine/flappy_tsetseg_streaming.zig`): Demonstrates high-performance VRAM Streaming sprite animation. Only a single 32x32 frame slot (1 KB) is allocated via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `AnimatedSprite` and `DmaQueue` during VBlank.
-*   **`pong`** (`demo/engine/pong.zig`): A complete, playable classic Pong game built entirely on `zamgba-engine`. Features player paddle D-pad controls, AI paddle tracking, top/bottom wall reflections, AABB paddle-ball collision response, and scoring/resets.
-*   **`sprite_static_fill`** (`demo/engine/sprite_static_fill.zig`): Demonstrates procedural single-color sprite generation via `StaticSprite.fillSolidColor()`. Renders multiple hardware sprite shapes and palette banks, with real-time color cycling on button input.
-*   **`sprite_animation_static`** (`demo/engine/sprite_animation_static.zig`): Demonstrates idiomatic multi-frame sprite animation with all frames preloaded into VRAM using `AnimatedSprite` in `.static` mode. Features D-Pad movement, horizontal mirroring (`h_flip`), and play/pause controls.
-*   **`sprite_animation_streaming`** (`demo/engine/sprite_animation_streaming.zig`): Demonstrates high-performance dynamic VRAM streaming sprite animation using `AnimatedSprite` in `.streaming` mode. Only a single frame slot is allocated dynamically via `VramAllocator`; subsequent frames stream asynchronously from ROM into VRAM via `DmaQueue` during VBlank.
-*   **`camera_demo`** (`demo/engine/camera_demo.zig`): Demonstrates 2D Camera viewport management in a large 512x512 scrolling Mode 0 tiled world. Features target tracking, position smoothing (lerp), deadzone (`DragMargin`), world bounds clamping (`CameraLimits`), screen shake, and automatic off-screen sprite frustum culling.
-*   **`tilemap_collision`** (`demo/engine/tilemap_collision.zig`): Demonstrates 2D box/tilemap collision against Mode 0 background tile layers (dirt and rock layers) using `moveAndCollide` with player sprite physics and camera viewport tracking.
-*   **`ldtk_minimal`** (`demo/engine/ldtk_minimal.zig`): Demonstrates standalone minimal Mode 0 TileMap rendering directly loaded from an LDtk-exported auto-layer tilemap without player entities or physics.
-*   **`parallax_scroll`** (`demo/engine/parallax_scroll.zig`): Demonstrates multi-layer parallax scrolling using independent background layer scroll speeds across 4 Mode 0 text background layers (Sky backdrop, Dirt hills, Rock foreground, Grass overlay).
+### Prerequisites
 
-### Can I reference your library as a dependency?
+1. Install **Zig** (**0.17.0** or later).
+2. Install the **[mGBA](https://mgba.io/)** emulator (recommended for assembly-level debugging and register logging).
 
-Yes. Please check the example at: https://github.com/fuzhouch/consumezamgba.
+### Build & Run
 
-You can manage Zamgba as a dependency via git submodule or standard package workflows.
+```bash
+# 1. Clone the repository
+git clone https://github.com/fuzhouch/zamgba.git
+cd zamgba
 
-The example project shows three steps to enable your project building a GBA ROM:
+# 2. Build standard ELF and GBA ROM binaries
+zig build
 
-1. ``build.zig`` calls ``@import("zamgba").arm.addROM()`` to define
-   a target. The API defines proper target to build code targeting
-   ARM7tdmi. It also defines step to do ``objcopy``, which is required
-   to convert built ELF file to an ``.gba`` image that can be recognized
-   by mgba.
-2. In source code, define a ``gameHeader`` to register GBA rom header
-   required by GBA device. It must be done by calling
-   ``@import("zamgba").setupROMHeader()``.
-3. Define main() function entry point with ``export`` keyword. It is
-   required by ``zamgba`` to locate the entry point while booting.
+# 3. Run a compiled demo on mGBA
+mgba ./zig-out/bin/camera_demo.gba
 
+# 4. Run unit tests on host
+zig build test
+```
 
-Enjoy!
+Compiled `.gba` ROMs will be placed in `zig-out/bin/`. For assembly-level source debugging, run `mgba -d ./zig-out/bin/<rom_name>.gba`.
 
-## Milestones
+---
 
-* **Version 0.1.0** (2026-08-23): Capable of writing a classic pong game. Supported features:
-  - [x] Respond to gamepad input
-  - [x] Single color/square sprites
-  - [x] Hardcoded collision detection 
-* **Version 0.2.0** (2026-09-06): Capable of writing a game with rich sprites graphics. Supported features:
-  - [x] Mode 0 support
-  - [x] PNG-sprite-to-code conversion tool (`zurag`)
-  - [x] Color palettes conversion tool (`zurag`)
-  - [x] Engine-level streaming sprite loader & VBlank DMA manager
-* **Version 0.3.0** (2026-11-22): Capable of writing a game with rich sprites and scrolling background. Supported features:
-  - [x] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
-  - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
-  - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures
-  - [x] Integration of `TileMapLayer` with `CollisionMap` physics system
-  - [x] Camera support for scrolling backgrounds and viewport tracking (`Camera2D`, `CameraLimits`, `DragMargin`, frustum culling)
-  - [x] Camera tracking & scrolling TileMap interactive demo ROM (`camera_demo`)
-  - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, tile deduplication, IntGrid extraction)
-  - [x] True color background, via mode 3, 4, 5
-  - [x] mGBA compatible logging
-  - [x] Panic handler
-  - [x] **Critical Bugfix**: Enforce 4-byte alignment for GBA BIOS `irqHandler` in linker script to prevent ARM-mode address rotation crash in Debug builds ([#39](https://github.com/tsetseggames/zamgba/issues/39), see [`docs/debug_issue39_irq_handler.md`](docs/debug_issue39_irq_handler.md))
-  - [x] Explicit palette & static sprite tile loading APIs (`SpriteSheet.loadPalette`, `preloadStaticTiles`, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
-* **Version 0.4.0**: Capable of writing a game with UI/HUD layers and sprite priority. Supported features:
-  - [ ] Screen-space UI/HUD sprite rendering (bypassing active camera viewport translations via `engine.drawSpriteUi`)
-  - [ ] Sprite rendering priority control (`priority: u2` in `SpriteOptions` / OAM Attr2)
-  - [ ] TileMap background layer priority configuration (`priority: u2` for foreground/background depth)
-  - [ ] Bitmap Font & Text typography rendering pipeline (8x8 tile fonts, dynamic text boxes, dialogue display)
-  - [ ] Automated palette bank allocation (`PaletteAllocator` leasing 4-bpp banks dynamically, see [`docs/palette_and_sprite_loading.md`](docs/palette_and_sprite_loading.md))
-  - [ ] Automated static VRAM slot allocation via `VramAllocator` for `.static` sprites
-  - [ ] Interactive Demo: `hud_tilemap` (Static HUD / status bar on BG0 with scrolling world background)
-  - [ ] Interactive Demo: `hud_sprite` (Screen-space animated Sprite HUD with active camera tracking)
-* **Version 0.5.0**: Capable of writing a game with save data. Supported features:
-  - [ ] Save state read/write API
-* **Version 0.6.0**: Capable of writing a game with chiptune music. Supported features:
-  - [ ] Chiptune-to-code conversion tool (`duu`)
-  - [ ] Support chiptune playing music (PSG hardware channels)
-* **Version 0.7.0**: Capable of playing Direct Audio. Supported features:
-  - [ ] Wav file to code conversion tool (`duu`)
-  - [ ] Direct Audio playback API (DMA-driven PCM channels)
-* **Version 0.8.0**: Capable of writing a game with affine sprite transformations. Supported features:
-  - [ ] Fixed-point Sin/Cos lookup table (LUT)
-  - [ ] 32-slot OAM affine matrix allocator
+## Architecture at a Glance
+
+Zamgba is structured into a clean two-layer architecture:
+
+```
+┌────────────────────────────────────────────────────────┐
+│             zamgba.engine (High-Level Engine)          │
+│   Camera2D • TileMapLayer • AnimatedSprite • Physics   │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│              zamgba.hal (Hardware Driver Layer)         │
+│     MMIO Registers • VRAM/OAM/PALRAM • DMA • VBlank    │
+└────────────────────────────────────────────────────────┘
+```
+
+- **`zamgba.hal`**: Exposes direct physical memory mappings (`hal.MemorySections`), display control registers (`hal.display`), interrupt dispatchers, and low-level bitmap drawing contexts.
+- **`zamgba.engine`**: The primary developer-facing layer managing game loops, OAM shadow staging, sprite descriptors, physics bodies, and asset loaders.
+
+*For an in-depth architectural breakdown, see [docs/architecture.md](docs/architecture.md).*
+
+---
+
+## Interactive Demo ROMs
+
+Zamgba includes over 17 standalone instructional and technical demo ROMs. Key highlights include:
+
+| Demo ROM | Category | Highlights |
+| :--- | :--- | :--- |
+| **`camera_demo`** | Engine | Full-featured 2D camera viewport tracking, smooth lerp, deadzone, screen shake, and frustum culling in a 512×512 scrolling world. |
+| **`parallax_scroll`** | Engine | Multi-layer Mode 0 background parallax scrolling across 4 independent text layers. |
+| **`tilemap_collision`** | Engine | Continuous sub-pixel physics (`Fixed24_8`) colliding and sliding smoothly against background tile layers. |
+| **`sprite_animation_streaming`** | Engine | Dynamic VRAM slot leasing via buddy allocator and DMA queue streaming during VBlank. |
+| **`pong`** | Engine | Classic, fully playable Pong game with paddle kinematics, AI tracking, and score management. |
+| **`background_hal`** | HAL | Direct register-level Mode 0 tiled background configuration and real-time hardware scrolling. |
+| **`mode3_lines`** | HAL | Bresenham line rendering directly in Mode 3 true-color bitmap VRAM. |
+
+👉 **For the complete demo catalog, source paths, and our roadmap for the durable showcase game (*Tsetseg's Quest*), see [docs/demo.md](docs/demo.md).**
+
+---
+
+## Using Zamgba in Your Project
+
+Zamgba can be referenced as a dependency in your own GBA game project via Git submodules or standard package workflows.
+
+See the complete companion template at **[consumezamgba](https://github.com/fuzhouch/consumezamgba)**.
+
+To configure your project:
+1. **Target Setup**: In your `build.zig`, call `@import("zamgba").arm.addROM()` to configure the freestanding ARM7TDMI cross-compilation target and linker script.
+2. **ROM Header**: In your root source file, export the required GBA ROM header:
+   ```zig
+   const zamgba = @import("zamgba");
+   pub export var gameHeader linksection(".gba.header") = zamgba.hal.setupROMHeader("MYGAME", "GM01", "00");
+   ```
+3. **Main Entry**: Define an exported `main()` function:
+   ```zig
+   pub export fn main() noreturn {
+       // Initialize engine and run your loop
+       while (true) {}
+   }
+   ```
+
+---
+
+## Documentation Hub
+
+Comprehensive architectural documents and guides are available in the [`docs/`](docs/) directory:
+
+| Topic | Relevant Documents |
+| :--- | :--- |
+| **Overview & Design** | [docs/motivation.md](docs/motivation.md) • [docs/architecture.md](docs/architecture.md) • [docs/features.md](docs/features.md) |
+| **Demos & Showcase** | [docs/demo.md](docs/demo.md) |
+| **Graphics & TileMaps** | [docs/tilemap.md](docs/tilemap.md) • [docs/camera.md](docs/camera.md) • [docs/palette_and_sprite_loading.md](docs/palette_and_sprite_loading.md) |
+| **Sprites & Memory** | [docs/sprite.md](docs/sprite.md) • [docs/vram_allocator.md](docs/vram_allocator.md) • [docs/tile_dma_queue.md](docs/tile_dma_queue.md) |
+| **Physics & Math** | [docs/collision.md](docs/collision.md) • [docs/fixed_number.md](docs/fixed_number.md) |
+| **Asset Pipeline** | [docs/tool_zurag_pic_conversion.md](docs/tool_zurag_pic_conversion.md) • [docs/png_decoder.md](docs/png_decoder.md) |
+| **Hardware & Diagnostics** | [docs/compile.md](docs/compile.md) • [docs/irq_vblank.md](docs/irq_vblank.md) • [docs/debug_support.md](docs/debug_support.md) |
+
+---
+
+## Milestones & Roadmap
+
+- **Version 0.1.0** (2026-08-23): *Classic Pong & Core HAL*
+  - [x] Responsive gamepad input polling
+  - [x] Single-color square sprites and basic rendering
+  - [x] AABB collision detection & kinematics (`pong.gba`)
+- **Version 0.2.0** (2026-09-06): *Rich Sprites & Streaming Animation*
+  - [x] Mode 0 tiled background & sprite mapping
+  - [x] PNG and palette conversion CLI tool (`zurag`)
+  - [x] Dynamic VRAM allocator (`VramAllocator`) and VBlank DMA queue (`DmaQueue`)
+  - [x] High-performance streaming sprite animations (`flappy_tsetseg_streaming.gba`)
+- **Version 0.3.1** (Current): *TileMaps, 2D Camera, & LDtk Pipeline*
+  - [x] Mode 0 background TileMap engine (`ScreenEntry`, `TileSet`, `TileMapLayer`)
+  - [x] Multi-layer parallax background scrolling (`parallax_scroll.gba`)
+  - [x] 2D Camera system (`Camera2D`, smooth lerp, deadzone, screen shake, frustum culling)
+  - [x] Continuous sub-pixel physics and tilemap collision (`moveAndCollide`)
+  - [x] LDtk level editor import pipeline in `zurag` (`.ldtk` parser, IntGrid collision)
+  - [x] True-color bitmap modes (Mode 3, 4, 5)
+  - [x] mGBA debug register console logging and bare-metal panic handler
+  - [x] Enforced 4-byte alignment for BIOS `irqHandler` preventing ARM-mode rotation crash ([#39](https://github.com/tsetseggames/zamgba/issues/39))
+  - [x] Upgraded compiler toolchain to Zig **0.17.0**
+- **Version 0.4.0** (Next): *UI/HUD Layers & Sprite Priority*
+  - [ ] Screen-space UI/HUD sprite rendering (`engine.drawSpriteUi`)
+  - [ ] Sprite rendering priority control (`priority: u2` in OAM Attr2)
+  - [ ] TileMap background layer depth priority
+  - [ ] Bitmap Font typography & dialogue text box pipeline
+  - [ ] Automated dynamic palette bank allocation (`PaletteAllocator`)
+- **Version 0.5.0**: *Cartridge Save Data*
+  - [ ] SRAM / Flash cartridge save state read and write API
+- **Version 0.6.0**: *Chiptune Audio (PSG)*
+  - [ ] Chiptune-to-code asset conversion tool (`duu`)
+  - [ ] GBA PSG hardware sound channels (Tone, Sweep, Noise) playback
+- **Version 0.7.0**: *Direct Audio (PCM)*
+  - [ ] WAV/PCM audio conversion pipeline
+  - [ ] DMA-driven Direct Audio PCM dual-channel playback
+- **Version 0.8.0**: *Affine Transformations*
+  - [ ] Fixed-point Sin/Cos trigonometric lookup table (LUT)
+  - [ ] 32-slot OAM affine transformation matrix allocator
   - [ ] Sprite rotation and scaling API
+- **Version 1.0.0**: *2D Platformer Engine Showcase*
+  - [ ] Comprehensive platformer demo featuring physics, enemies, audio, and levels (*Tsetseg's Quest*)
+- **Version 2.0.0**: *Pseudo-3D Engine*
+  - [ ] Pseudo-3D raster rendering (Mode 7 style ground planes, raycasting)
+- **Post-1.0.0**:
+  - [ ] Dynamic multi-channel software audio mixer & real-time tracker module playback (`.xm`)
 
-## License and Copyright
+*For the complete design specifications of planned features, see [docs/features.md](docs/features.md).*
 
-This repository contains both open-source code for the `zamgba` SDK/engine and proprietary art assets used for testing and demonstration purposes.
+---
 
-* **Source Code**: The library and engine source code is open-source. *(Feel free to add a specific `LICENSE` file like MIT or Zlib to the repository if you haven't already).*
-* **Art Assets (`assets/`)**: All art assets, including the Sprite files inside the `assets/` directory (e.g., `tsetseg-ride-on-broom-*`), are from the author's original game *["Tsetseg's Adventure"](https://store.steampowered.com/app/2337770/Tsetsegs_Adventure/)*. The copyrights for these assets belong entirely to the author. **All Rights Reserved.** You may use them locally to compile and run the demo ROMs provided in this repository, but you may not redistribute, modify, or use these visual assets in your own projects, open-source or commercial, without explicit permission.
-* **Version 1.0.0**: Capable of writing a 2D platformer game.
-* **Version 2.0.0**: Capable of writing a pseudo-3D game.
-* **Post-1.0.0 Features**:
-  - [ ] Dynamic multi-channel software mixer & real-time Tracker module playback (`.xm`) in `zamgba-engine`.
+## License, Copyright, and Legal Notice
+
+### Legal Disclaimer
+Zamgba is an independent, open-source homebrew development SDK and engine. It is **not** affiliated with, authorized, sponsored, or endorsed by Nintendo Co., Ltd. "Game Boy", "GBA", and "Game Boy Advance" are registered trademarks of Nintendo. Zamgba does not include any copyrighted Nintendo BIOS, SDK, or proprietary code; all hardware interfaces are clean-room implemented in Zig.
+
+### Licensing
+- **Source Code**: All library, engine, and build tooling code is open-source.
+- **Art Assets (`assets/`)**: All game art assets, including sprite files and tilesets in `assets/`, are copyrighted works from the author's original game *["Tsetseg's Adventure"](https://store.steampowered.com/app/2337770/Tsetsegs_Adventure/)*. **All Rights Reserved.** You may use them locally to compile and run the demo ROMs provided in this repository, but you may not redistribute, modify, or use them in external commercial or open-source projects without explicit permission.

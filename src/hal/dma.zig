@@ -106,7 +106,7 @@ pub const Regs = struct {
     cnt_h: *volatile u16,
 
     pub inline fn baseForChannel(channel: Channel) usize {
-        return 0x040000B0 + @as(usize, @intFromEnum(channel)) * 12;
+        return 0x040000B0 + @as(usize, @backingInt(channel)) * 12;
     }
 
     pub inline fn forChannel(channel: Channel) Regs {
@@ -304,7 +304,7 @@ test "DMA001: DmaControl packed struct bit alignment" {
 
 test "DMA002: DmaTask initBytes computes alignment and count" {
     var src_buf align(4) = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
-    var dest_buf align(4) = [_]u8{0} ** 8;
+    var dest_buf: [8]u8 align(4) = @splat(0);
 
     // 8 bytes, 4-byte aligned -> 2 words (32-bit)
     const task32 = try DmaTask.initBytes(&src_buf, &dest_buf, 8);
@@ -322,27 +322,27 @@ test "DMA002: DmaTask initBytes computes alignment and count" {
 
 test "DMA003: copy16 copies halfwords to destination" {
     const src = [_]u16{ 0x1234, 0x5678, 0x9ABC, 0xDEF0 };
-    var dest = [_]u16{0} ** 4;
+    var dest: [4]u16 = @splat(0);
     try copy16(.ch3, &dest, &src, 4);
     try std.testing.expectEqualSlices(u16, &src, &dest);
 }
 
 test "DMA004: copy32 copies words to destination" {
     const src = [_]u32{ 0x12345678, 0x9ABCDEF0 };
-    var dest = [_]u32{0} ** 2;
+    var dest: [2]u32 = @splat(0);
     try copy32(.ch3, &dest, &src, 2);
     try std.testing.expectEqualSlices(u32, &src, &dest);
 }
 
 test "DMA005: fill16 fills destination buffer with constant halfword" {
-    var dest = [_]u16{0} ** 4;
+    var dest: [4]u16 = @splat(0);
     try fill16(.ch3, &dest, 0x7FFF, 4);
     const expected = [_]u16{ 0x7FFF, 0x7FFF, 0x7FFF, 0x7FFF };
     try std.testing.expectEqualSlices(u16, &expected, &dest);
 }
 
 test "DMA006: fill32 fills destination buffer with constant word" {
-    var dest = [_]u32{0} ** 4;
+    var dest: [4]u32 = @splat(0);
     try fill32(.ch3, &dest, 0x11223344, 4);
     const expected = [_]u32{ 0x11223344, 0x11223344, 0x11223344, 0x11223344 };
     try std.testing.expectEqualSlices(u32, &expected, &dest);
@@ -350,7 +350,7 @@ test "DMA006: fill32 fills destination buffer with constant word" {
 
 test "DMA007: DmaTask initBytes rejects unaligned bytes or odd pointers" {
     var src_buf align(4) = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
-    var dest_buf align(4) = [_]u8{0} ** 8;
+    var dest_buf: [8]u8 align(4) = @splat(0);
 
     // Odd byte lengths
     try std.testing.expectError(error.UnalignedPointer, DmaTask.initBytes(&src_buf, &dest_buf, 3));
@@ -365,12 +365,12 @@ test "DMA007: DmaTask initBytes rejects unaligned bytes or odd pointers" {
 }
 
 test "DMA008: copy16 / copy32 / fill16 / fill32 reject zero count" {
-    var dest16 = [_]u16{0} ** 2;
+    var dest16: [2]u16 = @splat(0);
     const src16 = [_]u16{ 1, 2 };
     try std.testing.expectError(error.InvalidCount, copy16(.ch0, &dest16, &src16, 0));
     try std.testing.expectError(error.InvalidCount, fill16(.ch0, &dest16, 0x1234, 0));
 
-    var dest32 = [_]u32{0} ** 2;
+    var dest32: [2]u32 = @splat(0);
     const src32 = [_]u32{ 1, 2 };
     try std.testing.expectError(error.InvalidCount, copy32(.ch0, &dest32, &src32, 0));
     try std.testing.expectError(error.InvalidCount, fill32(.ch0, &dest32, 0x12345678, 0));

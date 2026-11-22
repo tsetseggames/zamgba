@@ -9,7 +9,7 @@ fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
         .os_tag = .freestanding,
     };
 
-    query.cpu_features_add.addFeature(@intFromEnum(std.Target.arm.Feature.thumb_mode));
+    query.cpu_features_add.addFeature(@backingInt(std.Target.arm.Feature.thumb_mode));
     return std.Build.resolveTargetQuery(b, query);
 }
 
@@ -49,7 +49,7 @@ pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     // Known issue: The built executable (in ELF format) can't be
     // executed by mgba emulator, unlike devkitARM. Root cause needs
     // more investigation.
-    const objcopy_step = rom.addObjCopy(.{ .format = .bin });
+    const objcopy_step = rom.addObjCopy(.{ .format = .binary });
     const install_bin_step = b.addInstallBinFile(
         objcopy_step.getOutput(),
         b.fmt("{s}.gba", .{options.name}),

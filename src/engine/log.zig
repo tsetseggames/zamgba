@@ -23,7 +23,7 @@ fn write(level: LogLevel, message: []const u8) void {
     if (comptime hal.specs.is_gba_target) {
         hal.mgba.log.write(level, message);
     } else {
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             std.debug.print("[{s}] {s}\n", .{ @tagName(level), message });
         }
     }
@@ -43,7 +43,7 @@ fn formatToBuf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
 /// Core logging dispatcher with compile-time zero-cost optimization in Release builds.
 /// In non-Debug builds, log statements and formatting are completely eliminated with 0 bytes ROM/RAM footprint.
 pub fn log(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
-    if (comptime builtin.mode != .Debug) return;
+    if (comptime builtin.mode != .debug) return;
     const formatted = formatToBuf(&hal.mgba.log.format_buf, fmt, args);
     write(level, formatted);
 }
@@ -77,7 +77,7 @@ pub inline fn print(comptime fmt: []const u8, args: anytype) void {
 // ==================================================================
 
 const TestContext = struct {
-    var last_msg: [BUFFER_SIZE]u8 = [_]u8{0} ** BUFFER_SIZE;
+    var last_msg: [BUFFER_SIZE]u8 = @splat(0);
     var last_len: usize = 0;
     var last_level: ?LogLevel = null;
 
