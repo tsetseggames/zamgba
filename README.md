@@ -128,7 +128,7 @@ Enjoy!
   - [x] PNG-sprite-to-code conversion tool (`zurag`)
   - [x] Color palettes conversion tool (`zurag`)
   - [x] Engine-level streaming sprite loader & VBlank DMA manager
-* **Version 0.3.0**: Capable of writing a game with rich sprites and scrolling background. Supported features:
+* **Version 0.3.0** (2026-11-22): Capable of writing a game with rich sprites and scrolling background. Supported features:
   - [x] HAL Background registers & scroll controls (`REG_BGxCNT`, `setBgControl`, `setBgScroll`)
   - [x] Background TileMap engine (ScreenBlock management & packed 16-bit `ScreenEntry`)
   - [x] Engine `TileMapLayer` and `TileSet` with zero-RAM ROM-baked asset structures

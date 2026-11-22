@@ -560,8 +560,8 @@ test "SPR004: compileOamAttr encoding" {
 }
 
 test "SPR006: StaticSprite fillSolidColorToBuffers mock buffer" {
-    var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
-    var mock_palram: [256]u16 = [_]u16{0} ** 256;
+    var mock_vram: [1024]u16 = @splat(0);
+    var mock_palram: [256]u16 = @splat(0);
 
     const fill_spr = try StaticSprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 16, 8, .{
         .tile_index = 2,
@@ -764,7 +764,7 @@ test "SPR015: moveAndCollide boundary handling in all 4 directions across solid 
 test "ANI001: AnimatedSprite init with streaming mode allocates 1-frame VRAM slot" {
     vram_allocator.reset();
 
-    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
+    const dummy_tiles: [3 * 128]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -784,7 +784,7 @@ test "ANI001: AnimatedSprite init with streaming mode allocates 1-frame VRAM slo
 }
 
 test "ANI002: AnimatedSprite init with static mode uses base tile_index and advances with frame" {
-    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_tiles: [256]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -807,7 +807,7 @@ test "ANI002: AnimatedSprite init with static mode uses base tile_index and adva
 }
 
 test "ANI003: AnimatedSprite setAnimation and setAnimationByIndex select tag and reset frame" {
-    const dummy_tiles: [512]u8 align(4) = [_]u8{0} ** 512;
+    const dummy_tiles: [512]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -844,7 +844,7 @@ test "ANI004: AnimatedSprite updateWithQueue advances frame on timer expiration 
     vram_allocator.reset();
     var test_queue = dma_queue.DmaQueue.init();
 
-    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_tiles: [256]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -880,7 +880,7 @@ test "ANI005: AnimatedSprite deinit releases VRAM allocation back to buddy alloc
     vram_allocator.reset();
     const initial_free = vram_allocator.getFreeTileCount();
 
-    const dummy_tiles: [2048]u8 align(4) = [_]u8{0} ** 2048;
+    const dummy_tiles: [2048]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp8,
         .width = 32,
@@ -900,7 +900,7 @@ test "ANI005: AnimatedSprite deinit releases VRAM allocation back to buddy alloc
 }
 
 test "ANI006: pingpong animation direction reverses correctly" {
-    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
+    const dummy_tiles: [3 * 128]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -936,13 +936,14 @@ test "ANI006: pingpong animation direction reverses correctly" {
 }
 
 test "ANI007: AnimatedSprite composition and toOamAttr output" {
+    const dummy_tiles: [256]u8 = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
         .height = 16,
         .tile_count_per_frame = 4,
         .frame_count = 2,
-        .tiles = &[_]u8{0} ** 256,
+        .tiles = &dummy_tiles,
         .durations_ms = &[_]u16{ 100, 100 },
         .tags = &[_]AnimationTag{
             .{ .name = "idle", .from_frame = 0, .to_frame = 1, .direction = .forward },
@@ -970,7 +971,7 @@ test "ANI007: AnimatedSprite composition and toOamAttr output" {
 }
 
 test "ANI008: AnimatedSprite without tags loops all frames forward by default" {
-    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
+    const dummy_tiles: [3 * 128]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -998,7 +999,7 @@ test "ANI009: AnimatedSprite advanceFrameWithQueue advances frame, resets timer,
     vram_allocator.reset();
     var test_queue = dma_queue.DmaQueue.init();
 
-    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_tiles: [256]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -1070,7 +1071,7 @@ test "PAL003: SpriteSheet.loadPalette safely invokes without palette or in host 
 }
 
 test "ANI010: AnimatedSprite.init with Options.tile_index sets base_tile_index and updates getTileIndex" {
-    const dummy_tiles: [256]u8 align(4) = [_]u8{0} ** 256;
+    const dummy_tiles: [256]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 16,
@@ -1098,7 +1099,7 @@ test "ANI010: AnimatedSprite.init with Options.tile_index sets base_tile_index a
 }
 
 test "ANI011: AnimatedSprite.preloadStaticTilesToBuffer copies all sheet frame tiles to designated offset" {
-    var mock_vram = [_]u16{0} ** 2048;
+    var mock_vram: [2048]u16 = @splat(0);
     const dummy_tiles = [_]u8{ 0x12, 0x34, 0x56, 0x78 };
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
@@ -1124,8 +1125,8 @@ test "ANI011: AnimatedSprite.preloadStaticTilesToBuffer copies all sheet frame t
 test "ANI012: preloadStaticTiles returns error.InvalidAnimationMode when sprite mode is .streaming" {
     vram_allocator.reset();
 
-    var mock_vram = [_]u16{0} ** 2048;
-    const dummy_tiles: [32]u8 align(4) = [_]u8{0} ** 32;
+    var mock_vram: [2048]u16 = @splat(0);
+    const dummy_tiles: [32]u8 align(4) = @splat(0);
     const dummy_sheet = SpriteSheet{
         .bpp = .bpp4,
         .width = 8,

@@ -395,7 +395,7 @@ test "CAM006: Camera2D position smoothing and screen shake decay" {
 }
 
 test "CAM007: Camera2D TileMapLayer scroll synchronization and parallax" {
-    var dummy_tiles = [_]tilemap.ScreenEntry{tilemap.ScreenEntry.fromRaw(0)} ** 1024;
+    var dummy_tiles: [1024]tilemap.ScreenEntry = @splat(tilemap.ScreenEntry.fromRaw(0));
     const dummy_tileset = tilemap.TileSet{
         .tiles = tilemap.TileData{ .bpp4 = &[_]tilemap.Tile4bpp{} },
         .palette = &[_]tilemap.Bgr555{},

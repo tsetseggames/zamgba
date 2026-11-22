@@ -267,8 +267,8 @@ test "TLM001: ScreenEntry packed encoding and decoding" {
 }
 
 test "TLM002: MapLayerData cell entry resolution and dimensions" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     const dummy_coll = [_]CollisionMask{ 0, Collision.layer(0), Collision.layer(1), 0 };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
@@ -299,8 +299,8 @@ test "TLM002: MapLayerData cell entry resolution and dimensions" {
 }
 
 test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundary safety" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     // Tile 0: Passable (NONE), Tile 1: Solid (Layer 0), Tile 2: Hazard/Water (Layer 1)
     const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(1) };
     const tileset = TileSet{
@@ -362,8 +362,8 @@ test "TLM003: TileMapLayer world-to-tile coordinate collision lookup and boundar
 }
 
 test "TLM004: TileMapLayer collision handling with empty or partial TileSet collision masks" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     // TileSet provides collision mask only for Tile 0 (NONE) and Tile 1 (Layer 0)
     const partial_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0) };
     const tileset_partial = TileSet{
@@ -425,8 +425,8 @@ test "TLM004: TileMapLayer collision handling with empty or partial TileSet coll
 }
 
 test "TLM005: TileMapLayer.asCollisionMap physics integration" {
-    const dummy_tiles = [_]Tile4bpp{[_]u32{0} ** 8};
-    const dummy_pal = [_]Bgr555{Bgr555{}} ** 16;
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
     const dummy_coll = [_]CollisionMask{ Collision.NONE, Collision.layer(0), Collision.layer(2) };
     const tileset = TileSet{
         .tiles = .{ .bpp4 = &dummy_tiles },
@@ -435,7 +435,7 @@ test "TLM005: TileMapLayer.asCollisionMap physics integration" {
     };
 
     // 32x32 tiles map with a wall at (2, 2) [Layer 0] and water at (4, 4) [Layer 2]
-    var entries = [_]ScreenEntry{.{}} ** (32 * 32);
+    var entries: [32 * 32]ScreenEntry = @splat(.{});
     entries[2 * 32 + 2] = .{ .tile_index = 1 }; // Tile 1 at (2, 2)
     entries[4 * 32 + 4] = .{ .tile_index = 2 }; // Tile 2 at (4, 4)
 
@@ -482,8 +482,8 @@ test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
 
     // 2. TileData tagged union operations
     const tiles_4bpp = [_]Tile4bpp{
-        [_]u32{0} ** 8,
-        [_]u32{0x11111111} ** 8,
+        @splat(0),
+        @splat(0x11111111),
     };
     const data_4bpp = TileData{ .bpp4 = &tiles_4bpp };
     try std.testing.expect(!data_4bpp.is8bpp());
@@ -492,7 +492,7 @@ test "TLM006: TileData and Tile4bpp/Tile8bpp type-safety and byte sizing" {
     try std.testing.expectEqual(@as(usize, 16), data_4bpp.wordCount());
 
     const tiles_8bpp = [_]Tile8bpp{
-        [_]u32{0} ** 16,
+        @splat(0),
     };
     const data_8bpp = TileData{ .bpp8 = &tiles_8bpp };
     try std.testing.expect(data_8bpp.is8bpp());
