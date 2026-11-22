@@ -237,6 +237,42 @@ pub fn build(b: *std.Build) void {
     camera_demo_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
     camera_demo_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
 
+    var tilemap_collision_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "tilemap_collision",
+        .root_source_file = b.path("demo/engine/tilemap_collision.zig"),
+    });
+
+    tilemap_collision_rom.root_module.addImport(LibName, m);
+    tilemap_collision_rom.root_module.addImport("tsetseg_broom", broom_sprite_mod);
+    tilemap_collision_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
+
+    // Build step: Automatically convert T01 16x16 auto-split LDtk asset to Zig
+    const t01_tileset_png = b.path("assets/tileset/tileset-16x16-dirt.png");
+
+    const convert_t01_map = b.addRunArtifact(zurag_exe);
+    convert_t01_map.addArg("tilemap");
+    convert_t01_map.addArg("--input");
+    convert_t01_map.addFileArg(b.path("assets/tileset/T01-auto-split-16x16-tile-256x256.ldtk"));
+    convert_t01_map.addFileInput(t01_tileset_png);
+    convert_t01_map.addArg("--output");
+    const t01_map_zig = convert_t01_map.addOutputFileArg("t01_map.zig");
+
+    const t01_map_mod = b.createModule(.{
+        .root_source_file = t01_map_zig,
+    });
+    t01_map_mod.addImport("zamgba-engine", engine_module);
+    t01_map_mod.addImport("zamgba-hal", hal_module);
+
+    var ldtk_minimal_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "ldtk_minimal",
+        .root_source_file = b.path("demo/engine/ldtk_minimal.zig"),
+    });
+
+    ldtk_minimal_rom.root_module.addImport(LibName, m);
+    ldtk_minimal_rom.root_module.addImport("t01_map", t01_map_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.

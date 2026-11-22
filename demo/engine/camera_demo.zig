@@ -17,7 +17,7 @@ export var gameHeader linksection(".gba.header") = hal.setupROMHeader(
 const Game = struct {
     player: engine.AnimatedSprite,
     camera: engine.Camera2D,
-    bg_layers: [4]engine.TileMapLayer,
+    bg_layer: engine.TileMapLayer,
     input: engine.input.InputState = .{},
     use_smoothing: bool = true,
     use_drag_margin: bool = true,
@@ -28,48 +28,17 @@ const Game = struct {
         // 1. Load sprite palette into OBJ Palette RAM
         broom.sheet.loadPalette(null);
 
-        // 2. Configure Mode 0 Background layers (512x512 text tilemaps = 64x64 tiles)
-        // All layers share Charblock 0 for tileset graphics.
-        // Each 64x64 layer occupies 4 Screenblocks (2 KB * 4 = 8 KB).
-        var bg_backdrop = engine.TileMapLayer{
-            .bg_id = .bg3,
+        // 2. Configure single Mode 0 Background layer (512x512 = 64x64 tiles)
+        // Uses Charblock 0 for tileset graphics and 4 Screenblocks (16..19).
+        var bg = engine.TileMapLayer{
+            .bg_id = .bg0,
             .charblock = 0,
             .screenblock = 16,
             .size = .size_64x64,
             .data = &large_dirt_map.Level_0_Background_data,
-            .priority = 3,
-        };
-        bg_backdrop.initHardware();
-
-        var bg_dirt = engine.TileMapLayer{
-            .bg_id = .bg2,
-            .charblock = 0,
-            .screenblock = 20,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Dirt_data,
-            .priority = 2,
-        };
-        bg_dirt.initHardware();
-
-        var bg_rock = engine.TileMapLayer{
-            .bg_id = .bg1,
-            .charblock = 0,
-            .screenblock = 24,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_BigRock_data,
-            .priority = 1,
-        };
-        bg_rock.initHardware();
-
-        var bg_grass = engine.TileMapLayer{
-            .bg_id = .bg0,
-            .charblock = 0,
-            .screenblock = 28,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Grass_data,
             .priority = 0,
         };
-        bg_grass.initHardware();
+        bg.initHardware();
 
         // 3. Initialize player AnimatedSprite in .static mode
         var player_spr = try engine.AnimatedSprite.init(
@@ -102,7 +71,7 @@ const Game = struct {
         return .{
             .player = player_spr,
             .camera = cam,
-            .bg_layers = .{ bg_grass, bg_rock, bg_dirt, bg_backdrop },
+            .bg_layer = bg,
         };
     }
 
@@ -157,10 +126,8 @@ const Game = struct {
         self.camera.follow(self.player.sprite.aabb);
         self.camera.update();
 
-        // 6. Synchronize camera viewport with background scroll registers
-        for (&self.bg_layers) |*layer| {
-            self.camera.applyToTileMap(layer);
-        }
+        // 6. Synchronize camera viewport with background scroll register
+        self.camera.applyToTileMap(&self.bg_layer);
 
         // 7. Update sprite animations
         self.player.update();

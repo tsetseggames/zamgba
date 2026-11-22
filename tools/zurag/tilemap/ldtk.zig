@@ -131,25 +131,61 @@ fn validateIntGridDefs(root: std.json.ObjectMap) types.TilemapError!void {
     }
 }
 
-fn parseIntGridCollisions(aa: std.mem.Allocator, layer_obj: std.json.ObjectMap) types.TilemapError!?[]const u16 {
+fn parseIntGridCollisions(
+    aa: std.mem.Allocator,
+    layer_obj: std.json.ObjectMap,
+    grid_size: u32,
+    raw_c_wid: u32,
+    raw_c_hei: u32,
+) types.TilemapError!?[]const u16 {
     const csv_val = layer_obj.get("intGridCsv") orelse return null;
     if (csv_val != .array) return null;
 
-    const masks = aa.alloc(u16, csv_val.array.items.len) catch return types.TilemapError.OutOfMemory;
-    for (csv_val.array.items, 0..) |cell, idx| {
-        const val = switch (cell) {
-            .integer => |i| i,
-            else => 0,
-        };
-        if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
-            return types.TilemapError.IntGridValueOutOfRange;
+    if (grid_size == 16) {
+        const out_len = @as(usize, raw_c_wid) * 2 * @as(usize, raw_c_hei) * 2;
+        const masks = aa.alloc(u16, out_len) catch return types.TilemapError.OutOfMemory;
+        const c_wid_8 = @as(usize, raw_c_wid) * 2;
+
+        for (0..raw_c_hei) |gy| {
+            for (0..raw_c_wid) |gx| {
+                const src_idx = gy * @as(usize, raw_c_wid) + gx;
+                const cell = if (src_idx < csv_val.array.items.len) csv_val.array.items[src_idx] else .null;
+                const val = switch (cell) {
+                    .integer => |i| i,
+                    else => 0,
+                };
+                if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
+                    return types.TilemapError.IntGridValueOutOfRange;
+                }
+                const mask = if (val == 0)
+                    engine.physics.Collision.NONE
+                else
+                    engine.physics.Collision.layer(@intCast(val - 1));
+
+                masks[(gy * 2) * c_wid_8 + (gx * 2)] = mask;
+                masks[(gy * 2) * c_wid_8 + (gx * 2 + 1)] = mask;
+                masks[(gy * 2 + 1) * c_wid_8 + (gx * 2)] = mask;
+                masks[(gy * 2 + 1) * c_wid_8 + (gx * 2 + 1)] = mask;
+            }
         }
-        masks[idx] = if (val == 0)
-            engine.physics.Collision.NONE
-        else
-            engine.physics.Collision.layer(@intCast(val - 1));
+        return masks;
+    } else {
+        const masks = aa.alloc(u16, csv_val.array.items.len) catch return types.TilemapError.OutOfMemory;
+        for (csv_val.array.items, 0..) |cell, idx| {
+            const val = switch (cell) {
+                .integer => |i| i,
+                else => 0,
+            };
+            if (val < 0 or val > Limits.MAX_INTGRID_VALUE) {
+                return types.TilemapError.IntGridValueOutOfRange;
+            }
+            masks[idx] = if (val == 0)
+                engine.physics.Collision.NONE
+            else
+                engine.physics.Collision.layer(@intCast(val - 1));
+        }
+        return masks;
     }
-    return masks;
 }
 
 const RawTileInfo = struct {
@@ -372,15 +408,22 @@ fn parseLayerInstance(
 
     const layer_id = getStringField(layer_obj, "__identifier") orelse "Layer";
     const grid_size = getIntField(u32, layer_obj, "__gridSize") orelse Limits.TILE_SIZE_PX;
-    const c_wid = getIntField(u32, layer_obj, "__cWid") orelse (px_wid / grid_size);
-    const c_hei = getIntField(u32, layer_obj, "__cHei") orelse (px_hei / grid_size);
+    const raw_c_wid = getIntField(u32, layer_obj, "__cWid") orelse (px_wid / grid_size);
+    const raw_c_hei = getIntField(u32, layer_obj, "__cHei") orelse (px_hei / grid_size);
+
+    // GBA Mode 0 hardware text layers always operate in 8x8 tile units.
+    // If an LDtk layer uses 16x16 tiles, each tile is split into 2x2 8x8 tiles,
+    // so the layer's 8x8 tile dimensions are doubled.
+    const c_wid = if (grid_size == 16) raw_c_wid * 2 else raw_c_wid;
+    const c_hei = if (grid_size == 16) raw_c_hei * 2 else raw_c_hei;
+
     const tileset_rel_path = if (getStringField(layer_obj, "__tilesetRelPath")) |p|
         aa.dupe(u8, p) catch return types.TilemapError.OutOfMemory
     else
         null;
 
     const collision_masks = if (layer_type == .int_grid)
-        try parseIntGridCollisions(aa, layer_obj)
+        try parseIntGridCollisions(aa, layer_obj, grid_size, raw_c_wid, raw_c_hei)
     else
         null;
 
@@ -1117,4 +1160,24 @@ test "LDT017: Reject LDtk project where layer instances reference different tile
         \\}
     ;
     try std.testing.expectError(error.MultipleTilesetsNotSupported, parseJsonHelper(std.testing.allocator, json_diff_layer_tilesets));
+}
+
+test "LDT018: 16x16 layer doubles c_wid/c_hei and expands IntGrid collision masks for 8x8 GBA tile grid" {
+    const raw_json = test_assets.ldtk_t01_16x16;
+    var project = try parseJsonHelper(std.testing.allocator, raw_json);
+    defer project.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), project.levels.len);
+    const level = project.levels[0];
+    try std.testing.expectEqual(@as(usize, 1), level.layers.len);
+
+    const layer = level.layers[0];
+    try std.testing.expectEqual(@as(u32, 16), layer.grid_size);
+    // Raw cWid/cHei is 16, but for 8x8 GBA Mode 0 cells it must be 32x32
+    try std.testing.expectEqual(@as(u32, 32), layer.c_wid);
+    try std.testing.expectEqual(@as(u32, 32), layer.c_hei);
+
+    // IntGrid csv has 16*16 = 256 cells, expanded to 32*32 = 1024 cells
+    try std.testing.expect(layer.collision_masks != null);
+    try std.testing.expectEqual(@as(usize, 1024), layer.collision_masks.?.len);
 }
