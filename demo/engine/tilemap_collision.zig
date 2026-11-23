@@ -41,48 +41,30 @@ const Game = struct {
         // 1. Load sprite palette into OBJ Palette RAM
         broom.sheet.loadPalette(null);
 
-        // 2. Configure all 4 Mode 0 Background layers (512x512 text tilemaps = 64x64 tiles)
-        // All layers share Charblock 0 for tileset graphics.
-        // Each 64x64 layer occupies 4 Screenblocks (2 KB * 4 = 8 KB).
-        var bg_backdrop = engine.TileMapLayer{
+        // 2. Configure all 4 Mode 0 Background layers with automated VRAM layout.
+        // All layers share the same tileset, which is automatically assigned to Charblock 0.
+        // Screenblocks are automatically allocated sequentially (SBB 8..23).
+        var vram_mgr = engine.BgVramManager.init();
+
+        const bg_backdrop = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Background_data, .{
             .bg_id = .bg3,
-            .charblock = 0,
-            .screenblock = 16,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Background_data,
             .priority = 3,
-        };
-        bg_backdrop.initHardware();
+        });
 
-        var bg_dirt = engine.TileMapLayer{
+        const bg_dirt = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Dirt_data, .{
             .bg_id = .bg2,
-            .charblock = 0,
-            .screenblock = 20,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Dirt_data,
             .priority = 2,
-        };
-        bg_dirt.initHardware();
+        });
 
-        var bg_rock = engine.TileMapLayer{
+        const bg_rock = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_BigRock_data, .{
             .bg_id = .bg1,
-            .charblock = 0,
-            .screenblock = 24,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_BigRock_data,
             .priority = 1,
-        };
-        bg_rock.initHardware();
+        });
 
-        var bg_grass = engine.TileMapLayer{
+        const bg_grass = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Grass_data, .{
             .bg_id = .bg0,
-            .charblock = 0,
-            .screenblock = 28,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Grass_data,
             .priority = 0,
-        };
-        bg_grass.initHardware();
+        });
 
         // 3. Initialize player AnimatedSprite in .static mode at open coordinates (120, 100)
         var player_spr = try engine.AnimatedSprite.init(

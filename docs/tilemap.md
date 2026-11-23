@@ -151,7 +151,33 @@ Zamgba adopts the clear conceptual hierarchy of modern game engines (such as God
 
 ### 2.2 ROM-Resident Zero-Heap Philosophy
 * **ROM Storage**: Maps, tiles, palettes, and collision grids are baked at compile time into read-only Game Pak ROM (`pakrom`), consuming **0 bytes of IWRAM/EWRAM**.
-* **Runtime Layer Struct**: The runtime `TileMapLayer` object is lightweight (under 24 bytes), containing only the assigned hardware `BgId`, allocated SBB/CBB indices, and current scroll coordinates.
+* **Runtime Layer Struct**: The runtime `TileMapLayer` object is lightweight (under 28 bytes), containing only the assigned hardware `BgId`, allocated SBB/CBB indices, and current scroll coordinates.
+
+### 2.3 Automated Background VRAM Management (`BgVramManager`)
+Beginning with Issue #43 and Milestone v0.3.2, developers no longer manually compute Charblocks, Screenblocks, or multi-screenblock offsets. The engine introduces `BgVramManager`, a zero-heap VRAM layout manager inspired by Butano's block management:
+1. **Tileset Deduplication**: Multiple background layers referencing the same static `*const TileSet` share the same allocated Charblock (CBB 0..3), saving precious VRAM.
+2. **Conflict-Free SBB Allocation**: When Charblock $k$ is allocated for tiles, its overlapping Screenblocks ($8k \dots 8k+7$) are automatically blocked. Map entries are allocated in free, non-overlapping Screenblock regions (e.g. SBB 16..31).
+3. **Contiguous Multi-Screenblock Placement**: For 64x64 maps (which require 4 contiguous Screenblocks arranged in quadrants), `BgVramManager` automatically finds a contiguous 4-SBB block.
+4. **Explicit Hardware BG Channel Selection**: GBA hardware layers (`BG0`..`BG3`) dictate hardware priority, windowing, and blending. Developers explicitly supply `bg_id` in options; `BgVramManager` reserves it and prevents duplicate assignments (`error.Conflict`).
+5. **Zero-Config Developer API**:
+   ```zig
+   var vram_mgr = engine.BgVramManager.init();
+
+   // Automated VRAM allocation, tileset upload, and hardware initialization in one call:
+   var bg_dirt = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Dirt_data, .{
+       .bg_id = .bg2,
+       .priority = 2,
+   });
+   ```
+   Manual placement is still accessible for low-level ROM hacking or custom demoscene effects via `options.manual_placement`.
+
+### 2.4 Tear-Free Scene Transitions and Level Reloading
+When switching levels or re-initializing scenes:
+1. **Forced Blanking (`hal.display.setForcedBlank(true)`)**: Sets `REG_DISPCNT` bit 7 (`DCNT_FB`). Halting PPU rendering guarantees that subsequent VRAM/palette writes incur zero visual artifacts or screen tearing.
+2. **Safe VRAM Wiping (`engine.clearBgVram()`)**: Clears background VRAM (Mode 0 Charblocks and Screenblocks) to prevent stale tiles from displaying.
+3. **Manager Reset (`vram_mgr.reset()`)**: Clears internal allocation tracking bitmasks (`cbb_occupied`, `sbb_occupied`, `bg_occupied`).
+4. **New Layer Allocation & Initialization**: Call `TileMapLayer.init(&vram_mgr, ...)` for the new level (automatically uploads graphics and configures hardware registers).
+5. **Resume Rendering (`hal.display.setForcedBlank(false)`)**: Disables forced blank during VBlank to reveal the new level seamlessly.
 
 ---
 
@@ -213,17 +239,31 @@ pub const TileSet = struct {
 ```
 
 ### 3.3 ROM Map Layer Asset (`MapLayerData`)
+`MapLayerData` is generated at compile time by `zurag` from LDtk levels or tilemaps. It self-describes its dimensions and hardware `BgSize`:
 ```zig
 pub const MapLayerData = struct {
-    width: u16,                   // Width in tiles (e.g. 32, 64, 200)
-    height: u16,                  // Height in tiles (e.g. 32, 32, 100)
-    tileset: *const TileSet,      // Reference to the shared TileSet
+    width: u16,                   // Width in tiles (e.g. 32, 64)
+    height: u16,                  // Height in tiles (e.g. 32, 64)
+    size: hal.display.BgSize,     // Inferred or explicit hardware background size
+    tileset: ?*const TileSet = null, // Reference to the shared TileSet
     entries: []const ScreenEntry, // Flattened 2D grid of ScreenEntry values (width * height)
 };
 ```
 
 ### 3.4 Runtime Layer Instance (`TileMapLayer`)
+`TileMapLayer` encapsulates a hardware Mode 0 background channel:
 ```zig
+pub const TileMapLayerOptions = struct {
+    bg_id: hal.display.BgId,
+    priority: ?u2 = null,
+    collision_mask: CollisionMask = Collision.ALL,
+    size: ?hal.display.BgSize = null,
+    manual_placement: ?struct {
+        charblock: u2,
+        screenblock: u5,
+    } = null,
+};
+
 pub const TileMapLayer = struct {
     bg_id: hal.display.BgId,
     charblock: u2,
@@ -235,32 +275,21 @@ pub const TileMapLayer = struct {
     priority: u2 = 1,
     collision_mask: CollisionMask = Collision.ALL,
 
-    /// Uploads tileset and screenblock entries to VRAM via DMA and configures REG_BGxCNT
-    pub fn initHardware(self: *TileMapLayer) void { ... }
+    /// High-level constructor: automatically manages VRAM (CBB & SBB) via BgVramManager,
+    /// uploads graphics and screenblock entries to VRAM, and configures REG_BGxCNT.
+    pub fn init(manager: *BgVramManager, data: *const MapLayerData, options: TileMapLayerOptions) !TileMapLayer { ... }
+
+    /// Internal: uploads tileset and screenblock entries to VRAM and configures REG_BGxCNT
+    fn initHardware(self: *TileMapLayer) void { ... }
 
     /// Updates the hardware scroll registers
-    pub fn setScroll(self: *TileMapLayer, x: i32, y: i32) void {
-        self.scroll_x = x;
-        self.scroll_y = y;
-        hal.display.setBgScroll(self.bg_id, @truncate(@as(u32, @bitCast(x))), @truncate(@as(u32, @bitCast(y))));
-    }
+    pub fn setScroll(self: *TileMapLayer, x: i32, y: i32) void { ... }
 
     /// O(1) constant-time collision lookup for world coordinates, returning 16-bit CollisionMask
-    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) CollisionMask {
-        if (world_x < 0 or world_y < 0) return Collision.NONE;
-        const tx = @as(usize, @intCast(world_x >> 3));
-        const ty = @as(usize, @intCast(world_y >> 3));
-        if (tx >= self.data.width or ty >= self.data.height) return Collision.NONE;
+    pub fn getCollisionAt(self: *const TileMapLayer, world_x: i32, world_y: i32) CollisionMask { ... }
 
-        const cell_idx = ty * @as(usize, self.data.width) + tx;
-        if (cell_idx < self.data.entries.len) {
-            const entry = self.data.entries[cell_idx];
-            if (entry.tile_index < self.data.tileset.collision_masks.len) {
-                return self.data.tileset.collision_masks[entry.tile_index];
-            }
-        }
-        return Collision.NONE;
-    }
+    /// Adapts TileMapLayer into a CollisionMap for physics engine integration
+    pub fn asCollisionMap(self: *const TileMapLayer) physics.CollisionMap { ... }
 };
 ```
 

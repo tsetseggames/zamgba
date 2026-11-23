@@ -19,6 +19,8 @@ pub const TileMapLayer = tilemap.TileMapLayer;
 pub const TileData = tilemap.TileData;
 pub const Tile4bpp = tilemap.Tile4bpp;
 pub const Tile8bpp = tilemap.Tile8bpp;
+pub const BgVramManager = tilemap.BgVramManager;
+pub const BgVramError = tilemap.BgVramError;
 pub const mapSizeFromBgSize = tilemap.mapSizeFromBgSize;
 pub const EMPTY_TILE_INDEX = tilemap.EMPTY_TILE_INDEX;
 pub const Color = gfx2d.Color;
@@ -66,6 +68,18 @@ pub fn initHardware() void {
     vram_allocator.reset();
     dma_queue.global_queue.reset();
     is_initialized = true;
+}
+
+/// Controls forced blanking via the display controller.
+/// When enabled, video rendering is turned off to prevent tearing during scene transitions
+/// and bulk VRAM operations.
+pub fn setForcedBlank(enable: bool) void {
+    hal.display.setForcedBlank(enable);
+}
+
+/// Checks if forced blanking is currently enabled.
+pub fn isForcedBlank() bool {
+    return hal.display.isForcedBlank();
 }
 
 /// Completes the frame lifecycle:
@@ -204,4 +218,18 @@ test "ENG001: Engine singleton initHardware and drawSprite staging" {
     try std.testing.expectEqual(@as(usize, 1), sprite_count);
     try std.testing.expectEqual(@as(u16, 20), shadow_oam[0].attr0 & 0x00FF);
     try std.testing.expectEqual(@as(u16, 10), shadow_oam[0].attr1 & 0x01FF);
+}
+
+test "ENG002: Engine setForcedBlank and isForcedBlank proxy to display" {
+    const std = @import("std");
+    hal.display.value = 0;
+
+    try std.testing.expect(!isForcedBlank());
+    setForcedBlank(true);
+    try std.testing.expect(isForcedBlank());
+    try std.testing.expect(hal.display.isForcedBlank());
+
+    setForcedBlank(false);
+    try std.testing.expect(!isForcedBlank());
+    try std.testing.expect(!hal.display.isForcedBlank());
 }

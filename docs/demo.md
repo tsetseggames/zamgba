@@ -47,6 +47,7 @@ Zamgba organizes demonstration ROMs into two complementary categories:
 | `[x]` | `parallax_scroll` | `demo/engine/parallax_scroll.zig` | `v0.3.0` | Multi-layer Mode 0 background parallax scrolling (`applyToTileMapWithParallax`) across foreground, midground, and distant background layers. |
 | `[x]` | `tilemap_collision` | `demo/engine/tilemap_collision.zig` | `v0.3.0` | Continuous sub-pixel physics (`Fixed24_8`) colliding against `TileMapLayer` obstacles (dirt and bigrock), demonstrating smooth wall sliding. |
 | `[x]` | `ldtk_minimal` | `demo/engine/ldtk_minimal.zig` | `v0.3.0` | Minimal (< 70 lines) pipeline verification loading `zurag`-generated LDtk level data and panning the viewport. |
+| `[x]` | `level_reload` | `demo/engine/level_reload.zig` | `v0.3.2` | Dynamic level transition demonstrating forced-blanking (`engine.setForcedBlank`), safe 64 KB BG VRAM clearing (`BgVramManager.reset`), and automated tilemap re-allocation. |
 | `[ ]` | `hud_tilemap` | `demo/engine/hud_tilemap.zig` | `v0.4.0` | Static status bar on BG0 overlaying scrolling game world, demonstrating GBA layer priority composition (`priority: u2`). |
 | `[ ]` | `hud_sprite` | `demo/engine/hud_sprite.zig` | `v0.4.0` | Screen-space Sprite UI (hearts, item counters) rendered via `engine.drawSpriteUi` ignoring world camera translation. |
 
