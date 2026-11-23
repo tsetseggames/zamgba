@@ -111,6 +111,18 @@ pub fn mapSizeFromBgSize(size: hal.display.BgSize) physics.MapSize {
     };
 }
 
+/// Configuration options for initializing a TileMapLayer with automated VRAM allocation.
+pub const TileMapLayerOptions = struct {
+    bg_id: hal.display.BgId,
+    priority: ?u2 = null,
+    collision_mask: CollisionMask = Collision.ALL,
+    size: ?hal.display.BgSize = null,
+    manual_placement: ?struct {
+        charblock: u2,
+        screenblock: u5,
+    } = null,
+};
+
 /// Runtime background layer instance bound to a hardware BG channel.
 pub const TileMapLayer = struct {
     bg_id: hal.display.BgId,
@@ -122,6 +134,19 @@ pub const TileMapLayer = struct {
     scroll_y: i32 = 0,
     priority: u2 = 1,
     collision_mask: CollisionMask = Collision.ALL,
+
+    /// Initializes a TileMapLayer with automated Charblock and Screenblock allocation
+    /// managed by BgVramManager, automatically deduping tilesets and inferring layer size.
+    pub fn init(
+        manager: *BgVramManager,
+        data: *const MapLayerData,
+        options: TileMapLayerOptions,
+    ) BgVramError!TileMapLayer {
+        _ = manager;
+        _ = data;
+        _ = options;
+        return error.Unimplemented;
+    }
 
     /// Configures hardware registers and stages initial tiles/entries to VRAM.
     pub fn initHardware(self: *TileMapLayer) void {
@@ -233,6 +258,7 @@ pub const BgVramError = error{
     OutOfScreenblocks,
     OutOfBgLayers,
     Conflict,
+    Unimplemented,
 };
 
 /// Automated Mode 0 Background VRAM Layout and Resource Manager.
@@ -826,4 +852,131 @@ test "BVM005: BgVramManager manual placement and conflict rejection" {
     // 4. Valid manual Screenblock reservation
     try mgr.markScreenblocksOccupied(20, 4);
     try std.testing.expectError(error.Conflict, mgr.markScreenblocksOccupied(22, 2));
+}
+
+test "TLM009: TileMapLayer.init automated CBB/SBB allocation and dimension inference" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles },
+        .palette = &dummy_pal,
+    };
+
+    const entries_64x64: [4]ScreenEntry = @splat(ScreenEntry{});
+    const layer_data_64x64 = MapLayerData{
+        .width = 64,
+        .height = 64,
+        .tileset = &ts,
+        .entries = &entries_64x64,
+    };
+
+    // Layer 1: 64x64 on BG3. Should infer size_64x64, allocate CBB 0, SBB 8..11, priority 3
+    const layer1 = try TileMapLayer.init(&mgr, &layer_data_64x64, .{
+        .bg_id = .bg3,
+    });
+    try std.testing.expectEqual(hal.display.BgId.bg3, layer1.bg_id);
+    try std.testing.expectEqual(hal.display.BgSize.size_64x64, layer1.size);
+    try std.testing.expectEqual(@as(u2, 0), layer1.charblock);
+    try std.testing.expectEqual(@as(u5, 8), layer1.screenblock);
+    try std.testing.expectEqual(@as(u2, 3), layer1.priority);
+
+    // Layer 2: 32x32 on BG2 with shared tileset. Should deduplicate to CBB 0, allocate SBB 12, override priority 1
+    const entries_32x32: [1]ScreenEntry = @splat(ScreenEntry{});
+    const layer_data_32x32 = MapLayerData{
+        .width = 32,
+        .height = 32,
+        .tileset = &ts,
+        .entries = &entries_32x32,
+    };
+
+    const layer2 = try TileMapLayer.init(&mgr, &layer_data_32x32, .{
+        .bg_id = .bg2,
+        .priority = 1,
+    });
+    try std.testing.expectEqual(hal.display.BgId.bg2, layer2.bg_id);
+    try std.testing.expectEqual(hal.display.BgSize.size_32x32, layer2.size);
+    try std.testing.expectEqual(@as(u2, 0), layer2.charblock);
+    try std.testing.expectEqual(@as(u5, 12), layer2.screenblock);
+    try std.testing.expectEqual(@as(u2, 1), layer2.priority);
+}
+
+test "TLM010: TileMapLayer.init multiple layers with distinct tilesets and mutual non-overlap" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles1 = [_]Tile4bpp{@splat(0)};
+    const dummy_tiles2 = [_]Tile4bpp{@splat(1)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles1 }, .palette = &dummy_pal };
+    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles2 }, .palette = &dummy_pal };
+
+    // Layer 1: 64x32 (width=64, height=32, 2 SBBs) using ts1
+    const entries_64x32: [2]ScreenEntry = @splat(ScreenEntry{});
+    const data1 = MapLayerData{
+        .width = 64,
+        .height = 32,
+        .tileset = &ts1,
+        .entries = &entries_64x32,
+    };
+    const layer1 = try TileMapLayer.init(&mgr, &data1, .{ .bg_id = .bg0 });
+    try std.testing.expectEqual(hal.display.BgSize.size_64x32, layer1.size);
+    try std.testing.expectEqual(@as(u2, 0), layer1.charblock);
+    try std.testing.expectEqual(@as(u5, 8), layer1.screenblock); // SBB 8..9
+
+    // Layer 2: 32x64 (width=32, height=64, 2 SBBs) using ts2
+    // CBB 1 (SBB 8..15) conflicts with SBB 8..9, so CBB 2 (SBB 16..23) is allocated!
+    // Free SBBs are 10..15, so SBB 10..11 are allocated for layer2 screenblocks.
+    const entries_32x64: [2]ScreenEntry = @splat(ScreenEntry{});
+    const data2 = MapLayerData{
+        .width = 32,
+        .height = 64,
+        .tileset = &ts2,
+        .entries = &entries_32x64,
+    };
+    const layer2 = try TileMapLayer.init(&mgr, &data2, .{ .bg_id = .bg1 });
+    try std.testing.expectEqual(hal.display.BgSize.size_32x64, layer2.size);
+    try std.testing.expectEqual(@as(u2, 2), layer2.charblock);
+    try std.testing.expectEqual(@as(u5, 10), layer2.screenblock);
+}
+
+test "TLM011: TileMapLayer.init BgId conflict rejection and manual placement override" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const entries: [1]ScreenEntry = @splat(ScreenEntry{});
+    const data = MapLayerData{
+        .width = 32,
+        .height = 32,
+        .tileset = &ts,
+        .entries = &entries,
+    };
+
+    // 1. First layer takes BG0
+    _ = try TileMapLayer.init(&mgr, &data, .{ .bg_id = .bg0 });
+
+    // 2. Second layer attempting to take BG0 must fail with Conflict
+    try std.testing.expectError(error.Conflict, TileMapLayer.init(&mgr, &data, .{ .bg_id = .bg0 }));
+
+    // 3. Manual placement override
+    const manual_layer = try TileMapLayer.init(&mgr, &data, .{
+        .bg_id = .bg1,
+        .manual_placement = .{
+            .charblock = 3,
+            .screenblock = 28,
+        },
+    });
+    try std.testing.expectEqual(@as(u2, 3), manual_layer.charblock);
+    try std.testing.expectEqual(@as(u5, 28), manual_layer.screenblock);
+
+    // 4. Overlapping manual placement must fail with Conflict
+    try std.testing.expectError(error.Conflict, TileMapLayer.init(&mgr, &data, .{
+        .bg_id = .bg2,
+        .manual_placement = .{
+            .charblock = 3,
+            .screenblock = 28,
+        },
+    }));
 }
