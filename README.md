@@ -91,6 +91,7 @@ Zamgba includes over 17 standalone instructional and technical demo ROMs. Key hi
 | **`camera_demo`** | Engine | Full-featured 2D camera viewport tracking, smooth lerp, deadzone, screen shake, and frustum culling in a 512×512 scrolling world. |
 | **`parallax_scroll`** | Engine | Multi-layer Mode 0 background parallax scrolling across 4 independent text layers. |
 | **`tilemap_collision`** | Engine | Continuous sub-pixel physics (`Fixed24_8`) colliding and sliding smoothly against background tile layers. |
+| **`level_reload`** | Engine | Dynamic scene transition demonstrating safe forced-blanking, VRAM wiping, and automated tilemap re-allocation. |
 | **`sprite_animation_streaming`** | Engine | Dynamic VRAM slot leasing via buddy allocator and DMA queue streaming during VBlank. |
 | **`pong`** | Engine | Classic, fully playable Pong game with paddle kinematics, AI tracking, and score management. |
 | **`background_hal`** | HAL | Direct register-level Mode 0 tiled background configuration and real-time hardware scrolling. |
@@ -354,7 +355,12 @@ Comprehensive architectural documents and guides are available in the [`docs/`](
   - [x] Enforced 4-byte alignment for BIOS `irqHandler` preventing ARM-mode rotation crash ([#39](https://github.com/tsetseggames/zamgba/issues/39))
 - **Version 0.3.1** (Current): Upgrade to [Zig](https://ziglang.org) **0.17.0** 
   - [x] Upgraded compiler toolchain to [Zig](https://ziglang.org) **0.17.0**
-- **Version 0.4.0** (Next): *UI/HUD Layers & Sprite Priority*
+- **Version 0.3.2** (Next): *Automated VRAM Management & Level Transition Pipeline*
+  - [ ] Automated Background VRAM layout manager (`BgVramManager`) with automatic CBB/SBB packing and tileset deduplication ([#43](https://github.com/tsetseggames/zamgba/issues/43))
+  - [ ] Zero-magic `TileMapLayer.init` API abstracting hardware memory layout and preventing allocation conflicts
+  - [ ] Display forced blanking (`DCNT_FB`) and safe VRAM wiping preventing screen tearing during level transitions
+  - [ ] Interactive multi-level transition demo ROM (`level_reload.gba`) demonstrating clean VRAM teardown and reloading
+- **Version 0.4.0**: *UI/HUD Layers & Sprite Priority*
   - [ ] Screen-space UI/HUD sprite rendering (`engine.drawSpriteUi`)
   - [ ] Sprite rendering priority control (`priority: u2` in OAM Attr2)
   - [ ] TileMap background layer depth priority

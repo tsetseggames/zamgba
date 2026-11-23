@@ -15,6 +15,10 @@ The Zamgba SDK provides high-level APIs for 2D games on the Game Boy Advance. It
      - [x] HAL `REG_BGxCNT` & background scroll controls - *(v0.3.0)*
      - [x] Engine `ScreenEntry`, `TileSet`, `MapLayerData`, and `TileMapLayer` - *(v0.3.0)*
      - [x] Integration of `TileMapLayer` with `CollisionMap` (`moveAndCollide`) - *(v0.3.0)*
+     - [ ] Automated Background VRAM layout manager (`BgVramManager`) with automatic CBB/SBB allocation and tileset deduplication - *(v0.3.2)*
+     - [ ] Zero-magic `TileMapLayer.init` API abstracting hardware memory layout and preventing allocation conflicts - *(v0.3.2)*
+     - [ ] Display forced blanking (`setForcedBlank`) and safe VRAM wiping preventing screen tearing during level transitions - *(v0.3.2)*
+     - [ ] Interactive multi-level transition demo ROM (`level_reload.gba`) - *(v0.3.2)*
    - [x] Camera support for scrolling backgrounds and viewport tracking - *(v0.3.0)*
    - [x] Camera tracking & scrolling TileMap interactive demo ROM - *(v0.3.0)*
    - [x] LDtk level editor import & code generation in `zurag` tool (`.ldtk` parser, tile deduplication, IntGrid extraction) - *(v0.3.0)*

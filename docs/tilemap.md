@@ -154,16 +154,31 @@ Zamgba adopts the clear conceptual hierarchy of modern game engines (such as God
 * **Runtime Layer Struct**: The runtime `TileMapLayer` object is lightweight (under 28 bytes), containing only the assigned hardware `BgId`, allocated SBB/CBB indices, and current scroll coordinates.
 
 ### 2.3 Automated Background VRAM Management (`BgVramManager`)
-Beginning with Issue #43, developers no longer manually compute Charblocks, Screenblocks, or multi-screenblock offsets. The engine introduces `BgVramManager`, a zero-heap VRAM layout manager inspired by Butano's block management:
+Beginning with Issue #43 and Milestone v0.3.2, developers no longer manually compute Charblocks, Screenblocks, or multi-screenblock offsets. The engine introduces `BgVramManager`, a zero-heap VRAM layout manager inspired by Butano's block management:
 1. **Tileset Deduplication**: Multiple background layers referencing the same static `*const TileSet` share the same allocated Charblock (CBB 0..3), saving precious VRAM.
 2. **Conflict-Free SBB Allocation**: When Charblock $k$ is allocated for tiles, its overlapping Screenblocks ($8k \dots 8k+7$) are automatically blocked. Map entries are allocated in free, non-overlapping Screenblock regions (e.g. SBB 16..31).
 3. **Contiguous Multi-Screenblock Placement**: For 64x64 maps (which require 4 contiguous Screenblocks arranged in quadrants), `BgVramManager` automatically finds a contiguous 4-SBB block.
-4. **Zero-Config Developer API**:
+4. **Explicit Hardware BG Channel Selection**: GBA hardware layers (`BG0`..`BG3`) dictate hardware priority, windowing, and blending. Developers explicitly supply `bg_id` in options; `BgVramManager` reserves it and prevents duplicate assignments (`error.Conflict`).
+5. **Zero-Config Developer API**:
    ```zig
+   var vram_mgr = engine.BgVramManager.init();
+
    // Automated VRAM allocation and hardware initialization in one call:
-   var bg_dirt = try engine.TileMapLayer.init(&large_dirt_map.Level_0_Dirt_data, .{ .priority = 2 });
+   var bg_dirt = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Dirt_data, .{
+       .bg_id = .bg2,
+       .priority = 2,
+   });
+   bg_dirt.initHardware();
    ```
    Manual placement is still accessible for low-level ROM hacking or custom demoscene effects via `options.manual_placement`.
+
+### 2.4 Tear-Free Scene Transitions and Level Reloading
+When switching levels or re-initializing scenes:
+1. **Forced Blanking (`hal.display.setForcedBlank(true)`)**: Sets `REG_DISPCNT` bit 7 (`DCNT_FB`). Halting PPU rendering guarantees that subsequent VRAM/palette writes incur zero visual artifacts or screen tearing.
+2. **Safe VRAM Wiping (`engine.clearBgVram()`)**: Clears background VRAM (Mode 0 Charblocks and Screenblocks) to prevent stale tiles from displaying.
+3. **Manager Reset (`vram_mgr.reset()`)**: Clears internal allocation tracking bitmasks (`cbb_occupied`, `sbb_occupied`, `bg_occupied`).
+4. **New Layer Allocation & Initialization**: Call `TileMapLayer.init(&vram_mgr, ...)` and `layer.initHardware()` for the new level.
+5. **Resume Rendering (`hal.display.setForcedBlank(false)`)**: Disables forced blank during VBlank to reveal the new level seamlessly.
 
 ---
 
@@ -240,9 +255,10 @@ pub const MapLayerData = struct {
 `TileMapLayer` encapsulates a hardware Mode 0 background channel:
 ```zig
 pub const TileMapLayerOptions = struct {
-    bg_id: ?hal.display.BgId = null,
-    priority: u2 = 1,
+    bg_id: hal.display.BgId,
+    priority: ?u2 = null,
     collision_mask: CollisionMask = Collision.ALL,
+    size: ?hal.display.BgSize = null,
     manual_placement: ?struct {
         charblock: u2,
         screenblock: u5,
@@ -260,10 +276,10 @@ pub const TileMapLayer = struct {
     priority: u2 = 1,
     collision_mask: CollisionMask = Collision.ALL,
 
-    /// High-level constructor: automatically manages VRAM (CBB & SBB) and initializes hardware.
-    pub fn init(data: *const MapLayerData, options: TileMapLayerOptions) !TileMapLayer { ... }
+    /// High-level constructor: automatically manages VRAM (CBB & SBB) via BgVramManager.
+    pub fn init(manager: *BgVramManager, data: *const MapLayerData, options: TileMapLayerOptions) !TileMapLayer { ... }
 
-    /// Uploads tileset and screenblock entries to VRAM via DMA and configures REG_BGxCNT
+    /// Uploads tileset and screenblock entries to VRAM and configures REG_BGxCNT
     pub fn initHardware(self: *TileMapLayer) void { ... }
 
     /// Updates the hardware scroll registers

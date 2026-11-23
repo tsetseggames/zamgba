@@ -233,7 +233,6 @@ pub const BgVramError = error{
     OutOfScreenblocks,
     OutOfBgLayers,
     Conflict,
-    Unimplemented,
 };
 
 /// Automated Mode 0 Background VRAM Layout and Resource Manager.
@@ -255,7 +254,7 @@ pub const BgVramManager = struct {
     }
 
     /// Returns the number of contiguous 2 KB Screenblocks required by a given BgSize.
-    pub fn screenblockCount(size: hal.display.BgSize) u6 {
+    fn screenblockCount(size: hal.display.BgSize) u6 {
         return switch (size) {
             .size_32x32 => 1,
             .size_64x32 => 2,
@@ -266,46 +265,112 @@ pub const BgVramManager = struct {
 
     /// Allocates or retrieves an existing Charblock (0..3) for the given TileSet.
     /// If the tileset is already allocated, returns the same Charblock (deduplication).
-    pub fn allocateTileSet(self: *BgVramManager, tileset: *const TileSet) BgVramError!u2 {
-        _ = self;
-        _ = tileset;
-        return error.Unimplemented;
+    fn allocateTileSet(self: *BgVramManager, tileset: *const TileSet) BgVramError!u2 {
+        // 1. Deduplication check: return existing Charblock if tileset was already assigned
+        for (0..4) |i| {
+            if (self.cbb_occupied[i] and self.cbb_tilesets[i] == tileset) {
+                return @as(u2, @intCast(i));
+            }
+        }
+
+        // 2. Find lowest free CBB whose corresponding 8 SBBs are completely unallocated
+        for (0..4) |i| {
+            if (self.cbb_occupied[i]) continue;
+            var sbb_conflict = false;
+            for (0..8) |s| {
+                if (self.sbb_occupied[i * 8 + s]) {
+                    sbb_conflict = true;
+                    break;
+                }
+            }
+            if (sbb_conflict) continue;
+
+            self.cbb_occupied[i] = true;
+            self.cbb_tilesets[i] = tileset;
+            for (0..8) |s| {
+                self.sbb_occupied[i * 8 + s] = true;
+            }
+            return @as(u2, @intCast(i));
+        }
+
+        return error.OutOfCharblocks;
     }
 
     /// Allocates contiguous Screenblocks (0..31) for the requested background size.
-    pub fn allocateScreenblocks(self: *BgVramManager, size: hal.display.BgSize) BgVramError!u5 {
-        _ = self;
-        _ = size;
-        return error.Unimplemented;
+    fn allocateScreenblocks(self: *BgVramManager, size: hal.display.BgSize) BgVramError!u5 {
+        const count = screenblockCount(size);
+        var i: usize = 0;
+        while (i + count <= 32) : (i += 1) {
+            var fits = true;
+            for (0..count) |offset| {
+                if (self.sbb_occupied[i + offset]) {
+                    fits = false;
+                    break;
+                }
+            }
+            if (fits) {
+                for (0..count) |offset| {
+                    self.sbb_occupied[i + offset] = true;
+                }
+                return @as(u5, @intCast(i));
+            }
+        }
+        return error.OutOfScreenblocks;
     }
 
     /// Allocates the next available hardware BG channel (bg0..bg3).
-    pub fn allocateBgId(self: *BgVramManager) BgVramError!hal.display.BgId {
-        _ = self;
-        return error.Unimplemented;
+    fn allocateBgId(self: *BgVramManager) BgVramError!hal.display.BgId {
+        const bg_ids = [_]hal.display.BgId{ .bg0, .bg1, .bg2, .bg3 };
+        for (0..4) |i| {
+            if (!self.bg_occupied[i]) {
+                self.bg_occupied[i] = true;
+                return bg_ids[i];
+            }
+        }
+        return error.OutOfBgLayers;
+    }
+
+    /// Claims a specific hardware BG channel, erroring on conflict.
+    fn claimBgId(self: *BgVramManager, bg_id: hal.display.BgId) BgVramError!void {
+        const idx = @backingInt(bg_id);
+        if (self.bg_occupied[idx]) return error.Conflict;
+        self.bg_occupied[idx] = true;
     }
 
     /// Manually marks a Charblock as occupied, associating it with an optional TileSet.
-    pub fn markCharblockOccupied(self: *BgVramManager, cbb: u2, tileset: ?*const TileSet) BgVramError!void {
-        _ = self;
-        _ = cbb;
-        _ = tileset;
-        return error.Unimplemented;
+    fn markCharblockOccupied(self: *BgVramManager, cbb: u2, tileset: ?*const TileSet) BgVramError!void {
+        if (self.cbb_occupied[cbb]) {
+            if (tileset != null and self.cbb_tilesets[cbb] == tileset) {
+                return;
+            }
+            return error.Conflict;
+        }
+        for (0..8) |s| {
+            if (self.sbb_occupied[@as(usize, cbb) * 8 + s]) {
+                return error.Conflict;
+            }
+        }
+        self.cbb_occupied[cbb] = true;
+        self.cbb_tilesets[cbb] = tileset;
+        for (0..8) |s| {
+            self.sbb_occupied[@as(usize, cbb) * 8 + s] = true;
+        }
     }
 
     /// Manually marks a contiguous range of Screenblocks as occupied.
-    pub fn markScreenblocksOccupied(self: *BgVramManager, base_sbb: u5, count: u6) BgVramError!void {
-        _ = self;
-        _ = base_sbb;
-        _ = count;
-        return error.Unimplemented;
+    fn markScreenblocksOccupied(self: *BgVramManager, base_sbb: u5, count: u6) BgVramError!void {
+        if (@as(u6, base_sbb) + count > 32) return error.Conflict;
+        for (0..count) |offset| {
+            if (self.sbb_occupied[base_sbb + offset]) return error.Conflict;
+        }
+        for (0..count) |offset| {
+            self.sbb_occupied[base_sbb + offset] = true;
+        }
     }
 
     /// Manually marks a hardware BG channel as occupied.
-    pub fn markBgIdOccupied(self: *BgVramManager, bg_id: hal.display.BgId) BgVramError!void {
-        _ = self;
-        _ = bg_id;
-        return error.Unimplemented;
+    fn markBgIdOccupied(self: *BgVramManager, bg_id: hal.display.BgId) BgVramError!void {
+        return self.claimBgId(bg_id);
     }
 };
 
@@ -708,13 +773,17 @@ test "BVM004: BgVramManager out-of-resource error reporting" {
     try std.testing.expectError(error.OutOfBgLayers, mgr.allocateBgId());
 
     // 2. Charblock exhaustion: max 4 CBBs
-    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_tiles1 = [_]Tile4bpp{@splat(0)};
+    const dummy_tiles2 = [_]Tile4bpp{@splat(1)};
+    const dummy_tiles3 = [_]Tile4bpp{@splat(2)};
+    const dummy_tiles4 = [_]Tile4bpp{@splat(3)};
+    const dummy_tiles5 = [_]Tile4bpp{@splat(4)};
     const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
-    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
-    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
-    const ts3 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
-    const ts4 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
-    const ts5 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles1 }, .palette = &dummy_pal };
+    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles2 }, .palette = &dummy_pal };
+    const ts3 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles3 }, .palette = &dummy_pal };
+    const ts4 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles4 }, .palette = &dummy_pal };
+    const ts5 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles5 }, .palette = &dummy_pal };
 
     var mgr2 = BgVramManager.init();
     _ = try mgr2.allocateTileSet(&ts1);
@@ -735,10 +804,11 @@ test "BVM004: BgVramManager out-of-resource error reporting" {
 test "BVM005: BgVramManager manual placement and conflict rejection" {
     var mgr = BgVramManager.init();
 
-    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_tiles1 = [_]Tile4bpp{@splat(0)};
+    const dummy_tiles2 = [_]Tile4bpp{@splat(1)};
     const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
-    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
-    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles1 }, .palette = &dummy_pal };
+    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles2 }, .palette = &dummy_pal };
 
     // 1. Manual BG channel reservation and conflict
     try mgr.markBgIdOccupied(.bg2);
