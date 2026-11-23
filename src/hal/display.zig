@@ -213,17 +213,31 @@ pub var bg_vram_cleared: bool = false;
 /// Controls forced blanking in REG_DISPCNT (bit 7). When enabled, display rendering
 /// is disabled, allowing tearing-free VRAM/OAM reconfiguration.
 pub fn setForcedBlank(enable: bool) void {
-    _ = enable;
+    if (enable) {
+        value |= DCNT_BLANK;
+    } else {
+        value &= ~DCNT_BLANK;
+    }
+    if (is_gba_target) {
+        writeRegister();
+    }
 }
 
 /// Checks if forced blanking is currently enabled in REG_DISPCNT shadow value.
 pub fn isForcedBlank() bool {
-    return false;
+    return (value & DCNT_BLANK) != 0;
 }
 
 /// Zeroes out the 64 KB Background VRAM region (0x06000000..0x06010000).
 pub fn clearBgVram() void {
-    // Stub for Red phase
+    bg_vram_cleared = true;
+    if (is_gba_target) {
+        const bg_vram_words = @as([*]volatile u32, @ptrCast(@alignCast(MemorySections.VRAM)));
+        const word_count = (MemorySections.CHARBLOCK_SIZE_BYTES * 4) / @sizeOf(u32);
+        for (0..word_count) |i| {
+            bg_vram_words[i] = 0;
+        }
+    }
 }
 /// Sets the background scroll offsets (REG_BGxHOFS, REG_BGxVOFS) on real GBA hardware.
 pub fn setBgScroll(bg: BgId, x: u9, y: u9) void {

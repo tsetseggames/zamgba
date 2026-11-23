@@ -362,6 +362,7 @@ pub const BgVramManager = struct {
 
     pub fn reset(self: *BgVramManager) void {
         self.* = .{};
+        hal.display.clearBgVram();
     }
 
     /// Returns the number of contiguous 2 KB Screenblocks required by a given BgSize.

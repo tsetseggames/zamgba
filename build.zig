@@ -283,6 +283,16 @@ pub fn build(b: *std.Build) void {
     ldtk_minimal_rom.root_module.addImport(LibName, m);
     ldtk_minimal_rom.root_module.addImport("t01_map", t01_map_mod);
 
+    var level_reload_rom = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "level_reload",
+        .root_source_file = b.path("demo/engine/level_reload.zig"),
+    });
+
+    level_reload_rom.root_module.addImport(LibName, m);
+    level_reload_rom.root_module.addImport("t01_map", t01_map_mod);
+    level_reload_rom.root_module.addImport("large_dirt_map", large_dirt_map_mod);
+
     // Unit tests are compiled and executed in host machine. Some
     // GBA-specific code, e.g., manipulation of registers, will not be
     // covered by unit tests.

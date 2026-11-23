@@ -74,12 +74,12 @@ pub fn initHardware() void {
 /// When enabled, video rendering is turned off to prevent tearing during scene transitions
 /// and bulk VRAM operations.
 pub fn setForcedBlank(enable: bool) void {
-    _ = enable;
+    hal.display.setForcedBlank(enable);
 }
 
 /// Checks if forced blanking is currently enabled.
 pub fn isForcedBlank() bool {
-    return false;
+    return hal.display.isForcedBlank();
 }
 
 /// Completes the frame lifecycle:
