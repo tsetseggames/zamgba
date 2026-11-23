@@ -941,6 +941,39 @@ test "BVM005: BgVramManager manual placement and conflict rejection" {
     try std.testing.expectError(error.Conflict, mgr.markScreenblocksOccupied(22, 2));
 }
 
+test "BVM006: BgVramManager.reset resets allocation states and clears hardware BG VRAM" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles },
+        .palette = &dummy_pal,
+    };
+
+    _ = try mgr.allocateTileSet(&ts);
+    _ = try mgr.allocateScreenblocks(.size_64x64);
+    _ = try mgr.allocateBgId();
+
+    try std.testing.expect(mgr.cbb_occupied[0]);
+    try std.testing.expect(mgr.sbb_occupied[0]);
+    try std.testing.expect(mgr.bg_occupied[0]);
+
+    hal.display.bg_vram_cleared = false;
+    mgr.reset();
+
+    for (0..4) |i| {
+        try std.testing.expect(!mgr.cbb_occupied[i]);
+        try std.testing.expect(mgr.cbb_tilesets[i] == null);
+        try std.testing.expect(!mgr.bg_occupied[i]);
+    }
+    for (0..32) |i| {
+        try std.testing.expect(!mgr.sbb_occupied[i]);
+        try std.testing.expect(!mgr.sbb_map_occupied[i]);
+    }
+    try std.testing.expect(hal.display.bg_vram_cleared);
+}
+
 test "TLM009: TileMapLayer.init automated CBB/SBB allocation and dimension inference" {
     var mgr = BgVramManager.init();
 

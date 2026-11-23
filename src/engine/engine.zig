@@ -70,6 +70,18 @@ pub fn initHardware() void {
     is_initialized = true;
 }
 
+/// Controls forced blanking via the display controller.
+/// When enabled, video rendering is turned off to prevent tearing during scene transitions
+/// and bulk VRAM operations.
+pub fn setForcedBlank(enable: bool) void {
+    _ = enable;
+}
+
+/// Checks if forced blanking is currently enabled.
+pub fn isForcedBlank() bool {
+    return false;
+}
+
 /// Completes the frame lifecycle:
 /// 1. Waits for VBlank.
 /// 2. Flushes staged DMA transfer queue to VRAM.
@@ -206,4 +218,18 @@ test "ENG001: Engine singleton initHardware and drawSprite staging" {
     try std.testing.expectEqual(@as(usize, 1), sprite_count);
     try std.testing.expectEqual(@as(u16, 20), shadow_oam[0].attr0 & 0x00FF);
     try std.testing.expectEqual(@as(u16, 10), shadow_oam[0].attr1 & 0x01FF);
+}
+
+test "ENG002: Engine setForcedBlank and isForcedBlank proxy to display" {
+    const std = @import("std");
+    hal.display.value = 0;
+
+    try std.testing.expect(!isForcedBlank());
+    setForcedBlank(true);
+    try std.testing.expect(isForcedBlank());
+    try std.testing.expect(hal.display.isForcedBlank());
+
+    setForcedBlank(false);
+    try std.testing.expect(!isForcedBlank());
+    try std.testing.expect(!hal.display.isForcedBlank());
 }

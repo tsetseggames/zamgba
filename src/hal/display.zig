@@ -96,6 +96,7 @@ pub fn flipPage() void {
 // DCNT_OM
 // DCNT_FB
 
+pub const DCNT_BLANK: u16 = 0x0080;
 pub const DCNT_OBJ: u16 = 0x1000;
 pub const DCNT_OBJ_1D: u16 = 0x0040;
 
@@ -107,7 +108,7 @@ pub const BgId = enum(u2) {
     bg3 = 3,
 
     pub inline fn dcntBit(self: BgId) u16 {
-        return @as(u16, 1) << (@as(u4, @intFromEnum(self)) + 8);
+        return @as(u16, 1) << (@as(u4, @backingInt(self)) + 8);
     }
 };
 
@@ -206,6 +207,24 @@ pub fn setBgControl(bg: BgId, control: BgControl) void {
     }
 }
 
+/// Test flag tracking whether clearBgVram has been invoked (for host unit test verification).
+pub var bg_vram_cleared: bool = false;
+
+/// Controls forced blanking in REG_DISPCNT (bit 7). When enabled, display rendering
+/// is disabled, allowing tearing-free VRAM/OAM reconfiguration.
+pub fn setForcedBlank(enable: bool) void {
+    _ = enable;
+}
+
+/// Checks if forced blanking is currently enabled in REG_DISPCNT shadow value.
+pub fn isForcedBlank() bool {
+    return false;
+}
+
+/// Zeroes out the 64 KB Background VRAM region (0x06000000..0x06010000).
+pub fn clearBgVram() void {
+    // Stub for Red phase
+}
 /// Sets the background scroll offsets (REG_BGxHOFS, REG_BGxVOFS) on real GBA hardware.
 pub fn setBgScroll(bg: BgId, x: u9, y: u9) void {
     if (is_gba_target) {
@@ -406,6 +425,20 @@ test "BG003: Charblock and Screenblock VRAM address helpers" {
     try std.testing.expectEqual(@as(usize, 0x06000000), @intFromPtr(getScreenblockPtr(0)));
     try std.testing.expectEqual(@as(usize, 0x06000800), @intFromPtr(getScreenblockPtr(1)));
     try std.testing.expectEqual(@as(usize, 0x0600F800), @intFromPtr(getScreenblockPtr(31)));
+}
+
+test "DSP001: setForcedBlank and isForcedBlank toggle DCNT_BLANK in display.value" {
+    const std = @import("std");
+    value = 0;
+
+    try std.testing.expect(!isForcedBlank());
+    setForcedBlank(true);
+    try std.testing.expect(isForcedBlank());
+    try std.testing.expectEqual(DCNT_BLANK, value & DCNT_BLANK);
+
+    setForcedBlank(false);
+    try std.testing.expect(!isForcedBlank());
+    try std.testing.expectEqual(@as(u16, 0), value & DCNT_BLANK);
 }
 
 test "BG004: BgSize dimension and screenblock count helpers" {
