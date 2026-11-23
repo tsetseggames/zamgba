@@ -228,6 +228,87 @@ pub const TileMapLayer = struct {
     }
 };
 
+pub const BgVramError = error{
+    OutOfCharblocks,
+    OutOfScreenblocks,
+    OutOfBgLayers,
+    Conflict,
+    Unimplemented,
+};
+
+/// Automated Mode 0 Background VRAM Layout and Resource Manager.
+/// Manages Charblock (CBB 0..3), Screenblock (SBB 0..31), and BG channel (BG0..BG3) allocations,
+/// automatically handling tileset deduplication, multi-screenblock contiguous layout,
+/// and mutual CBB/SBB overlap conflict prevention.
+pub const BgVramManager = struct {
+    cbb_occupied: [4]bool = @splat(false),
+    cbb_tilesets: [4]?*const TileSet = @splat(null),
+    sbb_occupied: [32]bool = @splat(false),
+    bg_occupied: [4]bool = @splat(false),
+
+    pub fn init() BgVramManager {
+        return .{};
+    }
+
+    pub fn reset(self: *BgVramManager) void {
+        self.* = .{};
+    }
+
+    /// Returns the number of contiguous 2 KB Screenblocks required by a given BgSize.
+    pub fn screenblockCount(size: hal.display.BgSize) u6 {
+        return switch (size) {
+            .size_32x32 => 1,
+            .size_64x32 => 2,
+            .size_32x64 => 2,
+            .size_64x64 => 4,
+        };
+    }
+
+    /// Allocates or retrieves an existing Charblock (0..3) for the given TileSet.
+    /// If the tileset is already allocated, returns the same Charblock (deduplication).
+    pub fn allocateTileSet(self: *BgVramManager, tileset: *const TileSet) BgVramError!u2 {
+        _ = self;
+        _ = tileset;
+        return error.Unimplemented;
+    }
+
+    /// Allocates contiguous Screenblocks (0..31) for the requested background size.
+    pub fn allocateScreenblocks(self: *BgVramManager, size: hal.display.BgSize) BgVramError!u5 {
+        _ = self;
+        _ = size;
+        return error.Unimplemented;
+    }
+
+    /// Allocates the next available hardware BG channel (bg0..bg3).
+    pub fn allocateBgId(self: *BgVramManager) BgVramError!hal.display.BgId {
+        _ = self;
+        return error.Unimplemented;
+    }
+
+    /// Manually marks a Charblock as occupied, associating it with an optional TileSet.
+    pub fn markCharblockOccupied(self: *BgVramManager, cbb: u2, tileset: ?*const TileSet) BgVramError!void {
+        _ = self;
+        _ = cbb;
+        _ = tileset;
+        return error.Unimplemented;
+    }
+
+    /// Manually marks a contiguous range of Screenblocks as occupied.
+    pub fn markScreenblocksOccupied(self: *BgVramManager, base_sbb: u5, count: u6) BgVramError!void {
+        _ = self;
+        _ = base_sbb;
+        _ = count;
+        return error.Unimplemented;
+    }
+
+    /// Manually marks a hardware BG channel as occupied.
+    pub fn markBgIdOccupied(self: *BgVramManager, bg_id: hal.display.BgId) BgVramError!void {
+        _ = self;
+        _ = bg_id;
+        return error.Unimplemented;
+    }
+};
+
 // ===================================================================
 // Unit tests (TLM001 - TLM005)
 // ===================================================================
@@ -544,4 +625,135 @@ test "TLM008: EMPTY_TILE_INDEX constant represents reserved transparent tile" {
     try std.testing.expectEqual(@as(u16, 0), EMPTY_TILE_INDEX);
     const default_entry = ScreenEntry{};
     try std.testing.expectEqual(EMPTY_TILE_INDEX, default_entry.tile_index);
+}
+
+// ===================================================================
+// BgVramManager Unit Tests (BVM001 - BVM005)
+// ===================================================================
+
+test "BVM001: BgVramManager tileset deduplication in Charblock allocation" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles1 = [_]Tile4bpp{@splat(0)};
+    const dummy_pal1: [16]Bgr555 = @splat(Bgr555{});
+    const ts1 = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles1 },
+        .palette = &dummy_pal1,
+    };
+
+    const dummy_tiles2 = [_]Tile4bpp{@splat(1)};
+    const dummy_pal2: [16]Bgr555 = @splat(Bgr555{});
+    const ts2 = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles2 },
+        .palette = &dummy_pal2,
+    };
+
+    const cbb1 = try mgr.allocateTileSet(&ts1);
+    const cbb1_dup = try mgr.allocateTileSet(&ts1);
+    try std.testing.expectEqual(cbb1, cbb1_dup);
+
+    const cbb2 = try mgr.allocateTileSet(&ts2);
+    try std.testing.expect(cbb1 != cbb2);
+
+    const cbb2_dup = try mgr.allocateTileSet(&ts2);
+    try std.testing.expectEqual(cbb2, cbb2_dup);
+}
+
+test "BVM002: BgVramManager screenblock allocation sizing and non-overlap" {
+    try std.testing.expectEqual(@as(u6, 1), BgVramManager.screenblockCount(.size_32x32));
+    try std.testing.expectEqual(@as(u6, 2), BgVramManager.screenblockCount(.size_64x32));
+    try std.testing.expectEqual(@as(u6, 2), BgVramManager.screenblockCount(.size_32x64));
+    try std.testing.expectEqual(@as(u6, 4), BgVramManager.screenblockCount(.size_64x64));
+
+    var mgr = BgVramManager.init();
+
+    const sbb1 = try mgr.allocateScreenblocks(.size_32x32);
+    const sbb2 = try mgr.allocateScreenblocks(.size_64x32);
+    const sbb3 = try mgr.allocateScreenblocks(.size_32x64);
+    const sbb4 = try mgr.allocateScreenblocks(.size_64x64);
+
+    try std.testing.expect(sbb2 >= sbb1 + 1);
+    try std.testing.expect(sbb3 >= sbb2 + 2);
+    try std.testing.expect(sbb4 >= sbb3 + 2);
+    try std.testing.expect(@as(u6, sbb4) + 4 <= 32);
+}
+
+test "BVM003: BgVramManager memory overlap conflict prevention between CBB and SBB" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts = TileSet{
+        .tiles = .{ .bpp4 = &dummy_tiles },
+        .palette = &dummy_pal,
+    };
+
+    // Allocate CBB 0 for tileset (occupies SBB 0..7)
+    const cbb = try mgr.allocateTileSet(&ts);
+    try std.testing.expectEqual(@as(u2, 0), cbb);
+
+    // Any subsequent screenblock allocation must NOT fall into SBB 0..7
+    const sbb = try mgr.allocateScreenblocks(.size_32x32);
+    try std.testing.expect(sbb >= 8);
+}
+
+test "BVM004: BgVramManager out-of-resource error reporting" {
+    var mgr = BgVramManager.init();
+
+    // 1. BG Layer channel exhaustion: max 4 layers (bg0..bg3)
+    _ = try mgr.allocateBgId();
+    _ = try mgr.allocateBgId();
+    _ = try mgr.allocateBgId();
+    _ = try mgr.allocateBgId();
+    try std.testing.expectError(error.OutOfBgLayers, mgr.allocateBgId());
+
+    // 2. Charblock exhaustion: max 4 CBBs
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts3 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts4 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts5 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+
+    var mgr2 = BgVramManager.init();
+    _ = try mgr2.allocateTileSet(&ts1);
+    _ = try mgr2.allocateTileSet(&ts2);
+    _ = try mgr2.allocateTileSet(&ts3);
+    _ = try mgr2.allocateTileSet(&ts4);
+    try std.testing.expectError(error.OutOfCharblocks, mgr2.allocateTileSet(&ts5));
+
+    // 3. Screenblock exhaustion: 32 SBBs total.
+    // Allocating 8 x 64x64 maps (8 * 4 = 32 SBBs) consumes all SBBs.
+    var mgr3 = BgVramManager.init();
+    for (0..8) |_| {
+        _ = try mgr3.allocateScreenblocks(.size_64x64);
+    }
+    try std.testing.expectError(error.OutOfScreenblocks, mgr3.allocateScreenblocks(.size_32x32));
+}
+
+test "BVM005: BgVramManager manual placement and conflict rejection" {
+    var mgr = BgVramManager.init();
+
+    const dummy_tiles = [_]Tile4bpp{@splat(0)};
+    const dummy_pal: [16]Bgr555 = @splat(Bgr555{});
+    const ts1 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+    const ts2 = TileSet{ .tiles = .{ .bpp4 = &dummy_tiles }, .palette = &dummy_pal };
+
+    // 1. Manual BG channel reservation and conflict
+    try mgr.markBgIdOccupied(.bg2);
+    try std.testing.expectError(error.Conflict, mgr.markBgIdOccupied(.bg2));
+    const auto_bg = try mgr.allocateBgId();
+    try std.testing.expect(auto_bg != .bg2);
+
+    // 2. Manual Charblock reservation and conflict
+    try mgr.markCharblockOccupied(0, &ts1);
+    try std.testing.expectError(error.Conflict, mgr.markCharblockOccupied(0, &ts2));
+
+    // 3. Manual Screenblock reservation in reserved CBB 0 (SBB 0..7) should conflict
+    try std.testing.expectError(error.Conflict, mgr.markScreenblocksOccupied(0, 4));
+
+    // 4. Valid manual Screenblock reservation
+    try mgr.markScreenblocksOccupied(20, 4);
+    try std.testing.expectError(error.Conflict, mgr.markScreenblocksOccupied(22, 2));
 }
