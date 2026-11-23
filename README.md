@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://ziglang.org/"><img src="https://img.shields.io/badge/Zig-0.17.0%2B-F7A41D?logo=zig&logoColor=white" alt="Zig Version" /></a>
-  <a href="build.zig.zon"><img src="https://img.shields.io/badge/version-v0.3.1-6366F1" alt="Version v0.3.1" /></a>
+  <a href="build.zig.zon"><img src="https://img.shields.io/badge/version-v0.3.2-6366F1" alt="Version v0.3.2" /></a>
   <a href="https://en.wikipedia.org/wiki/Game_Boy_Advance"><img src="https://img.shields.io/badge/target-ARM7TDMI%20%28GBA%29-312E81" alt="Target GBA" /></a>
 </p>
 
@@ -138,7 +138,7 @@ Add Zamgba to your `build.zig.zon`:
     .version = "0.1.0",
     .dependencies = .{
         .zamgba = .{
-            .url = "https://github.com/tsetseggames/zamgba/archive/refs/tags/v0.3.1.tar.gz",
+            .url = "https://github.com/tsetseggames/zamgba/archive/refs/tags/v0.3.2.tar.gz",
             .hash = "...", // or use a local path: .path = "../zamgba"
         },
     },
@@ -272,17 +272,12 @@ In your game code (`src/main.zig`), bind the tilemap layer and collision callbac
 ```zig
 const large_dirt_map = @import("large_dirt_map");
 
-// Load tiles and palette into Background VRAM blocks
-large_dirt_map.load();
-
-var bg_dirt = engine.TileMapLayer{
-    .bg_index = 0,
-    .screen_block_base = 8,
-    .tile_block_base = 0,
-    .map_size = .size_32x32,
-    .color_mode = .bpp4,
-    .entries = &large_dirt_map.SCREEN_ENTRIES,
-};
+// Initialize automated Background VRAM manager and allocate layer
+var vram_mgr = engine.BgVramManager.init();
+const bg_dirt = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Dirt_data, .{
+    .bg_id = .bg0,
+    .priority = 0,
+});
 
 // Check solid tile collision using generated masks
 fn isTileSolid(tx: u16, ty: u16) bool {
@@ -355,9 +350,9 @@ Comprehensive architectural documents and guides are available in the [`docs/`](
   - [x] Enforced 4-byte alignment for BIOS `irqHandler` preventing ARM-mode rotation crash ([#39](https://github.com/tsetseggames/zamgba/issues/39))
 - **Version 0.3.1** (Current): Upgrade to [Zig](https://ziglang.org) **0.17.0** 
   - [x] Upgraded compiler toolchain to [Zig](https://ziglang.org) **0.17.0**
-- **Version 0.3.2** (Next): *Automated VRAM Management & Level Transition Pipeline*
-  - [ ] Automated Background VRAM layout manager (`BgVramManager`) with automatic CBB/SBB packing and tileset deduplication ([#43](https://github.com/tsetseggames/zamgba/issues/43))
-  - [ ] Zero-magic `TileMapLayer.init` API abstracting hardware memory layout and preventing allocation conflicts
+- **Version 0.3.2** (Current): *Automated VRAM Management & Level Transition Pipeline*
+  - [x] Automated Background VRAM layout manager (`BgVramManager`) with automatic CBB/SBB packing and tileset deduplication ([#43](https://github.com/tsetseggames/zamgba/issues/43))
+  - [x] Zero-magic `TileMapLayer.init` API abstracting hardware memory layout and preventing allocation conflicts
   - [ ] Display forced blanking (`DCNT_FB`) and safe VRAM wiping preventing screen tearing during level transitions
   - [ ] Interactive multi-level transition demo ROM (`level_reload.gba`) demonstrating clean VRAM teardown and reloading
 - **Version 0.4.0**: *UI/HUD Layers & Sprite Priority*
