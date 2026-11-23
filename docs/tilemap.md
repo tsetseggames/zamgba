@@ -163,12 +163,11 @@ Beginning with Issue #43 and Milestone v0.3.2, developers no longer manually com
    ```zig
    var vram_mgr = engine.BgVramManager.init();
 
-   // Automated VRAM allocation and hardware initialization in one call:
+   // Automated VRAM allocation, tileset upload, and hardware initialization in one call:
    var bg_dirt = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Dirt_data, .{
        .bg_id = .bg2,
        .priority = 2,
    });
-   bg_dirt.initHardware();
    ```
    Manual placement is still accessible for low-level ROM hacking or custom demoscene effects via `options.manual_placement`.
 
@@ -177,7 +176,7 @@ When switching levels or re-initializing scenes:
 1. **Forced Blanking (`hal.display.setForcedBlank(true)`)**: Sets `REG_DISPCNT` bit 7 (`DCNT_FB`). Halting PPU rendering guarantees that subsequent VRAM/palette writes incur zero visual artifacts or screen tearing.
 2. **Safe VRAM Wiping (`engine.clearBgVram()`)**: Clears background VRAM (Mode 0 Charblocks and Screenblocks) to prevent stale tiles from displaying.
 3. **Manager Reset (`vram_mgr.reset()`)**: Clears internal allocation tracking bitmasks (`cbb_occupied`, `sbb_occupied`, `bg_occupied`).
-4. **New Layer Allocation & Initialization**: Call `TileMapLayer.init(&vram_mgr, ...)` and `layer.initHardware()` for the new level.
+4. **New Layer Allocation & Initialization**: Call `TileMapLayer.init(&vram_mgr, ...)` for the new level (automatically uploads graphics and configures hardware registers).
 5. **Resume Rendering (`hal.display.setForcedBlank(false)`)**: Disables forced blank during VBlank to reveal the new level seamlessly.
 
 ---
@@ -276,11 +275,12 @@ pub const TileMapLayer = struct {
     priority: u2 = 1,
     collision_mask: CollisionMask = Collision.ALL,
 
-    /// High-level constructor: automatically manages VRAM (CBB & SBB) via BgVramManager.
+    /// High-level constructor: automatically manages VRAM (CBB & SBB) via BgVramManager,
+    /// uploads graphics and screenblock entries to VRAM, and configures REG_BGxCNT.
     pub fn init(manager: *BgVramManager, data: *const MapLayerData, options: TileMapLayerOptions) !TileMapLayer { ... }
 
-    /// Uploads tileset and screenblock entries to VRAM and configures REG_BGxCNT
-    pub fn initHardware(self: *TileMapLayer) void { ... }
+    /// Internal: uploads tileset and screenblock entries to VRAM and configures REG_BGxCNT
+    fn initHardware(self: *TileMapLayer) void { ... }
 
     /// Updates the hardware scroll registers
     pub fn setScroll(self: *TileMapLayer, x: i32, y: i32) void { ... }

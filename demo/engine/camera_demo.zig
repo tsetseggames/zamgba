@@ -29,16 +29,12 @@ const Game = struct {
         broom.sheet.loadPalette(null);
 
         // 2. Configure single Mode 0 Background layer (512x512 = 64x64 tiles)
-        // Uses Charblock 0 for tileset graphics and 4 Screenblocks (16..19).
-        var bg = engine.TileMapLayer{
+        // Automatically manages Charblock and Screenblock allocation.
+        var vram_mgr = engine.BgVramManager.init();
+        const bg = try engine.TileMapLayer.init(&vram_mgr, &large_dirt_map.Level_0_Background_data, .{
             .bg_id = .bg0,
-            .charblock = 0,
-            .screenblock = 16,
-            .size = .size_64x64,
-            .data = &large_dirt_map.Level_0_Background_data,
             .priority = 0,
-        };
-        bg.initHardware();
+        });
 
         // 3. Initialize player AnimatedSprite in .static mode
         var player_spr = try engine.AnimatedSprite.init(

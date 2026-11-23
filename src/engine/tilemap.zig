@@ -111,6 +111,19 @@ pub fn mapSizeFromBgSize(size: hal.display.BgSize) physics.MapSize {
     };
 }
 
+/// Infers the hardware background size from tile grid dimensions.
+fn inferBgSize(data: *const MapLayerData) hal.display.BgSize {
+    if (data.width > 32 and data.height > 32) {
+        return .size_64x64;
+    } else if (data.width > 32) {
+        return .size_64x32;
+    } else if (data.height > 32) {
+        return .size_32x64;
+    } else {
+        return .size_32x32;
+    }
+}
+
 /// Configuration options for initializing a TileMapLayer with automated VRAM allocation.
 pub const TileMapLayerOptions = struct {
     bg_id: hal.display.BgId,
@@ -142,14 +155,86 @@ pub const TileMapLayer = struct {
         data: *const MapLayerData,
         options: TileMapLayerOptions,
     ) BgVramError!TileMapLayer {
-        _ = manager;
-        _ = data;
-        _ = options;
-        return error.Unimplemented;
+        const size = options.size orelse inferBgSize(data);
+
+        // 1. Claim hardware BG channel
+        try manager.claimBgId(options.bg_id);
+
+        // 2. Allocate or validate Charblock and Screenblock(s)
+        var cbb: u2 = 0;
+        var sbb: u5 = 0;
+
+        if (options.manual_placement) |manual| {
+            const count = BgVramManager.screenblockCount(size);
+            if (@as(u6, manual.screenblock) + count > 32) return error.Conflict;
+
+            // Check screenblock conflict against already mapped screenblocks
+            for (0..count) |offset| {
+                if (manager.sbb_map_occupied[manual.screenblock + offset]) {
+                    return error.Conflict;
+                }
+                const cbb_of_sbb: usize = (manual.screenblock + offset) / 8;
+                if (manager.cbb_occupied[cbb_of_sbb] and cbb_of_sbb != manual.charblock) {
+                    return error.Conflict;
+                }
+            }
+
+            // Check charblock conflict
+            if (manager.cbb_occupied[manual.charblock]) {
+                if (data.tileset != null and manager.cbb_tilesets[manual.charblock] != data.tileset) {
+                    return error.Conflict;
+                }
+            } else {
+                // Check if any SBB in this CBB was claimed by a screenblock from another CBB
+                for (0..8) |s| {
+                    const check_sbb = @as(usize, manual.charblock) * 8 + s;
+                    if (manager.sbb_map_occupied[check_sbb]) {
+                        // SBB belongs to another layer's map
+                        if (check_sbb < manual.screenblock or check_sbb >= manual.screenblock + count) {
+                            return error.Conflict;
+                        }
+                    }
+                }
+                manager.cbb_occupied[manual.charblock] = true;
+                manager.cbb_tilesets[manual.charblock] = data.tileset;
+                for (0..8) |s| {
+                    manager.sbb_occupied[@as(usize, manual.charblock) * 8 + s] = true;
+                }
+            }
+
+            for (0..count) |offset| {
+                manager.sbb_occupied[manual.screenblock + offset] = true;
+                manager.sbb_map_occupied[manual.screenblock + offset] = true;
+            }
+
+            cbb = manual.charblock;
+            sbb = manual.screenblock;
+        } else {
+            if (data.tileset) |ts| {
+                cbb = try manager.allocateTileSet(ts);
+            }
+            sbb = try manager.allocateScreenblocks(size);
+        }
+
+        const priority = options.priority orelse @as(u2, @intCast(@backingInt(options.bg_id)));
+
+        var layer = TileMapLayer{
+            .bg_id = options.bg_id,
+            .charblock = cbb,
+            .screenblock = sbb,
+            .size = size,
+            .data = data,
+            .scroll_x = 0,
+            .scroll_y = 0,
+            .priority = priority,
+            .collision_mask = options.collision_mask,
+        };
+        layer.initHardware();
+        return layer;
     }
 
     /// Configures hardware registers and stages initial tiles/entries to VRAM.
-    pub fn initHardware(self: *TileMapLayer) void {
+    fn initHardware(self: *TileMapLayer) void {
         if (hal.specs.is_gba_target) {
             const is_8bpp = if (self.data.tileset) |ts| ts.tiles.is8bpp() else false;
             hal.display.setBgControl(self.bg_id, .{
@@ -258,7 +343,6 @@ pub const BgVramError = error{
     OutOfScreenblocks,
     OutOfBgLayers,
     Conflict,
-    Unimplemented,
 };
 
 /// Automated Mode 0 Background VRAM Layout and Resource Manager.
@@ -269,6 +353,7 @@ pub const BgVramManager = struct {
     cbb_occupied: [4]bool = @splat(false),
     cbb_tilesets: [4]?*const TileSet = @splat(null),
     sbb_occupied: [32]bool = @splat(false),
+    sbb_map_occupied: [32]bool = @splat(false),
     bg_occupied: [4]bool = @splat(false),
 
     pub fn init() BgVramManager {
@@ -337,6 +422,7 @@ pub const BgVramManager = struct {
             if (fits) {
                 for (0..count) |offset| {
                     self.sbb_occupied[i + offset] = true;
+                    self.sbb_map_occupied[i + offset] = true;
                 }
                 return @as(u5, @intCast(i));
             }
@@ -391,6 +477,7 @@ pub const BgVramManager = struct {
         }
         for (0..count) |offset| {
             self.sbb_occupied[base_sbb + offset] = true;
+            self.sbb_map_occupied[base_sbb + offset] = true;
         }
     }
 

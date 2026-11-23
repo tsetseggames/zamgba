@@ -21,16 +21,12 @@ const Game = struct {
         engine.log.info("LDtk Minimal Demo: Starting init", .{});
 
         // Configure single 256x256 (32x32 tiles) Mode 0 Background layer
-        // Loads auto-split 16x16 tiles from T01 LDtk level
-        var bg = engine.TileMapLayer{
+        // Loads auto-split 16x16 tiles from T01 LDtk level with automated VRAM allocation
+        var vram_mgr = engine.BgVramManager.init();
+        const bg = try engine.TileMapLayer.init(&vram_mgr, &t01_map.Level_0_IntGrid_data, .{
             .bg_id = .bg0,
-            .charblock = 0,
-            .screenblock = 16,
-            .size = .size_32x32,
-            .data = &t01_map.Level_0_IntGrid_data,
             .priority = 0,
-        };
-        bg.initHardware();
+        });
 
         engine.log.info("LDtk Minimal Demo: Init finished successfully", .{});
 
