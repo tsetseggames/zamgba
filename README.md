@@ -40,9 +40,9 @@ Watch Zamgba in action — from source code and cross-compilation to running the
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/6hRcTL-eEYA" target="_blank"><img src="https://img.shields.io/badge/YouTube-Watch%20Showcase%20(20s)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Showcase" /></a>
+  <a href="https://youtu.be/D57tNEU7OQ8" target="_blank"><img src="https://img.shields.io/badge/YouTube-Watch%20Showcase%20(20s)-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube Showcase" /></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://www.bilibili.com/video/BV12PyjzSEzS/" target="_blank"><img src="https://img.shields.io/badge/Bilibili-观看演示视频%20(20秒)-00A1D6?style=for-the-badge&logo=bilibili&logoColor=white" alt="Bilibili Showcase" /></a>
+  <a href="https://www.bilibili.com/video/BV12PyjzSEzS/?share_source=copy_web&vd_source=4c029c3ea63e4142496097060b974161" target="_blank"><img src="https://img.shields.io/badge/Bilibili-观看演示视频%20(20秒)-00A1D6?style=for-the-badge&logo=bilibili&logoColor=white" alt="Bilibili Showcase" /></a>
 </p>
 
 > **Video Highlights (20s):**
